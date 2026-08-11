@@ -86,22 +86,27 @@ const Chart = ({ history, t }: { history: HistoryPoint[]; t: T }) => {
   </div>
 }
 
-const FooterDrawer = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; setLocale:(v:Locale)=>void; theme:Theme; setTheme:(v:Theme)=>void; t:T }) => {
-  const [open,setOpen] = useState(false)
-  return <footer className={`footer-drawer ${open ? 'open' : ''}`}>
-    <button className="footer-handle" onClick={() => setOpen(v => !v)} aria-expanded={open}>
-      <span className="footer-handle-main"><span className="footer-logo-crop"><img src="/assets/frameanalytics-logo.png" alt=""/></span><span className="footer-brand-copy"><strong>FrameAnalytics</strong><small>{t('settingsInfo')}</small></span></span>
-      <span className="footer-chevron">{open ? '⌄' : '⌃'}</span>
-    </button>
-    <div className="footer-content">
-      <div className="footer-grid">
-        <section><h3>{t('language')}</h3><select value={locale} onChange={e => setLocale(e.target.value as Locale)}>{Object.entries(localeNames).map(([code,label]) => <option value={code} key={code}>{label}</option>)}</select></section>
-        <section><h3>{t('theme')}</h3><select value={theme} onChange={e => setTheme(e.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></section>
-        <section><h3>{t('links')}</h3><div className="footer-links"><a href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a></div></section>
-        <section><h3>{t('project')}</h3><div className="footer-meta"><span>{t('version')}: 0.4.4</span><span>frameanalytics.trade</span></div></section>
-      </div>
-      <div className="footer-disclaimer">{t('disclaimer')}</div>
+const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; setLocale:(v:Locale)=>void; theme:Theme; setTheme:(v:Theme)=>void; t:T }) => {
+  return <footer className="footer-bar">
+    <div className="footer-brand">
+      <img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/>
     </div>
+    <div className="footer-control">
+      <span>{t('language')}</span>
+      <select value={locale} onChange={e => setLocale(e.target.value as Locale)}>
+        {Object.entries(localeNames).map(([code,label]) => <option value={code} key={code}>{label}</option>)}
+      </select>
+    </div>
+    <div className="footer-control">
+      <span>{t('theme')}</span>
+      <select value={theme} onChange={e => setTheme(e.target.value as Theme)}>
+        <option value="system">{t('themeSystem')}</option>
+        <option value="light">{t('themeLight')}</option>
+        <option value="dark">{t('themeDark')}</option>
+      </select>
+    </div>
+    <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
+    <div className="footer-version">{t('version')} 0.4.5</div>
   </footer>
 }
 
@@ -175,6 +180,6 @@ export default function App() {
       <section className="results-row"><span>{t('found')}</span><strong>{rows.length}</strong></section>
       <section className="panel table-panel"><div className="table-scroll"><table><thead><tr>{([['name','item'],['current','current'],['change1h','change1h'],['change24h','change24h'],['change7d','change7d'],['sales24h','sales24h'],['potential','potential'],['score','score'],['decision','decision'],['updated','updated']] as [SortKey,TranslationKey][]).map(([key,label]) => <th key={key}><button className="sort-button" onClick={()=>handleSort(key)}><span>{t(label)}</span><span className="sort-indicator">{indicator(key)}</span></button></th>)}</tr></thead><tbody>{rows.map(item => { const p=getPotential(item,mode); const s=getScore(item,mode); const d=getDecision(item,mode); return <tr key={item.id} onClick={()=>setSelected(item)}><td><div className="item-name">{item.name}</div><div className="item-category">{t(categoryKey(item.category))}</div></td><td className="price-cell">{fmtPlat(item.current)}</td><td className={valueClass(item.change1h)}>{fmtPercent(item.change1h)}</td><td className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</td><td className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</td><td>{item.sales24h}</td><td><span className={p>0?'potential-badge':'potential-badge muted'}>{p>0?`+${fmtPlat(p)}`:'—'}</span></td><td><span className={`score-badge ${s>=80?'high':s>=60?'mid':'low'}`}>{s}</span></td><td><span className={decisionClass(d)}>{t(decisionKey(d))}</span></td><td className="updated-cell">{item.updated}</td></tr>})}</tbody></table></div></section>
     </main>}
-    <FooterDrawer locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
+    <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
   </>
 }
