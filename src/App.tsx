@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { items } from './data'
+import { localeNames, translations } from './i18n'
+import type { Locale, Theme, TranslationKey } from './i18n'
 import type { HistoryPoint, MarketItem, ScannerMode } from './types'
 
 type SortKey =
@@ -53,7 +55,26 @@ const getPotential = (item: MarketItem, mode: ScannerMode) => mode === 'buy' ? i
 const getScore = (item: MarketItem, mode: ScannerMode) => mode === 'buy' ? item.buyScore : item.sellScore
 const getDecision = (item: MarketItem, mode: ScannerMode) => mode === 'buy' ? item.buyDecision : item.sellDecision
 
-const Chart = ({ history }: { history: HistoryPoint[] }) => {
+const getDecisionKey = (decision: string): TranslationKey => {
+  if (decision.includes('ВЫГОДНО ПОКУПАТЬ')) return 'decisionBuyStrong'
+  if (decision.includes('ВЫГОДНО ПРОДАВАТЬ')) return 'decisionSellStrong'
+  if (decision.includes('МОЖЕТ УПАСТЬ')) return 'decisionBuyFalling'
+  if (decision.includes('СЛЕДИТЬ ЗА ПОКУПКОЙ')) return 'decisionBuyWatch'
+  if (decision.includes('МОЖЕТ ВЫРАСТИ')) return 'decisionSellRising'
+  if (decision.includes('СЛЕДИТЬ ЗА ПРОДАЖЕЙ')) return 'decisionSellWatch'
+  return 'decisionLow'
+}
+
+const getCategoryKey = (category: string): TranslationKey => {
+  if (category === 'Prime Weapon') return 'categoryPrimeWeapon'
+  if (category === 'Prime Warframe') return 'categoryPrimeWarframe'
+  if (category === 'Primed Mod') return 'categoryPrimedMod'
+  return 'categoryBaroWeapon'
+}
+
+type T = (key: TranslationKey) => string
+
+const Chart = ({ history, t }: { history: HistoryPoint[]; t: T }) => {
   const width = 960
   const height = 390
   const pad = { left: 48, right: 48, top: 24, bottom: 48 }
@@ -76,20 +97,20 @@ const Chart = ({ history }: { history: HistoryPoint[] }) => {
             <stop offset="100%" stopColor="rgba(103, 181, 255, .12)" />
           </linearGradient>
         </defs>
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-          const y = pad.top + t * innerH
-          const value = priceMax - t * (priceMax - priceMin)
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+          const y = pad.top + ratio * innerH
+          const value = priceMax - ratio * (priceMax - priceMin)
           return (
-            <g key={t}>
+            <g key={ratio}>
               <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} className="grid-line" />
               <text x={8} y={y + 4} className="axis-label">{value.toFixed(0)}</text>
             </g>
           )
         })}
-        {history.map((p, i) => {
+        {history.map((point, i) => {
           const barW = Math.max(2, innerW / history.length - 3)
-          const h = (p.volume / volumeMax) * 78
-          return <rect key={p.label} x={px(i) - barW / 2} y={height - pad.bottom - h} width={barW} height={h} fill="url(#volumeFill)" rx="2" />
+          const h = (point.volume / volumeMax) * 78
+          return <rect key={point.label} x={px(i) - barW / 2} y={height - pad.bottom - h} width={barW} height={h} fill="url(#volumeFill)" rx="2" />
         })}
         <path d={line('min')} className="line min-line" />
         <path d={line('median')} className="line median-line" />
@@ -101,53 +122,143 @@ const Chart = ({ history }: { history: HistoryPoint[] }) => {
         ))}
       </svg>
       <div className="legend">
-        <span><i className="legend-dot min-dot" />Мин</span>
-        <span><i className="legend-dot median-dot" />Медиана</span>
-        <span><i className="legend-dot max-dot" />Макс</span>
-        <span><i className="legend-dot volume-dot" />Продажи</span>
+        <span><i className="legend-dot min-dot" />{t('min')}</span>
+        <span><i className="legend-dot median-dot" />{t('median')}</span>
+        <span><i className="legend-dot max-dot" />{t('max')}</span>
+        <span><i className="legend-dot volume-dot" />{t('sales')}</span>
       </div>
     </div>
   )
 }
 
-const Detail = ({ item, mode, onBack }: { item: MarketItem; mode: ScannerMode; onBack: () => void }) => {
-  const potential = getPotential(item, mode)
-  const score = getScore(item, mode)
-  const decision = getDecision(item, mode)
+const FooterDrawer = ({
+  locale,
+  setLocale,
+  theme,
+  setTheme,
+  t
+}: {
+  locale: Locale
+  setLocale: (locale: Locale) => void
+  theme: Theme
+  setTheme: (theme: Theme) => void
+  t: T
+}) => {
+  const [open, setOpen] = useState(false)
 
   return (
-    <main className="app-shell">
-      <button className="back-button" onClick={onBack}>← Назад к сканеру</button>
+    <footer className={`footer-drawer ${open ? 'open' : ''}`}>
+      <button className="footer-handle" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span className="footer-handle-main">
+          <span className="footer-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" className="footer-logo-svg">
+              <defs>
+                <linearGradient id="faFooterGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#79dcff" />
+                  <stop offset="100%" stopColor="#58e5ad" />
+                </linearGradient>
+              </defs>
+              <path d="M12 14 H52 V22 H20 V30 H42 V38 H20 V50 H12 Z" fill="url(#faFooterGradient)" />
+              <path d="M44 14 H52 L60 50 H51.5 L49.8 42 H38.2 L36.5 50 H28 Z M40 34 H48 L44 21 Z" fill="url(#faFooterGradient)" />
+            </svg>
+          </span>
+          <span className="footer-brand-copy">
+            <strong>FrameAnalytics</strong>
+            <small>{t('settingsInfo')}</small>
+          </span>
+        </span>
+        <span className="footer-chevron">{open ? '⌄' : '⌃'}</span>
+      </button>
+      <div className="footer-content">
+        <div className="footer-grid">
+          <section>
+            <h3>{t('language')}</h3>
+            <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+              {Object.entries(localeNames).map(([code, label]) => (
+                <option key={code} value={code}>{label}</option>
+              ))}
+            </select>
+          </section>
+          <section>
+            <h3>{t('theme')}</h3>
+            <select value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
+              <option value="system">{t('themeSystem')}</option>
+              <option value="light">{t('themeLight')}</option>
+              <option value="dark">{t('themeDark')}</option>
+            </select>
+          </section>
+          <section>
+            <h3>{t('links')}</h3>
+            <div className="footer-links">
+              <a href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
+              <a href="https://relics.run/history/" target="_blank" rel="noreferrer">{t('sourceHistory')}</a>
+              <a href="https://docs.warframe.market/" target="_blank" rel="noreferrer">{t('sourceApi')}</a>
+              <a href="https://github.com/" target="_blank" rel="noreferrer">{t('sourceGithub')}</a>
+            </div>
+          </section>
+          <section>
+            <h3>{t('project')}</h3>
+            <div className="footer-meta">
+              <span>{t('dataSources')}: Warframe.market · Relics.run</span>
+              <span>{t('version')}: 0.4.0</span>
+            </div>
+          </section>
+        </div>
+        <div className="footer-disclaimer">{t('disclaimer')}</div>
+      </div>
+    </footer>
+  )
+}
+
+const Detail = ({
+  item,
+  mode,
+  onBack,
+  t
+}: {
+  item: MarketItem
+  mode: ScannerMode
+  onBack: () => void
+  t: T
+}) => {
+  const potential = getPotential(item, mode)
+  const score = getScore(item, mode)
+  const rawDecision = getDecision(item, mode)
+  const decision = t(getDecisionKey(rawDecision))
+
+  return (
+    <main className="app-shell detail-shell">
+      <button className="back-button" onClick={onBack}>{t('back')}</button>
       <section className="detail-header">
         <div>
-          <div className="eyebrow">{item.category}</div>
+          <div className="eyebrow">{t(getCategoryKey(item.category))}</div>
           <h1>{item.name}</h1>
           <div className="price-big">{fmtPlat(item.current)}</div>
         </div>
         <div className="updated-card">
-          <span>Обновлено</span>
+          <span>{t('updated')}</span>
           <strong>{item.updated}</strong>
         </div>
       </section>
 
       <section className="metric-grid">
-        <div className="metric-card"><span>Изм. 1ч</span><strong className={valueClass(item.change1h)}>{fmtPercent(item.change1h)}</strong></div>
-        <div className="metric-card"><span>Изм. 24ч</span><strong className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</strong></div>
-        <div className="metric-card"><span>Изм. 7д</span><strong className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</strong></div>
-        <div className="metric-card"><span>Продажа 24ч</span><strong>{item.sales24h}</strong></div>
+        <div className="metric-card"><span>{t('change1h')}</span><strong className={valueClass(item.change1h)}>{fmtPercent(item.change1h)}</strong></div>
+        <div className="metric-card"><span>{t('change24h')}</span><strong className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</strong></div>
+        <div className="metric-card"><span>{t('change7d')}</span><strong className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</strong></div>
+        <div className="metric-card"><span>{t('sales24h')}</span><strong>{item.sales24h}</strong></div>
       </section>
 
       <section className="signal-grid">
         <div className="signal-card potential-card">
-          <span>{mode === 'buy' ? 'Потенциал покупки' : 'Потенциал продажи'}</span>
+          <span>{mode === 'buy' ? t('buyPotential') : t('sellPotential')}</span>
           <strong>+{fmtPlat(potential)}</strong>
         </div>
         <div className="signal-card score-card">
-          <span>Оценка</span>
+          <span>{t('score')}</span>
           <strong>{score}<small>/100</small></strong>
         </div>
-        <div className={`signal-card ${decisionClass(decision)}`}>
-          <span>Решение</span>
+        <div className={`signal-card ${decisionClass(rawDecision)}`}>
+          <span>{t('decision')}</span>
           <strong>{decision}</strong>
         </div>
       </section>
@@ -155,16 +266,16 @@ const Detail = ({ item, mode, onBack }: { item: MarketItem; mode: ScannerMode; o
       <section className="panel chart-panel">
         <div className="panel-title-row">
           <div>
-            <div className="eyebrow">Закрытые продажи</div>
-            <h2>Цена за последние 48 часов</h2>
+            <div className="eyebrow">{t('closedSales')}</div>
+            <h2>{t('price48h')}</h2>
           </div>
           <div className="time-tabs">
-            <button className="time-tab">24ч</button>
-            <button className="time-tab active">48ч</button>
-            <button className="time-tab">7д</button>
+            <button className="time-tab">24h</button>
+            <button className="time-tab active">48h</button>
+            <button className="time-tab">7d</button>
           </div>
         </div>
-        <Chart history={item.history} />
+        <Chart history={item.history} t={t} />
       </section>
     </main>
   )
@@ -178,6 +289,42 @@ export default function App() {
   const [selected, setSelected] = useState<MarketItem | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('potential')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [locale, setLocale] = useState<Locale>(() => {
+    const saved = localStorage.getItem('wfm-locale')
+    if (saved && saved in localeNames) return saved as Locale
+    const browser = navigator.language.toLowerCase()
+    const exact = Object.keys(localeNames).find((code) => browser === code)
+    if (exact) return exact as Locale
+    if (browser.startsWith('zh-tw') || browser.startsWith('zh-hk') || browser.startsWith('zh-mo')) return 'zh-hant'
+    if (browser.startsWith('zh')) return 'zh-hans'
+    const base = browser.split('-')[0]
+    if (base in localeNames) return base as Locale
+    return 'en'
+  })
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('wfm-theme')
+    if (saved === 'system' || saved === 'light' || saved === 'dark') return saved
+    return 'dark'
+  })
+
+  const t: T = (key) => translations[locale][key]
+
+  useEffect(() => {
+    localStorage.setItem('wfm-locale', locale)
+    document.documentElement.lang = locale
+  }, [locale])
+
+  useEffect(() => {
+    localStorage.setItem('wfm-theme', theme)
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => {
+      const resolved = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme
+      document.documentElement.dataset.theme = resolved
+    }
+    apply()
+    media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [theme])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -190,7 +337,7 @@ export default function App() {
 
   const sortIndicator = (key: SortKey) => {
     if (sortKey !== key) return ''
-    return sortDirection === 'asc' ? ' ↑' : ' ↓'
+    return sortDirection === 'asc' ? '↑' : '↓'
   }
 
   const rows = useMemo(() => {
@@ -201,8 +348,7 @@ export default function App() {
       .filter((item) => getPotential(item, mode) >= minPotential)
       .sort((a, b) => {
         let result = 0
-
-        if (sortKey === 'name') result = a.name.localeCompare(b.name, 'ru')
+        if (sortKey === 'name') result = a.name.localeCompare(b.name, locale)
         if (sortKey === 'current') result = a.current - b.current
         if (sortKey === 'change1h') result = a.change1h - b.change1h
         if (sortKey === 'change24h') result = a.change24h - b.change24h
@@ -212,100 +358,114 @@ export default function App() {
         if (sortKey === 'score') result = getScore(a, mode) - getScore(b, mode)
         if (sortKey === 'decision') result = decisionRank(getDecision(a, mode)) - decisionRank(getDecision(b, mode))
         if (sortKey === 'updated') result = updatedRank(a.updated) - updatedRank(b.updated)
-
         return sortDirection === 'asc' ? result : -result
       })
-  }, [mode, query, minPrice, minPotential, sortKey, sortDirection])
-
-  if (selected) {
-    return <Detail item={selected} mode={mode} onBack={() => setSelected(null)} />
-  }
+  }, [mode, query, minPrice, minPotential, sortKey, sortDirection, locale])
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <div className="brand-row">
-            <div className="brand-mark">W</div>
+    <>
+      {selected ? (
+        <Detail item={selected} mode={mode} onBack={() => setSelected(null)} t={t} />
+      ) : (
+        <main className="app-shell">
+          <header className="topbar">
             <div>
-              <div className="eyebrow">Warframe Market analytics</div>
-              <h1>WFM Trade Analyzer</h1>
+              <div className="brand-row">
+                <div className="brand-mark" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" className="brand-logo-svg">
+                    <defs>
+                      <linearGradient id="faMainGradient" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor="#79dcff" />
+                        <stop offset="100%" stopColor="#58e5ad" />
+                      </linearGradient>
+                    </defs>
+                    <path d="M12 14 H52 V22 H20 V30 H42 V38 H20 V50 H12 Z" fill="url(#faMainGradient)" />
+                    <path d="M44 14 H52 L60 50 H51.5 L49.8 42 H38.2 L36.5 50 H28 Z M40 34 H48 L44 21 Z" fill="url(#faMainGradient)" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="eyebrow">{t('analytics')}</div>
+                  <h1>{t('title')}</h1>
+                </div>
+              </div>
+              <p className="subtitle">{t('subtitle')}</p>
             </div>
-          </div>
-          <p className="subtitle">Поиск сильных зон покупки и продажи по закрытой статистике рынка.</p>
-        </div>
-        <div className="status-pill"><span className="status-dot" /> Данные актуальны</div>
-      </header>
+            <div className="status-pill"><span className="status-dot" /> {t('dataFresh')}</div>
+          </header>
 
-      <section className="mode-tabs">
-        <button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>Покупка</button>
-        <button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>Продажа</button>
-      </section>
+          <section className="mode-tabs">
+            <button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button>
+            <button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button>
+          </section>
 
-      <section className="panel filters filters-compact">
-        <label className="search-field">
-          <span>Название</span>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название предмета..." />
-        </label>
-        <label>
-          <span>Минимальная цена</span>
-          <div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={(e) => setMinPrice(Number(e.target.value))} /><b>p</b></div>
-        </label>
-        <label>
-          <span>Потенциал от</span>
-          <div className="input-suffix"><input type="number" min="0" value={minPotential} onChange={(e) => setMinPotential(Number(e.target.value))} /><b>p</b></div>
-        </label>
-      </section>
+          <section className="panel filters filters-compact">
+            <label className="search-field">
+              <span>{t('name')}</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('searchPlaceholder')} />
+            </label>
+            <label>
+              <span>{t('minPrice')}</span>
+              <div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={(event) => setMinPrice(Number(event.target.value))} /><b>p</b></div>
+            </label>
+            <label>
+              <span>{t('potentialFrom')}</span>
+              <div className="input-suffix"><input type="number" min="0" value={minPotential} onChange={(event) => setMinPotential(Number(event.target.value))} /><b>p</b></div>
+            </label>
+          </section>
 
-      <section className="results-row">
-        <span>Найдено</span>
-        <strong>{rows.length}</strong>
-      </section>
+          <section className="results-row">
+            <span>{t('found')}</span>
+            <strong>{rows.length}</strong>
+          </section>
 
-      <section className="panel table-panel">
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th><button className="sort-button" onClick={() => handleSort('name')}>Предмет{sortIndicator('name')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('current')}>Сейчас{sortIndicator('current')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('change1h')}>Изм. 1ч{sortIndicator('change1h')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('change24h')}>Изм. 24ч{sortIndicator('change24h')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('change7d')}>Изм. 7д{sortIndicator('change7d')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('sales24h')}>Продажа 24ч{sortIndicator('sales24h')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('potential')}>Потенциал{sortIndicator('potential')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('score')}>Оценка{sortIndicator('score')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('decision')}>Решение{sortIndicator('decision')}</button></th>
-                <th><button className="sort-button" onClick={() => handleSort('updated')}>Обновлено{sortIndicator('updated')}</button></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item) => {
-                const potential = getPotential(item, mode)
-                const score = getScore(item, mode)
-                const decision = getDecision(item, mode)
-                return (
-                  <tr key={item.id} onClick={() => setSelected(item)}>
-                    <td>
-                      <div className="item-name">{item.name}</div>
-                      <div className="item-category">{item.category}</div>
-                    </td>
-                    <td className="price-cell">{fmtPlat(item.current)}</td>
-                    <td className={valueClass(item.change1h)}>{fmtPercent(item.change1h)}</td>
-                    <td className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</td>
-                    <td className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</td>
-                    <td>{item.sales24h}</td>
-                    <td><span className={potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{potential > 0 ? `+${fmtPlat(potential)}` : '—'}</span></td>
-                    <td><span className={`score-badge ${score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low'}`}>{score}</span></td>
-                    <td><span className={decisionClass(decision)}>{decision}</span></td>
-                    <td className="updated-cell">{item.updated}</td>
+          <section className="panel table-panel">
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th><button className="sort-button" onClick={() => handleSort('name')}><span>{t('item')}</span><span className="sort-indicator">{sortIndicator('name')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('current')}><span>{t('current')}</span><span className="sort-indicator">{sortIndicator('current')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('change1h')}><span>{t('change1h')}</span><span className="sort-indicator">{sortIndicator('change1h')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('change24h')}><span>{t('change24h')}</span><span className="sort-indicator">{sortIndicator('change24h')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('change7d')}><span>{t('change7d')}</span><span className="sort-indicator">{sortIndicator('change7d')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('sales24h')}><span>{t('sales24h')}</span><span className="sort-indicator">{sortIndicator('sales24h')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('potential')}><span>{t('potential')}</span><span className="sort-indicator">{sortIndicator('potential')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('score')}><span>{t('score')}</span><span className="sort-indicator">{sortIndicator('score')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('decision')}><span>{t('decision')}</span><span className="sort-indicator">{sortIndicator('decision')}</span></button></th>
+                    <th><button className="sort-button" onClick={() => handleSort('updated')}><span>{t('updated')}</span><span className="sort-indicator">{sortIndicator('updated')}</span></button></th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+                </thead>
+                <tbody>
+                  {rows.map((item) => {
+                    const potential = getPotential(item, mode)
+                    const score = getScore(item, mode)
+                    const rawDecision = getDecision(item, mode)
+                    const decision = t(getDecisionKey(rawDecision))
+                    return (
+                      <tr key={item.id} onClick={() => setSelected(item)}>
+                        <td>
+                          <div className="item-name">{item.name}</div>
+                          <div className="item-category">{t(getCategoryKey(item.category))}</div>
+                        </td>
+                        <td className="price-cell">{fmtPlat(item.current)}</td>
+                        <td className={valueClass(item.change1h)}>{fmtPercent(item.change1h)}</td>
+                        <td className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</td>
+                        <td className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</td>
+                        <td>{item.sales24h}</td>
+                        <td><span className={potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{potential > 0 ? `+${fmtPlat(potential)}` : '—'}</span></td>
+                        <td><span className={`score-badge ${score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low'}`}>{score}</span></td>
+                        <td><span className={decisionClass(rawDecision)}>{decision}</span></td>
+                        <td className="updated-cell">{item.updated}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      )}
+      <FooterDrawer locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t} />
+    </>
   )
 }
