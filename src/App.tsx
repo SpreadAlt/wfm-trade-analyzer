@@ -3,6 +3,7 @@ import { fetchItem, fetchScanner } from './api'
 import { localeNames, translations } from './i18n'
 import type { Locale, Theme, TranslationKey } from './i18n'
 import { uiText } from './uiText'
+import { paginationText } from './paginationText'
 import type { UiText } from './uiText'
 import type { AnalysisPeriod, HistoryPoint, ItemDetail, Platform, ScannerItem, ScannerMode, ScannerResponse } from './types'
 
@@ -85,6 +86,8 @@ const decisionKey = (decision: string): TranslationKey => {
   if (decision === 'SELL_WATCH') return 'decisionSellWatch'
   return 'decisionLow'
 }
+
+const getItemName = (item: { name: string; names?: Record<string, string> }, locale: Locale) => item.names?.[locale] || item.name
 
 const getCategoryFilter = (item: ScannerItem) => CATEGORY_FILTERS.find(filter => filter.match(item))
 const getCategoryLabel = (item: ScannerItem, u: UiText) => {
@@ -195,9 +198,10 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={(event: { target: { value: string } }) => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={(event: { target: { value: string } }) => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.5.0</div>
+  <div className="footer-version">{t('version')} 0.5.1</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
+
 
 const Detail = ({ summary, detail, platform, period, loading, error, onBack, onRetry, locale, mode, t, u }: { summary: ScannerItem; detail: ItemDetail | null; platform: Platform; period: AnalysisPeriod; loading: boolean; error: string | null; onBack: () => void; onRetry: () => void; locale: Locale; mode: ScannerMode; t: T; u: UiText }) => {
   const [chartRange, setChartRange] = useState<AnalysisPeriod>(period)
@@ -206,11 +210,12 @@ const Detail = ({ summary, detail, platform, period, loading, error, onBack, onR
   const potentialPct = mode === 'buy' ? analytics?.buy.potentialPct ?? getPotentialPct(summary, mode) : analytics?.sell.potentialPct ?? getPotentialPct(summary, mode)
   const score = mode === 'buy' ? analytics?.buy.score ?? getScore(summary, mode) : analytics?.sell.score ?? getScore(summary, mode)
   const rawDecision = mode === 'buy' ? analytics?.buy.decision ?? getDecision(summary, mode) : analytics?.sell.decision ?? getDecision(summary, mode)
+  const displayName = getItemName(detail ?? summary, locale)
 
   return <main className="app-shell detail-shell">
     <button className="back-button" onClick={onBack}>{t('back')}</button>
     <section className="detail-header">
-      <div><div className="eyebrow">{getCategoryLabel(summary, u)} · {PLATFORM_NAMES[platform]} · {periodLabel(period, t, u)}</div><h1>{summary.name}</h1><div className="price-big">{fmtPlat(summary.currentPrice)}</div></div>
+      <div><div className="eyebrow">{getCategoryLabel(summary, u)} · {PLATFORM_NAMES[platform]} · {periodLabel(period, t, u)}</div><h1>{displayName}</h1><div className="price-big">{fmtPlat(summary.currentPrice)}</div></div>
       <div className="updated-card"><span>{t('updated')}</span><strong>{formatDate(summary.updatedDate, locale)}</strong></div>
     </section>
     <section className="metric-grid">
@@ -239,6 +244,48 @@ const Detail = ({ summary, detail, platform, period, loading, error, onBack, onR
   </main>
 }
 
+type RouteState = {
+  kind: 'scanner' | 'item'
+  slug: string | null
+  id: string | null
+}
+
+const readRoute = (): RouteState => {
+  const match = window.location.pathname.match(/^\/item\/([^/]+)\/?$/)
+  const params = new URLSearchParams(window.location.search)
+  if (!match) return { kind: 'scanner', slug: null, id: null }
+  return {
+    kind: 'item',
+    slug: decodeURIComponent(match[1]),
+    id: params.get('id')
+  }
+}
+
+const loadPlatform = (): Platform => {
+  const params = new URLSearchParams(window.location.search)
+  const urlValue = params.get('platform')
+  if (urlValue === 'pc' || urlValue === 'ps4' || urlValue === 'xbox' || urlValue === 'switch') return urlValue
+  const saved = localStorage.getItem('frameanalytics-platform')
+  return saved === 'pc' || saved === 'ps4' || saved === 'xbox' || saved === 'switch' ? saved : 'pc'
+}
+
+const loadPeriod = (): AnalysisPeriod => {
+  const params = new URLSearchParams(window.location.search)
+  const urlValue = Number(params.get('period'))
+  if (urlValue === 7 || urlValue === 30 || urlValue === 90) return urlValue
+  const saved = Number(localStorage.getItem('frameanalytics-period'))
+  return saved === 7 || saved === 30 || saved === 90 ? saved : 30
+}
+
+const PAGE_SIZES = [25, 50, 100, 200] as const
+
+type PageSize = typeof PAGE_SIZES[number]
+
+const loadPageSize = (): PageSize => {
+  const saved = Number(localStorage.getItem('frameanalytics-page-size'))
+  return PAGE_SIZES.includes(saved as PageSize) ? saved as PageSize : 50
+}
+
 export default function App() {
   const [mode, setMode] = useState<ScannerMode>('buy')
   const [query, setQuery] = useState('')
@@ -246,25 +293,21 @@ export default function App() {
   const [minPotential, setMinPotential] = useState(0)
   const [sortKey, setSortKey] = useState<SortKey>('potential')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [platform, setPlatform] = useState<Platform>(() => {
-    const saved = localStorage.getItem('frameanalytics-platform')
-    return saved === 'pc' || saved === 'ps4' || saved === 'xbox' || saved === 'switch' ? saved : 'pc'
-  })
-  const [period, setPeriod] = useState<AnalysisPeriod>(() => {
-    const saved = Number(localStorage.getItem('frameanalytics-period'))
-    return saved === 7 || saved === 30 || saved === 90 ? saved : 30
-  })
+  const [platform, setPlatform] = useState<Platform>(loadPlatform)
+  const [period, setPeriod] = useState<AnalysisPeriod>(loadPeriod)
   const [enabledCategories, setEnabledCategories] = useState<CategoryFilterId[]>(loadSavedCategories)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [scannerData, setScannerData] = useState<ScannerResponse | null>(null)
   const [scannerLoading, setScannerLoading] = useState(true)
   const [scannerError, setScannerError] = useState<string | null>(null)
   const [scannerReload, setScannerReload] = useState(0)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [route, setRoute] = useState<RouteState>(readRoute)
   const [detail, setDetail] = useState<ItemDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailReload, setDetailReload] = useState(0)
+  const [pageSize, setPageSize] = useState<PageSize>(loadPageSize)
+  const [page, setPage] = useState(1)
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem('frameanalytics-locale')
     if (saved && saved in localeNames) return saved as Locale
@@ -281,6 +324,22 @@ export default function App() {
 
   const t: T = key => translations[locale][key]
   const u = uiText[locale]
+  const p = paginationText[locale]
+
+  useEffect(() => {
+    const onPopState = () => {
+      const nextRoute = readRoute()
+      setRoute(nextRoute)
+      const params = new URLSearchParams(window.location.search)
+      const nextPlatform = params.get('platform')
+      const nextPeriod = Number(params.get('period'))
+      if (nextPlatform === 'pc' || nextPlatform === 'ps4' || nextPlatform === 'xbox' || nextPlatform === 'switch') setPlatform(nextPlatform)
+      if (nextPeriod === 7 || nextPeriod === 30 || nextPeriod === 90) setPeriod(nextPeriod)
+      window.scrollTo({ top: 0 })
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('frameanalytics-locale', locale)
@@ -299,14 +358,23 @@ export default function App() {
   useEffect(() => localStorage.setItem('frameanalytics-platform', platform), [platform])
   useEffect(() => localStorage.setItem('frameanalytics-period', String(period)), [period])
   useEffect(() => localStorage.setItem('frameanalytics-categories', JSON.stringify(enabledCategories)), [enabledCategories])
+  useEffect(() => localStorage.setItem('frameanalytics-page-size', String(pageSize)), [pageSize])
+
+  useEffect(() => {
+    if (route.kind !== 'item' || !route.slug) return
+    const params = new URLSearchParams(window.location.search)
+    params.set('platform', platform)
+    params.set('period', String(period))
+    if (route.id) params.set('id', route.id)
+    const next = `/item/${encodeURIComponent(route.slug)}?${params.toString()}`
+    window.history.replaceState(window.history.state, '', next)
+  }, [route.kind, route.slug, route.id, platform, period])
 
   useEffect(() => {
     const controller = new AbortController()
     setScannerLoading(true)
     setScannerError(null)
     setScannerData(null)
-    setSelectedId(null)
-    setDetail(null)
     fetchScanner(platform, period, controller.signal).then(data => {
       setScannerData(data)
       setScannerLoading(false)
@@ -318,17 +386,29 @@ export default function App() {
     return () => controller.abort()
   }, [platform, period, scannerReload])
 
+  const selectedSummary = useMemo(() => {
+    if (route.kind !== 'item' || !scannerData) return null
+    if (route.id) {
+      const byId = scannerData.items.find(item => item.id === route.id)
+      if (byId) return byId
+    }
+    if (route.slug) return scannerData.items.find(item => item.slug === route.slug) ?? null
+    return null
+  }, [route, scannerData])
+
   useEffect(() => {
-    if (!selectedId) {
+    const itemId = selectedSummary?.id ?? route.id
+    if (route.kind !== 'item' || !itemId) {
       setDetail(null)
       setDetailError(null)
+      setDetailLoading(false)
       return
     }
     const controller = new AbortController()
-    setDetailLoading(true)
-    setDetailError(null)
     setDetail(null)
-    fetchItem(platform, period, selectedId, controller.signal).then(data => {
+    setDetailError(null)
+    setDetailLoading(true)
+    fetchItem(platform, period, itemId, controller.signal).then(data => {
       setDetail(data.item)
       setDetailLoading(false)
     }).catch(error => {
@@ -337,7 +417,7 @@ export default function App() {
       setDetailLoading(false)
     })
     return () => controller.abort()
-  }, [selectedId, platform, period, detailReload])
+  }, [route.kind, route.id, selectedSummary?.id, platform, period, detailReload])
 
   const enabledSet = useMemo(() => new Set(enabledCategories), [enabledCategories])
 
@@ -363,10 +443,15 @@ export default function App() {
 
   const rows = useMemo(() => {
     const source = scannerData?.items ?? []
+    const normalizedQuery = query.trim().toLocaleLowerCase(intlLocale(locale))
     const filtered = source.filter(item => {
       const category = getCategoryFilter(item)
       if (!category || !enabledSet.has(category.id)) return false
-      if (query.trim() && !item.name.toLowerCase().includes(query.trim().toLowerCase())) return false
+      if (normalizedQuery) {
+        const localizedName = getItemName(item, locale).toLocaleLowerCase(intlLocale(locale))
+        const englishName = item.name.toLocaleLowerCase('en')
+        if (!localizedName.includes(normalizedQuery) && !englishName.includes(normalizedQuery)) return false
+      }
       if ((item.currentPrice ?? 0) < minPrice) return false
       if ((getPotential(item, mode) ?? 0) < minPotential) return false
       return true
@@ -383,7 +468,7 @@ export default function App() {
       }
 
       let result = 0
-      if (sortKey === 'name') result = a.name.localeCompare(b.name, intlLocale(locale))
+      if (sortKey === 'name') result = getItemName(a, locale).localeCompare(getItemName(b, locale), intlLocale(locale))
       else if (sortKey === 'decision') result = decisionRank(getDecision(a, mode)) - decisionRank(getDecision(b, mode))
       else if (sortKey === 'updated') result = updatedRank(a.updatedDate) - updatedRank(b.updatedDate)
       else {
@@ -397,15 +482,75 @@ export default function App() {
     })
   }, [scannerData, enabledSet, query, minPrice, minPotential, mode, sortKey, sortDirection, locale])
 
-  const selectedSummary = selectedId ? scannerData?.items.find(item => item.id === selectedId) ?? null : null
+  useEffect(() => {
+    setPage(1)
+  }, [query, minPrice, minPotential, mode, platform, period, enabledCategories, sortKey, sortDirection, pageSize, locale])
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  useEffect(() => {
+    setPage(current => Math.min(Math.max(1, current), pageCount))
+  }, [pageCount])
+
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return rows.slice(start, start + pageSize)
+  }, [rows, page, pageSize])
+
+  const showingStart = rows.length ? (page - 1) * pageSize + 1 : 0
+  const showingEnd = rows.length ? Math.min(page * pageSize, rows.length) : 0
 
   const toggleCategory = (id: CategoryFilterId) => setEnabledCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
 
   const statusText = scannerLoading ? u.loading : scannerError ? u.loadError : scannerData ? `${u.dataDate}: ${formatDate(scannerData.latestDate, locale)}` : u.loadError
 
+  const itemHref = (item: ScannerItem) => `/item/${encodeURIComponent(item.slug)}?platform=${encodeURIComponent(platform)}&period=${period}&id=${encodeURIComponent(item.id)}`
+
+  const openItem = (item: ScannerItem) => {
+    const href = itemHref(item)
+    window.history.pushState({ frameanalyticsFromScanner: true }, '', href)
+    setRoute(readRoute())
+    setCategoriesOpen(false)
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
+
+  const closeItem = () => {
+    if (window.history.state?.frameanalyticsFromScanner) {
+      window.history.back()
+      return
+    }
+    window.history.replaceState(null, '', '/')
+    setRoute(readRoute())
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
+
+  const detailSummary = selectedSummary ?? (detail ? {
+    id: detail.id,
+    name: detail.name,
+    names: detail.names,
+    slug: detail.slug,
+    category: detail.category,
+    subcategory: detail.subcategory,
+    defaultEnabled: detail.defaultEnabled,
+    currentPrice: detail.currentPrice,
+    change1h: detail.change1h,
+    change24h: detail.change24h,
+    change7d: detail.change7d,
+    sales24h: detail.sales24h,
+    updatedDate: detail.updatedDate,
+    buyPotential: detail.analytics?.buy.potential ?? null,
+    buyPotentialPct: detail.analytics?.buy.potentialPct ?? null,
+    buyScore: detail.analytics?.buy.score ?? null,
+    buyDecision: detail.analytics?.buy.decision ?? 'LOW_PRIORITY',
+    sellPotential: detail.analytics?.sell.potential ?? null,
+    sellPotentialPct: detail.analytics?.sell.potentialPct ?? null,
+    sellScore: detail.analytics?.sell.score ?? null,
+    sellDecision: detail.analytics?.sell.decision ?? 'LOW_PRIORITY'
+  } satisfies ScannerItem : null)
+
   return <>
     <div className="background-layer"/><div className="background-shade"/>
-    {selectedSummary ? <Detail key={`${selectedSummary.id}-${period}`} summary={selectedSummary} detail={detail} platform={platform} period={period} loading={detailLoading} error={detailError} onBack={() => setSelectedId(null)} onRetry={() => setDetailReload(value => value + 1)} locale={locale} mode={mode} t={t} u={u}/> : <main className="app-shell">
+    {route.kind === 'item' ? detailSummary ? <Detail key={`${detailSummary.id}-${period}`} summary={detailSummary} detail={detail} platform={platform} period={period} loading={detailLoading} error={detailError} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} locale={locale} mode={mode} t={t} u={u}/> : <main className="app-shell detail-shell"><button className="back-button" onClick={closeItem}>{t('back')}</button><section className="panel state-panel">{detailLoading || scannerLoading ? <><div className="spinner"/><strong>{u.loading}</strong></> : <><strong>{u.noData}</strong><button className="retry-button" onClick={() => { setScannerReload(value => value + 1); setDetailReload(value => value + 1) }}>{u.retry}</button></>}</section></main> : <main className="app-shell">
       <header className="topbar"><div><div className="brand-plate"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></div><p className="subtitle">{t('subtitle')}</p></div><div className={`status-pill ${scannerLoading ? 'loading' : scannerError ? 'error' : ''}`}><span className="status-dot"/>{statusText}</div></header>
       <section className="mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button></section>
       <section className="panel filters">
@@ -417,16 +562,18 @@ export default function App() {
         <div className="filter-field category-filter"><span>{u.categories}</span><button className="control-button" onClick={() => setCategoriesOpen(value => !value)}>{u.categories} <b>{enabledCategories.length}/{CATEGORY_FILTERS.length}</b><i>{categoriesOpen ? '▲' : '▼'}</i></button>{categoriesOpen ? <div className="category-panel"><div className="category-actions"><button onClick={() => setEnabledCategories(DEFAULT_CATEGORY_IDS)}>{u.defaults}</button><button onClick={() => setEnabledCategories(ALL_CATEGORY_IDS)}>{u.selectAll}</button><button onClick={() => setEnabledCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_FILTERS.map(filter => <label className="category-option" key={filter.id}><input type="checkbox" checked={enabledSet.has(filter.id)} onChange={() => toggleCategory(filter.id)}/><span>{u[filter.label]}</span><b>{categoryCounts.get(filter.id) ?? 0}</b></label>)}</div></div> : null}</div>
         <div className="filter-field"><span>{u.crossplay}</span><button className="control-button disabled-control" disabled title={u.unavailable}>{u.crossplay} · —</button></div>
       </section>
-      <section className="results-row"><span>{t('found')}</span><strong>{rows.length}</strong>{scannerData ? <em>{PLATFORM_NAMES[platform]} · {periodLabel(period, t, u)}</em> : null}</section>
+      <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{rows.length}</strong>{scannerData ? <em>{PLATFORM_NAMES[platform]} · {periodLabel(period, t, u)}</em> : null}</div><div className="page-size-control"><span>{p.perPage}</span><select value={pageSize} onChange={event => setPageSize(Number(event.target.value) as PageSize)}>{PAGE_SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className="panel table-panel"><div className="table-scroll"><table><thead><tr>{([['name', 'item'], ['current', 'current'], ['change1h', 'change1h'], ['change24h', 'change24h'], ['change7d', 'change7d'], ['sales24h', 'sales24h'], ['potential', 'potential'], ['score', 'score'], ['decision', 'decision'], ['updated', 'updated']] as [SortKey, TranslationKey][]).map(([key, label]) => <th key={key}><button className="sort-button" onClick={() => handleSort(key)}><span>{t(label)}</span><span className="sort-indicator">{indicator(key)}</span></button></th>)}</tr></thead><tbody>
-        {scannerLoading ? <tr><td colSpan={10} className="state-cell"><div className="spinner"/><strong>{u.loading}</strong></td></tr> : scannerError ? <tr><td colSpan={10} className="state-cell error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={() => setScannerReload(value => value + 1)}>{u.retry}</button></td></tr> : rows.length === 0 ? <tr><td colSpan={10} className="state-cell"><strong>{u.noData}</strong></td></tr> : rows.map(item => {
+        {scannerLoading ? <tr><td colSpan={10} className="state-cell"><div className="spinner"/><strong>{u.loading}</strong></td></tr> : scannerError ? <tr><td colSpan={10} className="state-cell error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={() => setScannerReload(value => value + 1)}>{u.retry}</button></td></tr> : rows.length === 0 ? <tr><td colSpan={10} className="state-cell"><strong>{u.noData}</strong></td></tr> : pageRows.map(item => {
           const potential = getPotential(item, mode)
           const potentialPct = getPotentialPct(item, mode)
           const score = getScore(item, mode)
           const decision = getDecision(item, mode)
-          return <tr key={item.id} onClick={() => setSelectedId(item.id)}><td><div className="item-name">{item.name}</div><div className="item-category">{getCategoryLabel(item, u)}</div></td><td className="price-cell">{fmtPlat(item.currentPrice)}</td><td className="neutral">—</td><td className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</td><td className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</td><td>{item.sales24h}</td><td><span className={potential != null && potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{potential != null && potential > 0 ? <><strong>+{fmtPlat(potential)}</strong>{potentialPct != null ? <small>{fmtPlainPercent(potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${score != null && score >= 80 ? 'high' : score != null && score >= 60 ? 'mid' : 'low'}`}>{score ?? '—'}</span></td><td><span className={decisionClass(decision)}>{t(decisionKey(decision))}</span></td><td className="updated-cell">{formatDate(item.updatedDate, locale)}</td></tr>
+          const href = itemHref(item)
+          return <tr key={item.id}><td><a className="item-link" href={href} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openItem(item) }}><div className="item-name">{getItemName(item, locale)}</div><div className="item-category">{getCategoryLabel(item, u)}</div></a></td><td className="price-cell">{fmtPlat(item.currentPrice)}</td><td className="neutral">—</td><td className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</td><td className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</td><td>{item.sales24h}</td><td><span className={potential != null && potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{potential != null && potential > 0 ? <><strong>+{fmtPlat(potential)}</strong>{potentialPct != null ? <small>{fmtPlainPercent(potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${score != null && score >= 80 ? 'high' : score != null && score >= 60 ? 'mid' : 'low'}`}>{score ?? '—'}</span></td><td><span className={decisionClass(decision)}>{t(decisionKey(decision))}</span></td><td className="updated-cell">{formatDate(item.updatedDate, locale)}</td></tr>
         })}
       </tbody></table></div></section>
+      {!scannerLoading && !scannerError && rows.length > 0 ? <nav className="pagination-bar" aria-label="Pagination"><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{rows.length}</strong></div><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage(1)}>« {p.first}</button><button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>‹ {p.previous}</button><span>{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button disabled={page >= pageCount} onClick={() => setPage(value => Math.min(pageCount, value + 1))}>{p.next} ›</button><button disabled={page >= pageCount} onClick={() => setPage(pageCount)}>{p.last} »</button></div></nav> : null}
     </main>}
     <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
   </>

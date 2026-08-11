@@ -1,4 +1,4 @@
-# FrameAnalytics v0.5.0
+# FrameAnalytics v0.5.1
 
 Real-data test build for FrameAnalytics.trade.
 

@@ -13,6 +13,7 @@ export type HistoryPoint = {
 export type ScannerItem = {
   id: string
   name: string
+  names?: Record<string, string>
   slug: string
   category: string
   subcategory: string
@@ -69,6 +70,7 @@ export type PeriodAnalytics = {
 export type ItemDetail = {
   id: string
   name: string
+  names?: Record<string, string>
   slug: string
   category: string
   subcategory: string

@@ -926,3 +926,227 @@ html[data-theme="light"] .footer-disclaimer {
     font-size: 8px;
   }
 }
+
+.filters {
+  position: relative;
+  z-index: 120;
+}
+
+.category-filter {
+  z-index: 220;
+}
+
+.category-panel {
+  z-index: 1000;
+}
+
+.results-row,
+.table-panel,
+.pagination-bar {
+  position: relative;
+  z-index: 10;
+}
+
+tbody tr {
+  cursor: default;
+}
+
+.item-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  outline: none;
+}
+
+.item-link:hover .item-name,
+.item-link:focus-visible .item-name {
+  color: #71caff;
+}
+
+.item-link:focus-visible {
+  box-shadow: 0 0 0 2px rgba(83,181,255,.35);
+}
+
+.results-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+}
+
+.results-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.results-count em {
+  color: #6683a5;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.page-size-control {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-size-control span,
+.page-indicator {
+  color: #7089a8;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+
+.page-size-control select {
+  min-width: 76px;
+  color: #dce9fb;
+  background: rgba(5,12,22,.88);
+  border: 1px solid #26374f;
+  border-radius: 9px;
+  padding: 7px 28px 7px 10px;
+  outline: none;
+}
+
+.page-indicator strong,
+.pagination-range strong,
+.pagination-buttons strong {
+  color: #eaf3ff;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #24354b;
+  border-radius: 13px;
+  background: rgba(7,14,24,.88);
+  backdrop-filter: blur(12px);
+}
+
+.pagination-range {
+  color: #7189a8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pagination-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.pagination-buttons span {
+  color: #8199b7;
+  padding: 0 7px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pagination-buttons button {
+  min-height: 34px;
+  border: 1px solid #2b425e;
+  border-radius: 8px;
+  background: #101f32;
+  color: #b6d0ed;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pagination-buttons button:hover:not(:disabled) {
+  border-color: #4c8cbe;
+  background: #142a42;
+  color: #e3f2ff;
+}
+
+.pagination-buttons button:disabled {
+  cursor: default;
+  opacity: .38;
+}
+
+html[data-theme="light"] .item-link:hover .item-name,
+html[data-theme="light"] .item-link:focus-visible .item-name {
+  color: #176a95;
+}
+
+html[data-theme="light"] .page-size-control span,
+html[data-theme="light"] .page-indicator,
+html[data-theme="light"] .pagination-range,
+html[data-theme="light"] .pagination-buttons span,
+html[data-theme="light"] .results-count em {
+  color: #536b78;
+}
+
+html[data-theme="light"] .page-size-control select {
+  color: #26343f;
+  background: rgba(226,232,233,.94);
+  border-color: #a8b7bd;
+}
+
+html[data-theme="light"] .pagination-bar {
+  background: rgba(198,207,209,.93);
+  border-color: rgba(139,153,158,.68);
+}
+
+html[data-theme="light"] .pagination-buttons button {
+  background: #c4d0d3;
+  border-color: #9babb1;
+  color: #314c59;
+}
+
+html[data-theme="light"] .pagination-buttons button:hover:not(:disabled) {
+  background: #b7c7cb;
+  border-color: #7f999f;
+  color: #1f3b48;
+}
+
+html[data-theme="light"] .page-indicator strong,
+html[data-theme="light"] .pagination-range strong,
+html[data-theme="light"] .pagination-buttons strong {
+  color: #263942;
+}
+
+@media (max-width: 820px) {
+  .results-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .page-size-control {
+    margin-left: 0;
+  }
+
+  .pagination-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pagination-buttons {
+    justify-content: flex-start;
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .page-indicator {
+    width: 100%;
+  }
+
+  .pagination-buttons button {
+    padding: 7px 8px;
+  }
+}
