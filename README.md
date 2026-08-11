@@ -1,4 +1,4 @@
-# FrameAnalytics v0.5.2
+# FrameAnalytics v0.5.3
 
 Real-data test build for FrameAnalytics.trade.
 
@@ -13,4 +13,10 @@ npm install
 npm run build
 ```
 
-Deploy the generated `dist` directory with Cloudflare Workers/Pages.
+## Deploy
+
+The project includes an explicit `wrangler.jsonc` for the existing `wfm-trade-analyzer` Worker. The `dist` directory is deployed as static assets with SPA fallback enabled.
+
+```bash
+npx wrangler deploy
+```
