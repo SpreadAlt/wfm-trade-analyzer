@@ -11,7 +11,7 @@ export type HistoryPoint = {
 export type MarketItem = {
   id: string
   name: string
-  category: string
+  category: 'Prime Weapon' | 'Prime Warframe' | 'Primed Mod' | 'Baro Weapon'
   current: number
   change1h: number
   change24h: number
