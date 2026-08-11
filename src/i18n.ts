@@ -13,8 +13,8 @@ export const localeNames = {
   cs: 'Čeština',
   ja: '日本語',
   ko: '한국어',
-  zh-hans: '简体中文',
-  zh-hant: '繁體中文'
+  'zh-hans': '简体中文',
+  'zh-hant': '繁體中文'
 } as const
 
 export type Locale = keyof typeof localeNames

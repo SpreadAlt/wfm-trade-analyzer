@@ -200,7 +200,7 @@ const FooterDrawer = ({
             <h3>{t('project')}</h3>
             <div className="footer-meta">
               <span>{t('dataSources')}: Warframe.market · Relics.run</span>
-              <span>{t('version')}: 0.4.0</span>
+              <span>{t('version')}: 0.4.1</span>
             </div>
           </section>
         </div>

@@ -1,4 +1,4 @@
-# FrameAnalytics v0.4
+# FrameAnalytics v0.4.1
 
 Визуальный прототип без подключения базы данных.
 
@@ -35,3 +35,7 @@ Build output directory:
 ```text
 dist
 ```
+
+## v0.4.1
+
+Исправлены ключи китайских локалей `zh-hans` и `zh-hant` в TypeScript-конфигурации локализаций.
