@@ -106,7 +106,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
       </select>
     </div>
     <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-    <div className="footer-version">{t('version')} 0.4.6</div>
+    <div className="footer-version">{t('version')} 0.4.7</div>
   </footer>
 }
 
