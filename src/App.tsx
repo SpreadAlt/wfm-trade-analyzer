@@ -2,6 +2,20 @@ import { useMemo, useState } from 'react'
 import { items } from './data'
 import type { HistoryPoint, MarketItem, ScannerMode } from './types'
 
+type SortKey =
+  | 'name'
+  | 'current'
+  | 'change1h'
+  | 'change24h'
+  | 'change7d'
+  | 'sales24h'
+  | 'potential'
+  | 'score'
+  | 'decision'
+  | 'updated'
+
+type SortDirection = 'asc' | 'desc'
+
 const fmtPercent = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
 const fmtPlat = (value: number) => `${value.toFixed(0)}p`
 
@@ -20,6 +34,24 @@ const decisionClass = (decision: string) => {
   if (decision.includes('СЛЕДИТЬ ЗА ПРОДАЖЕЙ')) return 'decision sell-watch'
   return 'decision low'
 }
+
+const decisionRank = (decision: string) => {
+  if (decision.includes('ВЫГОДНО ПОКУПАТЬ') || decision.includes('ВЫГОДНО ПРОДАВАТЬ')) return 4
+  if (decision.includes('МОЖЕТ УПАСТЬ') || decision.includes('МОЖЕТ ВЫРАСТИ')) return 3
+  if (decision.includes('СЛЕДИТЬ')) return 2
+  return 1
+}
+
+const updatedRank = (value: string) => {
+  const match = value.match(/(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/)
+  if (!match) return 0
+  const [, day, month, hour, minute] = match
+  return Number(month) * 1000000 + Number(day) * 10000 + Number(hour) * 100 + Number(minute)
+}
+
+const getPotential = (item: MarketItem, mode: ScannerMode) => mode === 'buy' ? item.buyPotential : item.sellPotential
+const getScore = (item: MarketItem, mode: ScannerMode) => mode === 'buy' ? item.buyScore : item.sellScore
+const getDecision = (item: MarketItem, mode: ScannerMode) => mode === 'buy' ? item.buyDecision : item.sellDecision
 
 const Chart = ({ history }: { history: HistoryPoint[] }) => {
   const width = 960
@@ -79,9 +111,9 @@ const Chart = ({ history }: { history: HistoryPoint[] }) => {
 }
 
 const Detail = ({ item, mode, onBack }: { item: MarketItem; mode: ScannerMode; onBack: () => void }) => {
-  const potential = mode === 'buy' ? item.buyPotential : item.sellPotential
-  const score = mode === 'buy' ? item.buyScore : item.sellScore
-  const decision = mode === 'buy' ? item.buyDecision : item.sellDecision
+  const potential = getPotential(item, mode)
+  const score = getScore(item, mode)
+  const decision = getDecision(item, mode)
 
   return (
     <main className="app-shell">
@@ -141,24 +173,49 @@ const Detail = ({ item, mode, onBack }: { item: MarketItem; mode: ScannerMode; o
 export default function App() {
   const [mode, setMode] = useState<ScannerMode>('buy')
   const [query, setQuery] = useState('')
+  const [minPrice, setMinPrice] = useState(0)
   const [minPotential, setMinPotential] = useState(0)
-  const [minSales, setMinSales] = useState(0)
-  const [minScore, setMinScore] = useState(0)
   const [selected, setSelected] = useState<MarketItem | null>(null)
+  const [sortKey, setSortKey] = useState<SortKey>('potential')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((value) => value === 'asc' ? 'desc' : 'asc')
+      return
+    }
+    setSortKey(key)
+    setSortDirection(key === 'name' ? 'asc' : 'desc')
+  }
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return ''
+    return sortDirection === 'asc' ? ' ↑' : ' ↓'
+  }
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
     return items
-      .filter((item) => !q || item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q))
-      .filter((item) => (mode === 'buy' ? item.buyPotential : item.sellPotential) >= minPotential)
-      .filter((item) => item.sales24h >= minSales)
-      .filter((item) => (mode === 'buy' ? item.buyScore : item.sellScore) >= minScore)
+      .filter((item) => !q || item.name.toLowerCase().includes(q))
+      .filter((item) => item.current >= minPrice)
+      .filter((item) => getPotential(item, mode) >= minPotential)
       .sort((a, b) => {
-        const pa = mode === 'buy' ? a.buyPotential : a.sellPotential
-        const pb = mode === 'buy' ? b.buyPotential : b.sellPotential
-        return pb - pa
+        let result = 0
+
+        if (sortKey === 'name') result = a.name.localeCompare(b.name, 'ru')
+        if (sortKey === 'current') result = a.current - b.current
+        if (sortKey === 'change1h') result = a.change1h - b.change1h
+        if (sortKey === 'change24h') result = a.change24h - b.change24h
+        if (sortKey === 'change7d') result = a.change7d - b.change7d
+        if (sortKey === 'sales24h') result = a.sales24h - b.sales24h
+        if (sortKey === 'potential') result = getPotential(a, mode) - getPotential(b, mode)
+        if (sortKey === 'score') result = getScore(a, mode) - getScore(b, mode)
+        if (sortKey === 'decision') result = decisionRank(getDecision(a, mode)) - decisionRank(getDecision(b, mode))
+        if (sortKey === 'updated') result = updatedRank(a.updated) - updatedRank(b.updated)
+
+        return sortDirection === 'asc' ? result : -result
       })
-  }, [mode, query, minPotential, minSales, minScore])
+  }, [mode, query, minPrice, minPotential, sortKey, sortDirection])
 
   if (selected) {
     return <Detail item={selected} mode={mode} onBack={() => setSelected(null)} />
@@ -185,29 +242,24 @@ export default function App() {
         <button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>Продажа</button>
       </section>
 
-      <section className="panel filters">
+      <section className="panel filters filters-compact">
         <label className="search-field">
-          <span>Поиск</span>
+          <span>Название</span>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название предмета..." />
+        </label>
+        <label>
+          <span>Минимальная цена</span>
+          <div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={(e) => setMinPrice(Number(e.target.value))} /><b>p</b></div>
         </label>
         <label>
           <span>Потенциал от</span>
           <div className="input-suffix"><input type="number" min="0" value={minPotential} onChange={(e) => setMinPotential(Number(e.target.value))} /><b>p</b></div>
         </label>
-        <label>
-          <span>Продажа 24ч от</span>
-          <input type="number" min="0" value={minSales} onChange={(e) => setMinSales(Number(e.target.value))} />
-        </label>
-        <label>
-          <span>Оценка от</span>
-          <input type="number" min="0" max="100" value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} />
-        </label>
       </section>
 
-      <section className="summary-row">
-        <div><span>Найдено</span><strong>{rows.length}</strong></div>
-        <div><span>Режим</span><strong>{mode === 'buy' ? 'Покупка' : 'Продажа'}</strong></div>
-        <div><span>Сортировка</span><strong>Потенциал ↓</strong></div>
+      <section className="results-row">
+        <span>Найдено</span>
+        <strong>{rows.length}</strong>
       </section>
 
       <section className="panel table-panel">
@@ -215,23 +267,23 @@ export default function App() {
           <table>
             <thead>
               <tr>
-                <th>Предмет</th>
-                <th>Сейчас</th>
-                <th>Изм. 1ч</th>
-                <th>Изм. 24ч</th>
-                <th>Изм. 7д</th>
-                <th>Продажа 24ч</th>
-                <th>Потенциал</th>
-                <th>Оценка</th>
-                <th>Решение</th>
-                <th>Обновлено</th>
+                <th><button className="sort-button" onClick={() => handleSort('name')}>Предмет{sortIndicator('name')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('current')}>Сейчас{sortIndicator('current')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('change1h')}>Изм. 1ч{sortIndicator('change1h')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('change24h')}>Изм. 24ч{sortIndicator('change24h')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('change7d')}>Изм. 7д{sortIndicator('change7d')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('sales24h')}>Продажа 24ч{sortIndicator('sales24h')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('potential')}>Потенциал{sortIndicator('potential')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('score')}>Оценка{sortIndicator('score')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('decision')}>Решение{sortIndicator('decision')}</button></th>
+                <th><button className="sort-button" onClick={() => handleSort('updated')}>Обновлено{sortIndicator('updated')}</button></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((item) => {
-                const potential = mode === 'buy' ? item.buyPotential : item.sellPotential
-                const score = mode === 'buy' ? item.buyScore : item.sellScore
-                const decision = mode === 'buy' ? item.buyDecision : item.sellDecision
+                const potential = getPotential(item, mode)
+                const score = getScore(item, mode)
+                const decision = getDecision(item, mode)
                 return (
                   <tr key={item.id} onClick={() => setSelected(item)}>
                     <td>
