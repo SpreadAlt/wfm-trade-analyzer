@@ -106,7 +106,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
       </select>
     </div>
     <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-    <div className="footer-version">{t('version')} 0.4.8</div>
+    <div className="footer-version">{t('version')} 0.4.9</div>
   </footer>
 }
 
@@ -119,7 +119,7 @@ const Detail = ({ item, mode, onBack, t }: { item:MarketItem; mode:ScannerMode; 
     <section className="detail-header"><div><div className="eyebrow">{t(categoryKey(item.category))}</div><h1>{item.name}</h1><div className="price-big">{fmtPlat(item.current)}</div></div><div className="updated-card"><span>{t('updated')}</span><strong>{item.updated}</strong></div></section>
     <section className="metric-grid"><div className="metric-card"><span>{t('change1h')}</span><strong className={valueClass(item.change1h)}>{fmtPercent(item.change1h)}</strong></div><div className="metric-card"><span>{t('change24h')}</span><strong className={valueClass(item.change24h)}>{fmtPercent(item.change24h)}</strong></div><div className="metric-card"><span>{t('change7d')}</span><strong className={valueClass(item.change7d)}>{fmtPercent(item.change7d)}</strong></div><div className="metric-card"><span>{t('sales24h')}</span><strong>{item.sales24h}</strong></div></section>
     <section className="signal-grid"><div className="signal-card potential-card"><span>{mode==='buy'?t('buyPotential'):t('sellPotential')}</span><strong>{potential > 0 ? `+${fmtPlat(potential)}` : '—'}</strong></div><div className="signal-card score-card"><span>{t('score')}</span><strong>{score}<small>/100</small></strong></div><div className={`signal-card ${decisionClass(rawDecision)}`}><span>{t('decision')}</span><strong>{t(decisionKey(rawDecision))}</strong></div></section>
-    <section className="panel chart-panel"><div className="panel-title-row"><div><div className="eyebrow">{t('closedSales')}</div><h2>{t('price48h')}</h2></div><div className="time-tabs"><button className="time-tab">24h</button><button className="time-tab active">48h</button><button className="time-tab">7d</button></div></div><Chart history={item.history} t={t}/></section>
+    <section className="panel chart-panel"><div className="panel-title-row"><div><div className="eyebrow">{t('closedSales')}</div><h2>{t('price48h')}</h2></div><div className="time-tabs"><button className="time-tab">{t('range24h')}</button><button className="time-tab active">{t('range48h')}</button><button className="time-tab">{t('range7d')}</button></div></div><Chart history={item.history} t={t}/></section>
   </main>
 }
 
