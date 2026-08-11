@@ -154,12 +154,13 @@ const FooterDrawer = ({
             <svg viewBox="0 0 64 64" className="footer-logo-svg">
               <defs>
                 <linearGradient id="faFooterGradient" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#79dcff" />
-                  <stop offset="100%" stopColor="#58e5ad" />
+                  <stop offset="0%" stopColor="#8ce3ff" />
+                  <stop offset="55%" stopColor="#6dd0ff" />
+                  <stop offset="100%" stopColor="#5ae6b3" />
                 </linearGradient>
               </defs>
-              <path d="M12 14 H52 V22 H20 V30 H42 V38 H20 V50 H12 Z" fill="url(#faFooterGradient)" />
-              <path d="M44 14 H52 L60 50 H51.5 L49.8 42 H38.2 L36.5 50 H28 Z M40 34 H48 L44 21 Z" fill="url(#faFooterGradient)" />
+              <path d="M11 13 H52 V21 H20 V28 H42 V36 H20 V51 H11 Z" fill="url(#faFooterGradient)" />
+              <path d="M42 13 H50 L61 51 H52.5 L50.2 43 H38.1 L35.7 51 H27.2 Z M40.2 35 H48.2 L44.2 21.7 Z" fill="url(#faFooterGradient)" />
             </svg>
           </span>
           <span className="footer-brand-copy">
@@ -191,16 +192,12 @@ const FooterDrawer = ({
             <h3>{t('links')}</h3>
             <div className="footer-links">
               <a href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-              <a href="https://relics.run/history/" target="_blank" rel="noreferrer">{t('sourceHistory')}</a>
-              <a href="https://docs.warframe.market/" target="_blank" rel="noreferrer">{t('sourceApi')}</a>
-              <a href="https://github.com/" target="_blank" rel="noreferrer">{t('sourceGithub')}</a>
             </div>
           </section>
           <section>
             <h3>{t('project')}</h3>
             <div className="footer-meta">
-              <span>{t('dataSources')}: Warframe.market · Relics.run</span>
-              <span>{t('version')}: 0.4.1</span>
+              <span>{t('version')}: 0.4.2</span>
             </div>
           </section>
         </div>
@@ -375,12 +372,13 @@ export default function App() {
                   <svg viewBox="0 0 64 64" className="brand-logo-svg">
                     <defs>
                       <linearGradient id="faMainGradient" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="#79dcff" />
-                        <stop offset="100%" stopColor="#58e5ad" />
+                        <stop offset="0%" stopColor="#8ce3ff" />
+                        <stop offset="55%" stopColor="#6dd0ff" />
+                        <stop offset="100%" stopColor="#5ae6b3" />
                       </linearGradient>
                     </defs>
-                    <path d="M12 14 H52 V22 H20 V30 H42 V38 H20 V50 H12 Z" fill="url(#faMainGradient)" />
-                    <path d="M44 14 H52 L60 50 H51.5 L49.8 42 H38.2 L36.5 50 H28 Z M40 34 H48 L44 21 Z" fill="url(#faMainGradient)" />
+                    <path d="M11 13 H52 V21 H20 V28 H42 V36 H20 V51 H11 Z" fill="url(#faMainGradient)" />
+                    <path d="M42 13 H50 L61 51 H52.5 L50.2 43 H38.1 L35.7 51 H27.2 Z M40.2 35 H48.2 L44.2 21.7 Z" fill="url(#faMainGradient)" />
                   </svg>
                 </div>
                 <div>

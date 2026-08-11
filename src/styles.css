@@ -734,14 +734,13 @@ html[data-theme="light"] {
 
 
 .footer-drawer {
-  width: min(1120px, calc(100% - 52px));
-  margin: 18px auto 28px;
+  width: min(1540px, calc(100% - 32px));
+  margin: 12px auto 28px;
   background: rgba(14, 21, 32, .96);
   border: 1px solid #1f2b3e;
-  border-radius: 22px;
+  border-radius: 18px;
   overflow: hidden;
   box-shadow: 0 18px 60px rgba(0, 0, 0, .22);
-  clip-path: polygon(28px 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%, 0 28px);
 }
 
 .footer-handle {
@@ -750,9 +749,11 @@ html[data-theme="light"] {
   align-items: center;
   justify-content: space-between;
   color: #a9bad0;
-  background: linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,0));
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.005)),
+    linear-gradient(90deg, rgba(111, 208, 255, .03), rgba(90, 230, 179, .02), rgba(255,255,255,0));
   border: 0;
-  padding: 14px 18px 16px;
+  padding: 12px 18px 13px;
   font-weight: 850;
 }
 
@@ -767,8 +768,8 @@ html[data-theme="light"] {
   height: 42px;
   display: grid;
   place-items: center;
-  border-radius: 14px;
-  background: rgba(255,255,255,.03);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(140, 227, 255, .08), rgba(90, 230, 179, .06));
   border: 1px solid rgba(124, 203, 255, .16);
 }
 
@@ -829,12 +830,11 @@ html[data-theme="light"] {
 
 .footer-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1.2fr .9fr .9fr .9fr;
   gap: 22px;
   padding: 4px 18px 18px;
   border-top: 1px solid #1f2b3e;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,0));
+  background: linear-gradient(180deg, rgba(255,255,255,.01), rgba(255,255,255,0));
 }
 
 .footer-grid section {
@@ -999,7 +999,7 @@ html[data-theme="light"] .footer-brand-copy strong {
 }
 
 html[data-theme="light"] .footer-brand-mark {
-  background: rgba(40, 108, 173, .04);
+  background: linear-gradient(145deg, rgba(111, 208, 255, .08), rgba(90, 230, 179, .06));
   border-color: rgba(40, 108, 173, .14);
 }
 
@@ -1035,10 +1035,9 @@ html[data-theme="light"] .back-button {
 
 @media (max-width: 620px) {
   .footer-drawer {
-    width: min(100% - 20px, 1120px);
-    margin-top: 12px;
+    width: min(100% - 20px, 1540px);
+    margin-top: 10px;
     margin-bottom: 18px;
-    clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%, 0 18px);
   }
 
   .footer-brand-copy strong {
