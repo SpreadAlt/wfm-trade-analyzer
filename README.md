@@ -1,11 +1,16 @@
-# FrameAnalytics v0.4.9
+# FrameAnalytics v0.5.0
 
-- Все 16 языков теперь имеют собственные переводы
-- Удалены временные привязки языков к English/Russian
-- Локализованы фильтры, таблица, решения, категории, страница предмета и нижняя полоса
-- Добавлена локализация переключателей 24h / 48h / 7d
-- Дизайн v0.4.8 сохранён без изменений
+Real-data test build for FrameAnalytics.trade.
 
-Build command: `npm run build`
+## Data
 
-Build output: `dist`
+The scanner and item detail views use the FrameAnalytics test API. Scanner data is loaded per platform and analysis period. Item detail includes up to 90 days of closed-sales history.
+
+## Build
+
+```bash
+npm install
+npm run build
+```
+
+Deploy the generated `dist` directory with Cloudflare Workers/Pages.
