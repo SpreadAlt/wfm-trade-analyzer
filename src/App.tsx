@@ -29,9 +29,34 @@ const fmtNumber = (value: number | null | undefined, digits = 1) => value == nul
 const fmtPercent = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
 const fmtPlainPercent = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${value.toFixed(1)}%`
 const fmtPlat = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${fmtNumber(value)}p`
+const fmtPlatDelta = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${value > 0 ? '+' : ''}${fmtNumber(value)}p`
 const valueClass = (value: number | null | undefined) => value == null || value === 0 ? 'neutral' : value > 0 ? 'positive' : 'negative'
 const intlLocale = (locale: Locale) => locale === 'zh-hans' ? 'zh-Hans' : locale === 'zh-hant' ? 'zh-Hant' : locale
 const periodRange = (period: AnalysisPeriod): TimeRange => `${period}d` as TimeRange
+const analysisPeriodForRanges = (ranges: TimeRange[]): AnalysisPeriod => {
+  if (ranges.includes('180d')) return 180
+  if (ranges.includes('90d')) return 90
+  if (ranges.includes('30d')) return 30
+  return 7
+}
+
+const platinumChange = (currentPrice: number | null | undefined, percent: number | null | undefined, referencePrice?: number | null) => {
+  if (currentPrice == null || !Number.isFinite(currentPrice) || percent == null || !Number.isFinite(percent)) return null
+  if (referencePrice != null && Number.isFinite(referencePrice)) return currentPrice - referencePrice
+  const ratio = 1 + percent / 100
+  if (Math.abs(ratio) < 0.000001) return null
+  return currentPrice - currentPrice / ratio
+}
+
+const consensusDirection = (values: Array<number | null | undefined>): 'up' | 'down' | 'flat' => {
+  const meaningful = values.filter((value): value is number => value != null && Number.isFinite(value) && Math.abs(value) >= 2)
+  const rising = meaningful.filter(value => value > 0).length
+  const falling = meaningful.filter(value => value < 0).length
+  if (rising > falling) return 'up'
+  if (falling > rising) return 'down'
+  if (meaningful.length) return meaningful[0] > 0 ? 'up' : 'down'
+  return 'flat'
+}
 
 const formatDate = (value: string | null | undefined, locale: Locale) => {
   if (!value) return '—'
@@ -85,11 +110,6 @@ const loadPlatform = (): Platform => {
   const value = new URLSearchParams(location.search).get('platform') || localStorage.getItem('frameanalytics-platform')
   return value === 'ps4' || value === 'xbox' || value === 'switch' ? value : 'pc'
 }
-const loadPeriod = (): AnalysisPeriod => {
-  const url = Number(new URLSearchParams(location.search).get('period'))
-  const saved = Number(localStorage.getItem('frameanalytics-period'))
-  return PERIODS.includes(url as AnalysisPeriod) ? url as AnalysisPeriod : PERIODS.includes(saved as AnalysisPeriod) ? saved as AnalysisPeriod : 30
-}
 const loadCrossplay = () => {
   const url = new URLSearchParams(location.search).get('crossplay')
   if (url === 'true' || url === 'false') return url === 'true'
@@ -131,11 +151,11 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.6.0</div>
+  <div className="footer-version">{t('version')} 0.6.1</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 
-const Detail = ({ detail, metrics, summary, catalogItem, variantKey, platform, crossplay, period, mode, locale, loading, error, onBack, onRetry, onVariant, t }: {
+const Detail = ({ detail, metrics, summary, catalogItem, variantKey, platform, crossplay, period, visibleRanges, mode, locale, loading, error, onBack, onRetry, onVariant, t }: {
   detail: ItemDetail | null
   metrics: MetricsItem | null
   summary: ScannerItem | null
@@ -144,6 +164,7 @@ const Detail = ({ detail, metrics, summary, catalogItem, variantKey, platform, c
   platform: Platform
   crossplay: boolean
   period: AnalysisPeriod
+  visibleRanges: TimeRange[]
   mode: ScannerMode
   locale: Locale
   loading: boolean
@@ -170,6 +191,16 @@ const Detail = ({ detail, metrics, summary, catalogItem, variantKey, platform, c
     if (range === '7d') return series?.change7d ?? summary?.change7d ?? null
     return metricSeries?.periods[range.replace('d', '') as '30' | '90' | '180']?.changePeriod ?? null
   }
+  const rangePlatinum = (range: TimeRange) => {
+    const value = rangeValue(range)
+    if (range === '7d' || range === '30d' || range === '90d' || range === '180d') {
+      const periodMetrics = metricSeries?.periods[range.replace('d', '') as '7' | '30' | '90' | '180']
+      return platinumChange(currentPrice, value, periodMetrics?.referencePrice)
+    }
+    return platinumChange(currentPrice, value)
+  }
+
+  useEffect(() => { setChartRange(period) }, [period])
 
   return <main className="app-shell detail-shell">
     <button className="back-button" onClick={onBack}>{t('back')}</button>
@@ -178,11 +209,11 @@ const Detail = ({ detail, metrics, summary, catalogItem, variantKey, platform, c
         <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)} · {PLATFORM_NAMES[platform]} · {crossplay ? x.crossplayOn : x.crossplayOff}</div><h1>{name}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{detail.selectedModRank != null ? <span>{x.rank}: {detail.selectedModRank}</span> : null}{!series?.hasHistory ? <span className="no-history-tag">{x.noHistory}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
         <div className="detail-actions">{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><select value={variantKey || ''} onChange={event => onVariant(event.target.value || null)}><option value="">{x.chooseVariant}</option>{Object.entries(detail.variants).map(([key, value]) => <option key={key} value={key}>{formatDimensions(value.dimensions, locale) || key}</option>)}</select></label> : null}<div className="updated-card"><span>{t('updated')}</span><strong>{formatDate(series?.updatedDate, locale)}</strong></div></div>
       </section>
-      <section className="range-card-grid">{TIME_RANGES.map(range => <div className={`range-card ${HOURLY_RANGES.has(range) ? 'range-pending' : ''}`} key={range} title={HOURLY_RANGES.has(range) ? x.hourlyPending : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong>{HOURLY_RANGES.has(range) ? <i>⌛</i> : null}</div>)}</section>
+      <section className="range-card-grid">{TIME_RANGES.map(range => <div className={`range-card ${HOURLY_RANGES.has(range) ? 'range-pending' : ''}`} key={range} title={HOURLY_RANGES.has(range) ? x.hourlyPending : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>⌛</i> : null}</div>)}</section>
       <section className="signal-grid signal-grid-v3">
         <div className={`signal-card potential-card ${mode === 'sell' ? 'sell' : ''}`}><span>{mode === 'buy' ? t('buyPotential') : t('sellPotential')}</span><strong>{analytics?.[mode].potential != null && analytics[mode].potential! > 0 ? `+${fmtPlat(analytics[mode].potential)}` : '—'}{analytics?.[mode].potentialPct != null && analytics[mode].potentialPct! > 0 ? <small> {fmtPlainPercent(analytics[mode].potentialPct)}</small> : null}</strong></div>
         <div className="signal-card score-card"><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div>
-        <div className="signal-card forecast-card"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat} large/><small>{x.forecastHint}</small></div>
+        <div className="signal-card forecast-card"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat} large/><small>{x.forecastHint}</small></div>
       </section>
       {analytics ? <section className="analysis-grid"><div className="analysis-card"><span>{u.baseline}</span><strong>{fmtPlat(analytics.baseline)}</strong></div><div className="analysis-card"><span>{u.q25}</span><strong>{fmtPlat(analytics.q25)}</strong></div><div className="analysis-card"><span>{u.q75}</span><strong>{fmtPlat(analytics.q75)}</strong></div><div className="analysis-card"><span>{u.volatility}</span><strong>{fmtPlainPercent(analytics.volatility)}</strong></div></section> : null}
       <section className="panel chart-panel">
@@ -200,10 +231,10 @@ export default function App() {
   const [minPrice, setMinPrice] = useState(0)
   const [minPotential, setMinPotential] = useState(0)
   const [platform, setPlatform] = useState<Platform>(loadPlatform)
-  const [crossplay, setCrossplay] = useState(loadCrossplay)
-  const [period, setPeriod] = useState<AnalysisPeriod>(loadPeriod)
+  const [crossplay, setCrossplay] = useState(() => platform === 'switch' ? false : loadCrossplay())
   const [categories, setCategories] = useState<CategoryId[]>(loadCategories)
   const [visibleRanges, setVisibleRanges] = useState<TimeRange[]>(loadRanges)
+  const period = analysisPeriodForRanges(visibleRanges)
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null)
   const [sort, setSort] = useState<ScannerSort>('potential')
   const [direction, setDirection] = useState<SortDirection>('desc')
@@ -251,11 +282,10 @@ export default function App() {
       setRoute(readRoute())
       const params = new URLSearchParams(location.search)
       const nextPlatform = params.get('platform')
-      const nextPeriod = Number(params.get('period'))
       const nextCrossplay = params.get('crossplay')
-      if (nextPlatform === 'pc' || nextPlatform === 'ps4' || nextPlatform === 'xbox' || nextPlatform === 'switch') setPlatform(nextPlatform)
-      if (PERIODS.includes(nextPeriod as AnalysisPeriod)) setPeriod(nextPeriod as AnalysisPeriod)
-      if (nextCrossplay === 'true' || nextCrossplay === 'false') setCrossplay(nextCrossplay === 'true')
+      const validPlatform = nextPlatform === 'pc' || nextPlatform === 'ps4' || nextPlatform === 'xbox' || nextPlatform === 'switch' ? nextPlatform : platform
+      setPlatform(validPlatform)
+      if (nextCrossplay === 'true' || nextCrossplay === 'false') setCrossplay(validPlatform === 'switch' ? false : nextCrossplay === 'true')
     }
     addEventListener('popstate', listener)
     return () => removeEventListener('popstate', listener)
@@ -271,7 +301,7 @@ export default function App() {
   }, [theme])
   useEffect(() => { localStorage.setItem('frameanalytics-platform', platform) }, [platform])
   useEffect(() => { localStorage.setItem('frameanalytics-crossplay', String(crossplay)) }, [crossplay])
-  useEffect(() => { localStorage.setItem('frameanalytics-period', String(period)) }, [period])
+  useEffect(() => { if (platform === 'switch' && crossplay) setCrossplay(false) }, [platform, crossplay])
   useEffect(() => { localStorage.setItem('frameanalytics-page-size', String(pageSize)) }, [pageSize])
   useEffect(() => { localStorage.setItem('frameanalytics-categories-v3', JSON.stringify(categories)) }, [categories])
   useEffect(() => { localStorage.setItem('frameanalytics-ranges', JSON.stringify(visibleRanges)) }, [visibleRanges])
@@ -350,15 +380,21 @@ export default function App() {
     if (range === periodRange(item.period)) return item.changePeriod
     return getMetricSeries(item)?.periods[range.replace('d', '') as '30' | '90' | '180']?.changePeriod ?? null
   }
+  const rowRangePlatinum = (item: ScannerItem, range: TimeRange) => {
+    const percent = rowRangeValue(item, range)
+    const metricPeriod = range === '7d' || range === '30d' || range === '90d' || range === '180d'
+      ? getMetricSeries(item)?.periods[range.replace('d', '') as '7' | '30' | '90' | '180']
+      : null
+    return platinumChange(item.currentPrice, percent, metricPeriod?.referencePrice)
+  }
+  const rowTrendDirection = (item: ScannerItem) => consensusDirection(visibleRanges.map(range => rowRangeValue(item, range)))
 
   const changeSort = (next: ScannerSort, range?: TimeRange) => {
-    if (range && ['30d', '90d', '180d'].includes(range)) setPeriod(Number(range.replace('d', '')) as AnalysisPeriod)
     if (sort === next) setDirection(value => value === 'asc' ? 'desc' : 'asc')
     else { setSort(next); setDirection(next === 'name' ? 'asc' : 'desc') }
   }
   const indicator = (key: ScannerSort) => sort === key ? (direction === 'asc' ? '↑' : '↓') : ''
-  const rangeSort = (range: TimeRange): ScannerSort | null => range === '24h' ? 'change24h' : range === '7d' ? 'change7d' : ['30d', '90d', '180d'].includes(range) ? 'changePeriod' : null
-  const setAnalysisPeriod = (next: AnalysisPeriod) => { setPeriod(next); const range = periodRange(next); setVisibleRanges(current => current.includes(range) ? current : [...current, range]) }
+  const rangeSort = (range: TimeRange): ScannerSort | null => range === '24h' ? 'change24h' : range === '7d' ? 'change7d' : range === periodRange(period) ? 'changePeriod' : null
   const toggleCategory = (id: CategoryId) => setCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
   const toggleRange = (range: TimeRange) => setVisibleRanges(current => current.includes(range) ? current.filter(value => value !== range) : TIME_RANGES.filter(value => current.includes(value) || value === range))
   const statusText = scannerLoading ? u.loading : scannerError ? u.loadError : scannerData ? `${u.dataDate}: ${formatDate(scannerData.latestDate, locale)}` : u.loadError
@@ -389,16 +425,14 @@ export default function App() {
 
   return <>
     <div className="background-layer"/><div className="background-shade"/>
-    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} variantKey={route.variant} platform={platform} crossplay={crossplay} period={period} mode={mode} locale={locale} loading={detailLoading} error={detailError} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} t={t}/> : <main className="app-shell">
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} variantKey={route.variant} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} error={detailError} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} t={t}/> : <main className="app-shell">
       <header className="topbar"><div><div className="brand-plate"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></div><p className="subtitle">{t('subtitle')}</p></div><div className={`status-pill ${scannerLoading ? 'loading' : scannerError ? 'error' : ''}`}><span className="status-dot"/>{statusText}</div></header>
       <section className="mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button></section>
       <section className="panel market-settings">
         <div className="settings-heading"><span>{x.marketSettings}</span><small>{x.platformData}</small></div>
-        <label><span>{u.platform}</span><select value={platform} onChange={event => setPlatform(event.target.value as Platform)}>{Object.entries(PLATFORM_NAMES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <div className="crossplay-setting"><span>{u.crossplay}</span><button type="button" className={`switch-control ${crossplay ? 'on' : ''}`} role="switch" aria-checked={crossplay} onClick={() => setCrossplay(value => !value)}><i/><b>{crossplay ? x.crossplayOn : x.crossplayOff}</b></button></div>
-        <label><span>{u.analysisPeriod}</span><select value={period} onChange={event => setAnalysisPeriod(Number(event.target.value) as AnalysisPeriod)}>{PERIODS.map(value => <option value={value} key={value}>{rangeLabel(periodRange(value), x)}</option>)}</select></label>
+        <label><span>{u.platform}</span><select value={platform} onChange={event => { const next = event.target.value as Platform; setPlatform(next); if (next === 'switch') setCrossplay(false) }}>{Object.entries(PLATFORM_NAMES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <div className="crossplay-setting"><span>{u.crossplay}</span><button type="button" disabled={platform === 'switch'} className={`switch-control ${crossplay ? 'on' : ''}`} role="switch" aria-checked={crossplay} onClick={() => platform !== 'switch' && setCrossplay(value => !value)}><i/><b>{platform === 'switch' ? x.crossplayUnavailable : crossplay ? x.crossplayOn : x.crossplayOff}</b></button></div>
       </section>
-      {crossplay ? <div className="scope-notice"><span>ⓘ</span><div><strong>{x.crossplayOn}</strong><small>{x.crossplayNotice}</small></div></div> : null}
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
         <label><span>{t('minPrice')}</span><div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={event => setMinPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
@@ -424,8 +458,8 @@ export default function App() {
           return <tr key={item.rowId} className={!item.hasHistory ? 'no-history-row' : ''}>
             <td><a className="item-link item-link-v3" href={href} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openItem(item) }}><ItemIcon item={catalogItem(item.id)} name={itemName(item)}/><span><span className="item-name">{itemName(item)}</span><span className="item-category">{categoryLabel(item.category, locale, u, x.prime)}{variant ? ` · ${variant}` : ''}{item.selectedModRank != null ? ` · ${x.rank} ${item.selectedModRank}` : ''}{!item.hasHistory ? ` · ${x.noHistory}` : ''}</span></span></a></td>
             <td className="price-cell">{fmtPlat(item.currentPrice)}</td>
-            {visibleRanges.map(range => <td key={range} className={`${valueClass(rowRangeValue(item, range))} ${HOURLY_RANGES.has(range) ? 'hourly-column' : ''}`} title={HOURLY_RANGES.has(range) ? x.hourlyPending : undefined}>{fmtPercent(rowRangeValue(item, range))}</td>)}
-            <td>{item.sales24h ?? '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={item.change7d} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td className="updated-cell">{formatDate(item.updatedDate, locale)}</td>
+            {visibleRanges.map(range => <td key={range} className={`${valueClass(rowRangeValue(item, range))} ${HOURLY_RANGES.has(range) ? 'hourly-column' : ''}`} title={HOURLY_RANGES.has(range) ? x.hourlyPending : undefined}><span className="change-cell-values"><strong>{fmtPercent(rowRangeValue(item, range))}</strong><small>{fmtPlatDelta(rowRangePlatinum(item, range))}</small></span></td>)}
+            <td>{item.sales24h ?? '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={item.change7d} direction={rowTrendDirection(item)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td className="updated-cell">{formatDate(item.updatedDate, locale)}</td>
           </tr>
         })}
       </tbody></table></div></section>

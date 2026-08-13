@@ -1,4 +1,4 @@
-# FrameAnalytics v0.6.0
+# FrameAnalytics v0.6.1
 
 Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline.
 
@@ -6,7 +6,13 @@ Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline.
 
 The scanner uses `/api/scanner-v3`, item pages use `/api/item-v3` and `/api/metrics-v3`, and localized item names/icons use the cached `/api/catalog-v3` endpoint. Scalar and variant markets remain separate. Public item history covers up to 180 days.
 
-Platform and crossplay are independent preferences. Crossplay defaults to enabled, but the current daily v3 dataset remains platform-specific; the UI states this explicitly and never merges platform histories. Hourly 1h/4h/12h columns are present as unavailable placeholders until the planned 48-hour hourly updater is connected.
+Platform and crossplay are independent preferences. Crossplay defaults to enabled. Nintendo Switch always disables crossplay and is never included in the crossplay scope. The current daily v3 dataset remains platform-specific and never merges platform histories.
+
+The former analysis-period selector has been removed. The scanner score uses the longest displayed daily range, while the trend arrow uses consensus across the displayed ranges. Every percentage-change cell also shows its absolute platinum change underneath. Page size defaults to 25 and remains configurable.
+
+Category v4 derives consistent category/subcategory assignments from current WFM item tags and is applied as a read-time overlay. It fixes previously split groups such as Arcane Helmets, Focus Lenses, Ayatan Sculptures, and Simulacrum rooms without rewriting finalized historical shards.
+
+Hourly 1h/4h/12h columns remain unavailable until Hourly v1 has completed its guarded rollout. Rank filters must not be exposed against Normalization v3.1 because that layer intentionally retained only catalog maximum-rank mod markets; rank 0 and all-rank browsing require independent rank series in the next derived namespace.
 
 ## Build
 

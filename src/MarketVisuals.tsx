@@ -57,21 +57,22 @@ const TrendGlyph = ({ direction }: { direction: 'up' | 'down' | 'flat' }) => <sv
   {direction === 'up' ? <path d="M5 16l6-6 4 4 4-5M14 9h5v5"/> : direction === 'down' ? <path d="M5 8l6 6 4-4 4 5M14 15h5v-5"/> : <path d="M5 12h14M16 9l3 3-3 3"/>}
 </svg>
 
-export const ForecastIndicator = ({ signal, fallbackChange, title, trendUp, trendDown, trendFlat, large = false }: {
+export const ForecastIndicator = ({ signal, fallbackChange, direction, title, trendUp, trendDown, trendFlat, large = false }: {
   signal: ScannerSignal
   fallbackChange: number | null
+  direction?: 'up' | 'down' | 'flat'
   title: string
   trendUp: string
   trendDown: string
   trendFlat: string
   large?: boolean
 }) => {
-  const direction: 'up' | 'down' | 'flat' = signal.rising ? 'up' : signal.falling ? 'down' : (fallbackChange ?? 0) > 2 ? 'up' : (fallbackChange ?? 0) < -2 ? 'down' : 'flat'
-  const trendTitle = direction === 'up' ? trendUp : direction === 'down' ? trendDown : trendFlat
+  const resolvedDirection: 'up' | 'down' | 'flat' = direction || (signal.rising ? 'up' : signal.falling ? 'down' : (fallbackChange ?? 0) > 2 ? 'up' : (fallbackChange ?? 0) < -2 ? 'down' : 'flat')
+  const trendTitle = resolvedDirection === 'up' ? trendUp : resolvedDirection === 'down' ? trendDown : trendFlat
   const strong = signal.decision === 'BUY_STRONG' || signal.decision === 'SELL_STRONG'
   const label = `${title}. ${trendTitle}`
   return <span className={`forecast-cluster ${large ? 'forecast-large' : ''}`} title={label} aria-label={label} role="img">
     <span className={`forecast-icon ${decisionTone(signal.decision)}`}><ForecastGlyph strong={strong}/></span>
-    <span className={`trend-icon trend-${direction}`}><TrendGlyph direction={direction}/></span>
+    <span className={`trend-icon trend-${resolvedDirection}`}><TrendGlyph direction={resolvedDirection}/></span>
   </span>
 }
