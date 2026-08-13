@@ -1,6 +1,6 @@
-import type { AnalysisPeriod, ItemResponse, Platform, ScannerResponse } from './types'
+import type { CatalogResponse, ItemResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
 
-const API_BASE = 'https://frameanalytics-api-test.smurfack403.workers.dev'
+export const API_BASE = 'https://frameanalytics-api-test.smurfack403.workers.dev'
 
 const fetchJson = async <T,>(path: string, signal?: AbortSignal): Promise<T> => {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -10,14 +10,50 @@ const fetchJson = async <T,>(path: string, signal?: AbortSignal): Promise<T> => 
   })
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`)
+    let detail = ''
+    try {
+      const payload = await response.json() as { error?: string }
+      detail = payload.error ? `: ${payload.error}` : ''
+    } catch {
+      // Keep the HTTP status when the response is not JSON.
+    }
+    throw new Error(`HTTP ${response.status}${detail}`)
   }
 
   return response.json() as Promise<T>
 }
 
-export const fetchScanner = (platform: Platform, period: AnalysisPeriod, signal?: AbortSignal) =>
-  fetchJson<ScannerResponse>(`/api/scanner?platform=${encodeURIComponent(platform)}&period=${period}`, signal)
+export const fetchScanner = (query: ScannerQuery, signal?: AbortSignal) => {
+  const params = new URLSearchParams({
+    platform: query.platform,
+    period: String(query.period),
+    mode: query.mode,
+    crossplay: String(query.crossplay),
+    includeLow: 'true',
+    includeNoHistory: 'true',
+    offset: String(query.offset),
+    limit: String(query.limit),
+    sort: query.sort,
+    direction: query.direction
+  })
+  if (query.search?.trim()) params.set('search', query.search.trim())
+  if (query.categories) params.set('categories', query.categories.length ? query.categories.join(',') : '__none__')
+  if (query.minPrice && query.minPrice > 0) params.set('minPrice', String(query.minPrice))
+  if (query.minPotential && query.minPotential > 0) params.set('minPotential', String(query.minPotential))
+  return fetchJson<ScannerResponse>(`/api/scanner-v3?${params}`, signal)
+}
 
-export const fetchItem = (platform: Platform, period: AnalysisPeriod, id: string, signal?: AbortSignal) =>
-  fetchJson<ItemResponse>(`/api/item?platform=${encodeURIComponent(platform)}&period=${period}&id=${encodeURIComponent(id)}`, signal)
+export const fetchItem = (platform: Platform, id: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ platform, id })
+  return fetchJson<ItemResponse>(`/api/item-v3?${params}`, signal)
+}
+
+export const fetchMetrics = (platform: Platform, id: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ platform, id })
+  return fetchJson<MetricsResponse>(`/api/metrics-v3?${params}`, signal)
+}
+
+export const fetchCatalog = (language: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ lang: language })
+  return fetchJson<CatalogResponse>(`/api/catalog-v3?${params}`, signal)
+}
