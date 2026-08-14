@@ -1,4 +1,4 @@
-# FrameAnalytics v0.7.0
+# FrameAnalytics v0.7.1
 
 Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline.
 
@@ -8,7 +8,7 @@ The scanner uses `/api/scanner-v3`, item pages use `/api/item-v3` and `/api/metr
 
 Platform and crossplay are independent preferences. Crossplay defaults to enabled. Nintendo Switch always disables crossplay and is never included in the crossplay scope. The current daily v3 dataset remains platform-specific and never merges platform histories.
 
-The former analysis-period selector has been removed. The scanner score uses the longest displayed daily range, while the trend arrow uses consensus across the displayed ranges. Every percentage-change cell also shows its absolute platinum change underneath. Page size defaults to 25 and remains configurable.
+The former analysis-period selector has been removed. The initial scanner score uses the longest displayed daily range; clicking a 7d/30d/90d/180d table heading switches the server-side analytics and global sorting to that period. The trend arrow uses consensus across the displayed ranges. Every percentage-change cell also shows its absolute platinum change underneath. Page size defaults to 25 and remains configurable.
 
 Category v4 derives consistent category/subcategory assignments from current WFM item tags and is applied as a read-time overlay. It fixes previously split groups such as Arcane Helmets, Focus Lenses, Ayatan Sculptures, and Simulacrum rooms without rewriting finalized historical shards.
 

@@ -169,7 +169,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.7.0</div>
+  <div className="footer-version">{t('version')} 0.7.1</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 
@@ -271,7 +271,7 @@ export default function App() {
   const [categories, setCategories] = useState<CategoryId[]>(loadCategories)
   const [visibleRanges, setVisibleRanges] = useState<TimeRange[]>(loadRanges)
   const [rankFilter, setRankFilter] = useState<RankFilter>(loadRankFilter)
-  const period = analysisPeriodForRanges(visibleRanges)
+  const [period, setPeriod] = useState<AnalysisPeriod>(() => analysisPeriodForRanges(loadRanges()))
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null)
   const [sort, setSort] = useState<ScannerSort>('potential')
   const [direction, setDirection] = useState<SortDirection>('desc')
@@ -349,6 +349,12 @@ export default function App() {
   useEffect(() => { localStorage.setItem('frameanalytics-page-size', String(pageSize)) }, [pageSize])
   useEffect(() => { localStorage.setItem('frameanalytics-categories-v3', JSON.stringify(categories)) }, [categories])
   useEffect(() => { localStorage.setItem('frameanalytics-ranges', JSON.stringify(visibleRanges)) }, [visibleRanges])
+  useEffect(() => {
+    const visibleDailyRanges = visibleRanges.filter(range => !HOURLY_RANGES.has(range))
+    if (visibleDailyRanges.length && !visibleRanges.includes(periodRange(period))) {
+      setPeriod(analysisPeriodForRanges(visibleRanges))
+    }
+  }, [visibleRanges, period])
   useEffect(() => { localStorage.setItem('frameanalytics-rank-filter', rankFilter) }, [rankFilter])
   useEffect(() => { if (rankFilter === 'base' && sort !== 'name') { setSort('name'); setDirection('asc') } }, [rankFilter, sort])
 
@@ -495,11 +501,12 @@ export default function App() {
   const rowTrendDirection = (row: DisplayMarketRow) => consensusDirection(visibleRanges.map(range => rowRangeValue(row, range)))
 
   const changeSort = (next: ScannerSort, range?: TimeRange) => {
+    if (range && !HOURLY_RANGES.has(range)) setPeriod(Number(range.replace('d', '')) as AnalysisPeriod)
     if (sort === next) setDirection(value => value === 'asc' ? 'desc' : 'asc')
     else { setSort(next); setDirection(next === 'name' ? 'asc' : 'desc') }
   }
   const indicator = (key: ScannerSort) => sort === key ? (direction === 'asc' ? '↑' : '↓') : ''
-  const rangeSort = (range: TimeRange): ScannerSort | null => rankFilter === 'base' || HOURLY_RANGES.has(range) ? null : range === '7d' ? 'change7d' : range === periodRange(period) ? 'changePeriod' : null
+  const rangeSort = (range: TimeRange): ScannerSort | null => rankFilter === 'base' || HOURLY_RANGES.has(range) ? null : range === '7d' ? 'change7d' : 'changePeriod'
   const toggleCategory = (id: CategoryId) => setCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
   const toggleRange = (range: TimeRange) => setVisibleRanges(current => current.includes(range) ? current.filter(value => value !== range) : TIME_RANGES.filter(value => current.includes(value) || value === range))
   const statusText = scannerLoading ? u.loading : scannerError ? u.loadError : scannerData ? `${u.dataDate}: ${formatDate(scannerData.latestDate, locale)}` : u.loadError
