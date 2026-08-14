@@ -26,6 +26,7 @@ type DisplayMarketRow = {
   selectedModRank: number | null
   canonical: boolean
   hourly: HourlySeries | null
+  hourlyFetchedAt: string | null
 }
 
 const PLATFORM_NAMES: Record<Platform, string> = { pc: 'PC', ps4: 'PlayStation', xbox: 'Xbox', switch: 'Nintendo Switch' }
@@ -169,7 +170,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.7.1</div>
+  <div className="footer-version">{t('version')} 0.7.2</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 
@@ -243,7 +244,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, variantKey, sel
     {loading ? <section className="panel state-panel"><div className="spinner"/><strong>{u.loading}</strong></section> : error || !detail ? <section className="panel state-panel error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={onRetry}>{u.retry}</button></section> : <>
       <section className="detail-header detail-header-v3">
         <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)} · {PLATFORM_NAMES[platform]} · {crossplay ? x.crossplayOn : x.crossplayOff}</div><h1>{name}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{selectedRank != null || canonicalRank != null ? <span>{x.rank}: {selectedRank ?? canonicalRank}</span> : null}{!series?.hasHistory && !hourlySeries ? <span className="no-history-tag">{x.noHistory}</span> : null}{hourlySeries ? <span className="live-tag">{x.hourlyLive}</span> : null}{!canonicalSelected ? <span>{x.hourlyOnlyRank}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
-        <div className="detail-actions">{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><select value={variantKey || ''} onChange={event => onVariant(event.target.value || null)}><option value="">{x.chooseVariant}</option>{Object.entries(detail.variants).map(([key, value]) => <option key={key} value={key}>{formatDimensions(value.dimensions, locale) || key}</option>)}</select></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><select value={selectedRank ?? canonicalRank ?? ''} onChange={event => onRank(event.target.value === '' ? null : Number(event.target.value))}>{rankOptions.map(rank => <option value={rank} key={rank}>{x.rank} {rank}{rank === canonicalRank ? ` · ${x.canonical}` : ''}</option>)}</select></label> : null}<div className="updated-card"><span>{t('updated')}</span><strong>{formatDate(hourlySeries?.latestAt || series?.updatedDate, locale)}</strong>{hourlySeries ? <small>{x.everyMinutes.replace('{minutes}', String(hourly?.cadenceMinutes || 0))}</small> : null}</div></div>
+        <div className="detail-actions">{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><select value={variantKey || ''} onChange={event => onVariant(event.target.value || null)}><option value="">{x.chooseVariant}</option>{Object.entries(detail.variants).map(([key, value]) => <option key={key} value={key}>{formatDimensions(value.dimensions, locale) || key}</option>)}</select></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><select value={selectedRank ?? canonicalRank ?? ''} onChange={event => onRank(event.target.value === '' ? null : Number(event.target.value))}>{rankOptions.map(rank => <option value={rank} key={rank}>{x.rank} {rank}{rank === canonicalRank ? ` · ${x.canonical}` : ''}</option>)}</select></label> : null}<div className="updated-card"><span>{t('updated')}</span><strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong>{hourlySeries ? <small>{x.everyMinutes.replace('{minutes}', String(hourly?.cadenceMinutes || 0))}</small> : null}</div></div>
       </section>
       <section className="range-card-grid">{visibleRanges.map(range => <div className={`range-card ${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</section>
       <section className="signal-grid signal-grid-v3">
@@ -464,17 +465,17 @@ export default function App() {
   const displayRows = useMemo<DisplayMarketRow[]>(() => (scannerData?.items || []).flatMap((item): DisplayMarketRow[] => {
     const hourly = hourlyRows[hourlyKey(platform, crossplay, item.id)]
     if (item.selectedModRank == null) {
-      return [{ rowId: item.rowId, item, marketKey: item.marketKey, selectedModRank: null, canonical: true, hourly: findHourlySeries(hourly, item.marketKey) }]
+      return [{ rowId: item.rowId, item, marketKey: item.marketKey, selectedModRank: null, canonical: true, hourly: findHourlySeries(hourly, item.marketKey), hourlyFetchedAt: hourly?.fetchedAt || null }]
     }
     if (rankFilter === 'base') {
       const marketKey = 'mod_rank=0'
-      return [{ rowId: `${item.id}::${marketKey}`, item, marketKey, selectedModRank: 0, canonical: item.selectedModRank === 0, hourly: findHourlySeries(hourly, marketKey) }]
+      return [{ rowId: `${item.id}::${marketKey}`, item, marketKey, selectedModRank: 0, canonical: item.selectedModRank === 0, hourly: findHourlySeries(hourly, marketKey), hourlyFetchedAt: hourly?.fetchedAt || null }]
     }
     const ranks = [...new Set((hourly?.series || []).map(value => value.dimensions?.mod_rank).filter((value): value is number => typeof value === 'number'))]
     if (!ranks.includes(item.selectedModRank)) ranks.push(item.selectedModRank)
     return ranks.sort((a, b) => a - b).map(rank => {
       const marketKey = `mod_rank=${rank}`
-      return { rowId: `${item.id}::${marketKey}`, item, marketKey, selectedModRank: rank, canonical: rank === item.selectedModRank, hourly: findHourlySeries(hourly, marketKey) }
+      return { rowId: `${item.id}::${marketKey}`, item, marketKey, selectedModRank: rank, canonical: rank === item.selectedModRank, hourly: findHourlySeries(hourly, marketKey), hourlyFetchedAt: hourly?.fetchedAt || null }
     })
   }), [scannerData, hourlyRows, platform, crossplay, rankFilter])
   const rowCurrentPrice = (row: DisplayMarketRow) => row.hourly?.currentPrice ?? (row.canonical ? row.item.currentPrice : null)
@@ -584,8 +585,8 @@ export default function App() {
           return <tr key={row.rowId} className={!row.canonical ? 'hourly-only-row' : !item.hasHistory ? 'no-history-row' : ''}>
             <td><a className="item-link item-link-v3" href={href} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openItem(row) }}><ItemIcon item={catalogItem(item.id)} name={itemName(item)}/><span><span className="item-name">{itemName(item)}</span><span className="item-category">{categoryLabel(item.category, locale, u, x.prime)}{variant ? ` · ${variant}` : ''}{row.selectedModRank != null ? ` · ${x.rank} ${row.selectedModRank}` : ''}{!row.canonical ? ` · ${x.hourlyOnlyRank}` : !item.hasHistory ? ` · ${x.noHistory}` : ''}</span></span></a></td>
             <td className="price-cell">{fmtPlat(rowCurrentPrice(row))}</td>
-            {visibleRanges.map(range => { const live = row.hourly; return <td key={range} className={`${valueClass(rowRangeValue(row, range))} ${HOURLY_RANGES.has(range) ? live ? 'hourly-column hourly-live' : 'hourly-column hourly-missing' : ''}`} title={HOURLY_RANGES.has(range) ? live ? `${x.hourlyLive} · ${formatDate(live.latestAt, locale)}` : x.hourlyUnavailable : !row.canonical ? x.hourlyOnlyRank : undefined}><span className="change-cell-values"><strong>{fmtPercent(rowRangeValue(row, range))}</strong><small>{fmtPlatDelta(rowRangePlatinum(row, range))}</small></span></td> })}
-            <td>{row.canonical ? item.sales24h ?? '—' : '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={row.canonical ? item.change7d : null} direction={rowTrendDirection(row)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td className="updated-cell">{formatDate(row.hourly?.latestAt || (row.canonical ? item.updatedDate : null), locale)}</td>
+            {visibleRanges.map(range => { const live = row.hourly; return <td key={range} className={`${valueClass(rowRangeValue(row, range))} ${HOURLY_RANGES.has(range) ? live ? 'hourly-column hourly-live' : 'hourly-column hourly-missing' : ''}`} title={HOURLY_RANGES.has(range) ? live ? `${x.hourlyLive} · ${formatDate(row.hourlyFetchedAt, locale)}` : x.hourlyUnavailable : !row.canonical ? x.hourlyOnlyRank : undefined}><span className="change-cell-values"><strong>{fmtPercent(rowRangeValue(row, range))}</strong><small>{fmtPlatDelta(rowRangePlatinum(row, range))}</small></span></td> })}
+            <td>{row.canonical ? item.sales24h ?? '—' : '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={row.canonical ? item.change7d : null} direction={rowTrendDirection(row)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td className="updated-cell">{formatDate(row.hourlyFetchedAt || (row.canonical ? item.updatedDate : null), locale)}</td>
           </tr>
         })}
       </tbody></table></div></section>
