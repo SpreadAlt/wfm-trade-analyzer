@@ -1,16 +1,20 @@
 import { useMemo } from 'react'
 import type { Locale } from './i18n'
-import type { AnalysisPeriod, HistoryPoint } from './types'
+import type { HistoryPoint, TimeRange } from './types'
 
 const fmtNumber = (value: number, digits = 1) => value.toFixed(digits).replace(/\.0$/, '')
 const intlLocale = (locale: Locale) => locale === 'zh-hans' ? 'zh-Hans' : locale === 'zh-hant' ? 'zh-Hant' : locale
+const parsePointDate = (value: string) => Date.parse(value.includes('T') ? value : `${value}T00:00:00Z`)
 
 const formatDate = (value: string, locale: Locale, short = false) => {
-  const date = new Date(`${value}T00:00:00Z`)
+  const date = new Date(parsePointDate(value))
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat(intlLocale(locale), short
-    ? { day: '2-digit', month: '2-digit', timeZone: 'UTC' }
-    : { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(date)
+  const hourly = value.includes('T')
+  return new Intl.DateTimeFormat(intlLocale(locale), hourly
+    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
+    : short
+      ? { day: '2-digit', month: '2-digit', timeZone: 'UTC' }
+      : { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(date)
 }
 
 const buildLinePath = (history: HistoryPoint[], key: 'min' | 'median' | 'max', px: (index: number) => number, py: (value: number) => number) => {
@@ -31,16 +35,18 @@ const buildLinePath = (history: HistoryPoint[], key: 'min' | 'median' | 'max', p
 export const HistoryChart = ({ history, latestDate, range, locale, labels }: {
   history: HistoryPoint[]
   latestDate: string
-  range: AnalysisPeriod
+  range: TimeRange
   locale: Locale
   labels: { empty: string; chart: string; min: string; median: string; max: string; sales: string }
 }) => {
   const cutoff = useMemo(() => {
-    const latest = new Date(`${latestDate}T00:00:00Z`)
-    latest.setUTCDate(latest.getUTCDate() - (range - 1))
-    return latest.getTime()
+    const latest = parsePointDate(latestDate)
+    if (!Number.isFinite(latest)) return Number.NEGATIVE_INFINITY
+    const amount = Number(range.slice(0, -1))
+    const duration = range.endsWith('h') ? amount * 60 * 60 * 1000 : Math.max(0, amount - 1) * 24 * 60 * 60 * 1000
+    return latest - duration
   }, [latestDate, range])
-  const visible = useMemo(() => history.filter(point => Date.parse(`${point.date}T00:00:00Z`) >= cutoff), [history, cutoff])
+  const visible = useMemo(() => history.filter(point => parsePointDate(point.date) >= cutoff), [history, cutoff])
 
   if (!visible.length) return <div className="empty-state chart-empty">{labels.empty}</div>
   const width = 1000

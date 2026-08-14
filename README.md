@@ -1,4 +1,4 @@
-# FrameAnalytics v0.6.1
+# FrameAnalytics v0.7.0
 
 Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline.
 
@@ -12,7 +12,9 @@ The former analysis-period selector has been removed. The scanner score uses the
 
 Category v4 derives consistent category/subcategory assignments from current WFM item tags and is applied as a read-time overlay. It fixes previously split groups such as Arcane Helmets, Focus Lenses, Ayatan Sculptures, and Simulacrum rooms without rewriting finalized historical shards.
 
-Hourly 1h/4h/12h columns remain unavailable until Hourly v1 has completed its guarded rollout. Rank filters must not be exposed against Normalization v3.1 because that layer intentionally retained only catalog maximum-rank mod markets; rank 0 and all-rank browsing require independent rank series in the next derived namespace.
+Hourly v1 supplies independent 1h/4h/12h/24h series for the exact scanner market key. The current price and intraday changes use the hourly response when available, including absolute platinum change. Uncollected groups remain visibly unavailable instead of falling back to another rank or variant.
+
+Rank 0/no-rank is the default scanner view and all available hourly ranks can be expanded independently. Normalization v3.1 daily analytics still contain only the catalog maximum-rank mod market, so non-canonical ranks deliberately show hourly values only; their daily potential, score, and forecast remain empty rather than borrowing max-rank analytics.
 
 ## Build
 

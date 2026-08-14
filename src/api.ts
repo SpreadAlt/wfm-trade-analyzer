@@ -1,4 +1,4 @@
-import type { CatalogResponse, ItemResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
+import type { CatalogResponse, HourlyResponse, ItemResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
 
 export const API_BASE = 'https://frameanalytics-api-test.smurfack403.workers.dev'
 
@@ -56,4 +56,9 @@ export const fetchMetrics = (platform: Platform, id: string, signal?: AbortSigna
 export const fetchCatalog = (language: string, signal?: AbortSignal) => {
   const params = new URLSearchParams({ lang: language })
   return fetchJson<CatalogResponse>(`/api/catalog-v3?${params}`, signal)
+}
+
+export const fetchHourly = (platform: Platform, crossplay: boolean, id: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ platform, crossplay: String(crossplay), id, rank: 'all' })
+  return fetchJson<HourlyResponse>(`/api/hourly-v1?${params}`, signal)
 }

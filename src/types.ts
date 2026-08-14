@@ -2,6 +2,7 @@ export type ScannerMode = 'buy' | 'sell'
 export type Platform = 'pc' | 'ps4' | 'xbox' | 'switch'
 export type AnalysisPeriod = 7 | 30 | 90 | 180
 export type TimeRange = '1h' | '4h' | '12h' | '24h' | '7d' | '30d' | '90d' | '180d'
+export type HourlyRange = '1h' | '4h' | '12h' | '24h'
 export type MarketMode = 'scalar' | 'variant' | 'variants' | 'none'
 export type Dimensions = Record<string, string | number | null>
 
@@ -183,3 +184,45 @@ export type MetricsResponse = { ok: true; metricsVersion: string; rulesVersion: 
 
 export type CatalogItem = { id: string; slug: string; name: string; englishName: string; category: string; subcategory: string; defaultEnabled: boolean; thumb: string | null; icon: string | null }
 export type CatalogResponse = { ok: true; catalogVersion: string; language: string; generatedAt: string; catalogTotal: number; upstreamAvailable: boolean; matchedMarketItems: number; items: CatalogItem[] }
+
+export type HourlyHistoryPoint = {
+  timestamp: string
+  volume: number
+  min: number | null
+  median: number | null
+  max: number | null
+  average: number | null
+  weightedAverage: number | null
+  open: number | null
+  close: number | null
+}
+
+export type HourlyChange = {
+  percent: number | null
+  platinum: number | null
+  referenceAt: string | null
+}
+
+export type HourlySeries = {
+  marketKey: string
+  dimensions: Dimensions
+  currentPrice: number | null
+  latestAt: string | null
+  changes: Record<HourlyRange, HourlyChange>
+  history: HourlyHistoryPoint[]
+}
+
+export type HourlyResponse = {
+  ok: true
+  hourlyVersion: string
+  planId: string
+  scope: 'crossplay' | 'switch'
+  platform: 'pc' | 'switch'
+  crossplay: boolean
+  switchIncluded: false
+  rank: 'base' | 'all'
+  itemId: string
+  fetchedAt: string
+  cadenceMinutes: number
+  series: HourlySeries[]
+}
