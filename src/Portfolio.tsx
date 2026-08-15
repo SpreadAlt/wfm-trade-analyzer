@@ -42,48 +42,32 @@ export const createTemporaryAccount = (): TemporaryAccount => ({
   purchases: []
 })
 
-const copy = (locale: Locale) => locale === 'ru' ? {
+export const portfolioText = (locale: Locale) => locale === 'ru' ? {
   account: 'Тестовый кабинет', title: 'Локальный портфель', unavailable: 'Постоянная авторизация пока недоступна.',
   explanation: 'Создайте временный аккаунт: покупки сохранятся только в этом браузере и не синхронизируются.',
   create: 'Создать временный аккаунт', empty: 'В портфеле пока нет покупок.', close: 'Закрыть',
   price: 'Цена покупки', quantity: 'Количество', date: 'Дата покупки', add: 'Добавить покупку', cancel: 'Отмена',
-  savedLocally: 'Сохранено локально', remove: 'Удалить', total: 'Вложено'
+  savedLocally: 'Сохранено локально', remove: 'Удалить', total: 'Вложено', currentValue: 'Стоимость сейчас',
+  possibleProfit: 'Возможная прибыль сейчас', returnPct: 'Доходность', purchases: 'Покупки', back: 'К сканеру',
+  loading: 'Загружаем рыночные данные портфеля…', loadError: 'Не удалось загрузить рыночные данные.', retry: 'Повторить',
+  unavailableMarket: 'Рыночная серия пока недоступна', profitHint: '(текущая цена − цена покупки) × количество'
 } : {
   account: 'Test account', title: 'Local portfolio', unavailable: 'Permanent sign-in is not available yet.',
   explanation: 'Create a temporary account. Purchases stay only in this browser and are not synchronized.',
   create: 'Create temporary account', empty: 'No purchases have been added yet.', close: 'Close',
   price: 'Purchase price', quantity: 'Quantity', date: 'Purchase date', add: 'Add purchase', cancel: 'Cancel',
-  savedLocally: 'Stored locally', remove: 'Remove', total: 'Invested'
+  savedLocally: 'Stored locally', remove: 'Remove', total: 'Invested', currentValue: 'Current value',
+  possibleProfit: 'Possible profit now', returnPct: 'Return', purchases: 'Purchases', back: 'Back to scanner',
+  loading: 'Loading portfolio market data…', loadError: 'Could not load market data.', retry: 'Retry',
+  unavailableMarket: 'Market series is not available yet', profitHint: '(current price − purchase price) × quantity'
 }
 
 export const AccountButton = ({ locale, active, onClick }: { locale: Locale; active: boolean; onClick: () => void }) => {
-  const text = copy(locale)
+  const text = portfolioText(locale)
   return <button type="button" className={`account-button ${active ? 'active' : ''}`} onClick={onClick} title={text.account} aria-label={text.account}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.5-4 2.6-6 6.5-6s6 2 6.5 6"/></svg>
     <span>{text.account}</span>
   </button>
-}
-
-export const PortfolioPanel = ({ locale, account, open, onClose, onCreate, onRemove }: {
-  locale: Locale
-  account: TemporaryAccount | null
-  open: boolean
-  onClose: () => void
-  onCreate: () => void
-  onRemove: (id: string) => void
-}) => {
-  if (!open) return null
-  const text = copy(locale)
-  const invested = account?.purchases.reduce((sum, item) => sum + item.purchasePrice * item.quantity, 0) || 0
-  return <div className="account-backdrop" role="presentation" onPointerDown={event => event.target === event.currentTarget && onClose()}>
-    <aside className="account-panel" role="dialog" aria-modal="true" aria-label={text.title}>
-      <header><div><span>{text.savedLocally}</span><h2>{text.title}</h2></div><button type="button" className="icon-close" onClick={onClose} aria-label={text.close}>×</button></header>
-      {!account ? <div className="account-onboarding"><div className="account-orb"><span>FA</span></div><strong>{text.unavailable}</strong><p>{text.explanation}</p><button type="button" className="primary-action" onClick={onCreate}>{text.create}</button></div> : <>
-        <div className="account-summary"><span>{text.total}</span><strong>{invested.toFixed(1).replace(/\.0$/, '')}p</strong><small>{account.purchases.length}</small></div>
-        {!account.purchases.length ? <div className="portfolio-empty">{text.empty}</div> : <div className="portfolio-list">{account.purchases.map(item => <article key={item.id}><div><strong title={item.name}>{item.name}</strong><span>{item.marketKey}{item.selectedModRank != null ? ` · R${item.selectedModRank}` : ''}</span></div><div><b>{item.purchasePrice}p × {item.quantity}</b><span>{item.purchaseDate}</span></div><button type="button" onClick={() => onRemove(item.id)} aria-label={text.remove}>×</button></article>)}</div>}
-      </>}
-    </aside>
-  </div>
 }
 
 export const PurchaseDialog = ({ locale, name, currentPrice, open, onClose, onSave }: {
@@ -94,7 +78,7 @@ export const PurchaseDialog = ({ locale, name, currentPrice, open, onClose, onSa
   onClose: () => void
   onSave: (value: { purchasePrice: number; quantity: number; purchaseDate: string }) => void
 }) => {
-  const text = copy(locale)
+  const text = portfolioText(locale)
   const [price, setPrice] = useState(currentPrice ?? 0)
   const [quantity, setQuantity] = useState(1)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))

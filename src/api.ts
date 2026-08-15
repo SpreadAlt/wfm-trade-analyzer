@@ -31,12 +31,13 @@ export const fetchScanner = (query: ScannerQuery, signal?: AbortSignal) => {
     crossplay: String(query.crossplay),
     includeLow: 'true',
     includeNoHistory: 'true',
-    groupItems: 'true',
+    groupItems: 'false',
     offset: String(query.offset),
     limit: String(query.limit),
     sort: query.sort,
     direction: query.direction
   })
+  if (query.ids?.length) params.set('ids', query.ids.join(','))
   if (query.search?.trim()) params.set('search', query.search.trim())
   if (query.categories) params.set('categories', query.categories.length ? query.categories.join(',') : '__none__')
   if (query.minPrice && query.minPrice > 0) params.set('minPrice', String(query.minPrice))
@@ -72,13 +73,14 @@ export const fetchHourlyIndex = (query: HourlyIndexQuery, signal?: AbortSignal) 
     rank: query.rank,
     period: String(query.period),
     mode: query.mode,
-    groupItems: 'true',
+    groupItems: 'false',
     includeDaily: 'true',
     offset: String(query.offset),
     limit: String(query.limit),
     sort: query.sort,
     direction: query.direction
   })
+  if (query.ids?.length) params.set('ids', query.ids.join(','))
   if (query.search?.trim()) params.set('search', query.search.trim())
   if (query.categories) params.set('categories', query.categories.length ? query.categories.join(',') : '__none__')
   if (query.minPrice && query.minPrice > 0) params.set('minPrice', String(query.minPrice))

@@ -76,6 +76,7 @@ export type ScannerQuery = {
   period: AnalysisPeriod
   mode: ScannerMode
   crossplay: boolean
+  ids?: string[]
   search?: string
   categories?: string[]
   minPrice?: number
@@ -291,13 +292,14 @@ export type HourlyIndexQuery = {
   rank: 'base' | 'all'
   period: AnalysisPeriod
   mode: ScannerMode
+  ids?: string[]
   search?: string
   categories?: string[]
   minPrice?: number
   minPotential?: number
   offset: number
   limit: number
-  sort: 'name' | 'currentPrice' | 'change1h' | 'change4h' | 'change12h' | 'change24h'
+  sort: ScannerSort
   direction: SortDirection
   language?: string
 }
