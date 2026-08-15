@@ -1,4 +1,4 @@
-# FrameAnalytics v0.8.4
+# FrameAnalytics v0.8.5
 
 Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline. The backend keeps its technical Scanner v3 name, while the user interface calls this section Statistics.
 
@@ -12,7 +12,7 @@ The former analysis-period selector has been removed. The initial scanner score 
 
 Category v4 derives consistent category/subcategory assignments from current WFM item tags and is applied as a read-time overlay. It fixes previously split groups such as Arcane Helmets, Focus Lenses, Ayatan Sculptures, and Simulacrum rooms without rewriting finalized historical shards.
 
-Hourly v1 supplies independent 1h/4h/12h/24h series for the exact scanner market key. Hourly Index v1 provides global sorting for every intraday and daily scanner column. Ranks and variants are independent rows: they are never grouped for sorting or pagination. The current price and intraday changes use the hourly response when available, including absolute platinum change. Uncollected groups remain visibly unavailable instead of falling back to another rank or variant.
+Hourly v1 supplies independent 1h/4h/12h/24h series for the exact scanner market key. Worker runtime 1.0.5 also retains the `90days` daily series already returned by the same WFM request, so it adds no upstream requests. Item charts merge those fresh daily points over the immutable 180-day Items v3 history, deduplicate by calendar date, and keep the newest 180 points. Hourly Index v1 provides global sorting for every intraday and daily scanner column. Ranks and variants are independent rows: they are never grouped for sorting or pagination. The current price and intraday changes use the hourly response when available, including absolute platinum change. Uncollected groups remain visibly unavailable instead of falling back to another rank or variant.
 
 The Updated column uses the WFM fetch timestamp. The latest non-empty trade bucket remains a separate series timestamp and is not presented as the updater's last successful run.
 
@@ -33,7 +33,7 @@ npm run build
 
 ## Deploy
 
-Deploy Worker file `FrameAnalytics_Worker_v1.0.4.js` first because the frontend expects independent Scanner/Hourly Index pagination, server-side daily and hourly sorting, `ids=` batch filtering for the profile, localized names, and Events v1. No raw, normalization, Items, Metrics, Scanner, Hourly, or Hourly Index rebuild is required for these read-only API changes.
+Deploy Worker file `FrameAnalytics_Worker_v1.0.5.js` first because the frontend expects fresh daily history in Hourly v1 responses, independent Scanner/Hourly Index pagination, server-side daily and hourly sorting, `ids=` batch filtering for the profile, localized names, and Events v1. No raw, normalization, Items, Metrics, Scanner, Hourly, or Hourly Index rebuild is required. Existing Hourly groups gain daily history on their next normal refresh.
 
 The project includes an explicit `wrangler.jsonc` for the existing `wfm-trade-analyzer` Worker. The `dist` directory is deployed as static assets with SPA fallback enabled.
 

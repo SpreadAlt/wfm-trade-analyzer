@@ -215,6 +215,8 @@ export type HourlySeries = {
   latestAt: string | null
   changes: Record<HourlyRange, HourlyChange>
   history: HourlyHistoryPoint[]
+  dailyLatestDate: string | null
+  dailyHistory: HistoryPoint[]
 }
 
 export type HourlyResponse = {

@@ -74,6 +74,20 @@ const consensusDirection = (values: Array<number | null | undefined>): 'up' | 'd
   return 'flat'
 }
 
+const mergeDailyHistory = (stored: ItemSeries['history'], live: ItemSeries['history']) => {
+  const points = new Map<string, ItemSeries['history'][number]>()
+  for (const point of stored || []) points.set(point.date.slice(0, 10), { ...point, date: point.date.slice(0, 10) })
+  for (const point of live || []) points.set(point.date.slice(0, 10), { ...point, date: point.date.slice(0, 10) })
+  return [...points.values()].sort((left, right) => left.date.localeCompare(right.date)).slice(-180)
+}
+
+const dailyReferencePoint = (history: ItemSeries['history'], days: number) => {
+  const latest = [...history].reverse().find(point => point.median != null && Number.isFinite(point.median))
+  if (!latest) return null
+  const target = Date.parse(`${latest.date.slice(0, 10)}T00:00:00Z`) - days * 24 * 60 * 60 * 1000
+  return [...history].reverse().find(point => Date.parse(`${point.date.slice(0, 10)}T00:00:00Z`) <= target && point.median != null && Number.isFinite(point.median)) || null
+}
+
 const formatDate = (value: string | null | undefined, locale: Locale) => {
   if (!value) return '—'
   const hasTime = value.includes('T')
@@ -112,7 +126,9 @@ const hourlySeriesFromIndex = (row: HourlyIndexRow): HourlySeries => ({
     '12h': { percent: row.change12h, platinum: row.change12hPlatinum, referenceAt: null },
     '24h': { percent: row.change24h, platinum: row.change24hPlatinum, referenceAt: null }
   },
-  history: []
+  history: [],
+  dailyLatestDate: null,
+  dailyHistory: []
 })
 
 const scannerFallbackFromIndex = (row: HourlyIndexRow, period: AnalysisPeriod): ScannerItem => ({
@@ -231,7 +247,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.8.4</div>
+  <div className="footer-version">{t('version')} 0.8.5</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 
@@ -315,10 +331,24 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
   const signal = canonicalSelected ? summary?.[mode] || emptySignal() : emptySignal()
   const name = catalogItem?.name || detail?.name || summary?.name || ''
   const variantLabel = formatDimensions(storedSeries?.dimensions || summary?.dimensions, locale)
-  const currentPrice = hourlySeries?.currentPrice ?? series?.currentPrice ?? summary?.currentPrice ?? null
+  const liveDailyCurrent = [...(hourlySeries?.dailyHistory || [])].reverse().find(point => point.median != null)?.median ?? null
+  const currentPrice = hourlySeries ? hourlySeries.currentPrice ?? liveDailyCurrent : series?.currentPrice ?? summary?.currentPrice ?? null
+  const mergedDailyHistory = mergeDailyHistory(series?.history || [], hourlySeries?.dailyHistory || [])
+  const liveDailyAvailable = Boolean(hourlySeries?.dailyHistory?.length)
+  const liveDailyChange = (range: TimeRange) => {
+    const days = Number(range.replace('d', ''))
+    const reference = dailyReferencePoint(mergedDailyHistory, days)
+    if (!reference || reference.median == null || reference.median === 0 || currentPrice == null) return null
+    return (currentPrice - reference.median) / reference.median * 100
+  }
+  const liveDailyPlatinum = (range: TimeRange) => {
+    const reference = dailyReferencePoint(mergedDailyHistory, Number(range.replace('d', '')))
+    return reference?.median == null || currentPrice == null ? null : currentPrice - reference.median
+  }
   const currentEvent = events.find(event => event.status === 'active' || event.status === 'upcoming') || null
   const rangeValue = (range: TimeRange) => {
     if (HOURLY_RANGES.has(range)) return hourlySeries?.changes[range as HourlyRange]?.percent ?? (range === '24h' ? series?.change24h ?? summary?.change24h ?? null : null)
+    if (liveDailyAvailable) return liveDailyChange(range)
     if (range === '7d') return series?.change7d ?? summary?.change7d ?? null
     return metricSeries?.periods[range.replace('d', '') as '30' | '90' | '180']?.changePeriod ?? null
   }
@@ -329,6 +359,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
     }
     const value = rangeValue(range)
     if (range === '7d' || range === '30d' || range === '90d' || range === '180d') {
+      if (liveDailyAvailable) return liveDailyPlatinum(range)
       const periodMetrics = metricSeries?.periods[range.replace('d', '') as '7' | '30' | '90' | '180']
       return platinumChange(currentPrice, value, periodMetrics?.referencePrice)
     }
@@ -338,8 +369,8 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
   const hourlyChart = HOURLY_RANGES.has(chartRange) && hourlySeries
   const chartHistory = hourlyChart
     ? hourlySeries.history.map(point => ({ date: point.timestamp, min: point.min, median: point.median, max: point.max, sales: point.volume }))
-    : series?.history || []
-  const chartLatest = hourlyChart ? hourlySeries.latestAt || hourly?.fetchedAt || '' : series?.updatedDate || ''
+    : mergedDailyHistory
+  const chartLatest = hourlyChart ? hourlySeries.latestAt || hourly?.fetchedAt || '' : hourlySeries?.dailyLatestDate || mergedDailyHistory[mergedDailyHistory.length - 1]?.date || series?.updatedDate || ''
 
   useEffect(() => { setChartRange(periodRange(period)) }, [period])
 
