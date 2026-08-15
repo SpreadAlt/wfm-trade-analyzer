@@ -1,4 +1,4 @@
-# FrameAnalytics v0.7.2
+# FrameAnalytics v0.7.3
 
 Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline.
 

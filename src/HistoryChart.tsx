@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { Locale } from './i18n'
 import type { HistoryPoint, TimeRange } from './types'
 
@@ -11,7 +11,7 @@ const formatDate = (value: string, locale: Locale, short = false) => {
   if (Number.isNaN(date.getTime())) return value
   const hourly = value.includes('T')
   return new Intl.DateTimeFormat(intlLocale(locale), hourly
-    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
+    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
     : short
       ? { day: '2-digit', month: '2-digit', timeZone: 'UTC' }
       : { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(date)
@@ -39,6 +39,7 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels }: {
   locale: Locale
   labels: { empty: string; chart: string; min: string; median: string; max: string; sales: string }
 }) => {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const cutoff = useMemo(() => {
     const latest = parsePointDate(latestDate)
     if (!Number.isFinite(latest)) return Number.NEGATIVE_INFINITY
@@ -67,9 +68,27 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels }: {
   const px = (index: number) => pad.left + (index / Math.max(1, visible.length - 1)) * innerW
   const py = (value: number) => pad.top + (1 - (value - priceMin) / Math.max(1, priceMax - priceMin)) * innerH
   const xIndexes = Array.from(new Set([0, Math.round((visible.length - 1) * .25), Math.round((visible.length - 1) * .5), Math.round((visible.length - 1) * .75), visible.length - 1]))
+  const activeIndex = hoverIndex == null ? null : Math.min(hoverIndex, visible.length - 1)
+  const activePoint = activeIndex == null ? null : visible[activeIndex]
+  const activeX = activeIndex == null ? 0 : px(activeIndex)
+  const tooltipPosition = activeX < width * .25 ? 'start' : activeX > width * .75 ? 'end' : 'center'
+
+  const updateHover = (clientX: number, bounds: DOMRect) => {
+    const viewX = (clientX - bounds.left) * width / Math.max(1, bounds.width)
+    const ratio = (viewX - pad.left) / innerW
+    setHoverIndex(Math.max(0, Math.min(visible.length - 1, Math.round(ratio * (visible.length - 1)))))
+  }
 
   return <div className="chart-shell">
-    <svg viewBox={`0 0 ${width} ${height}`} className="price-chart" role="img" aria-label={labels.chart}>
+    <svg viewBox={`0 0 ${width} ${height}`} className="price-chart" role="img" aria-label={labels.chart} tabIndex={0}
+      onPointerMove={event => updateHover(event.clientX, event.currentTarget.getBoundingClientRect())}
+      onPointerLeave={() => setHoverIndex(null)}
+      onBlur={() => setHoverIndex(null)}
+      onKeyDown={event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+        event.preventDefault()
+        setHoverIndex(current => Math.max(0, Math.min(visible.length - 1, (current ?? visible.length - 1) + (event.key === 'ArrowRight' ? 1 : -1))))
+      }}>
       {[0, .25, .5, .75, 1].map(ratio => {
         const y = pad.top + ratio * innerH
         return <g key={ratio}><line x1={pad.left} x2={width - pad.right} y1={y} y2={y} className="grid-line"/><text x="8" y={y + 4} className="axis-label">{fmtNumber(priceMax - ratio * (priceMax - priceMin), 0)}</text></g>
@@ -82,9 +101,19 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels }: {
       <path d={buildLinePath(visible, 'min', px, py)} className="line min-line"/>
       <path d={buildLinePath(visible, 'median', px, py)} className="line median-line"/>
       <path d={buildLinePath(visible, 'max', px, py)} className="line max-line"/>
+      {activePoint ? <g className="chart-hover" aria-hidden="true">
+        <line x1={activeX} x2={activeX} y1={pad.top} y2={height - pad.bottom} className="hover-guide"/>
+        {(['min', 'median', 'max'] as const).map(key => activePoint[key] == null ? null : <circle key={key} cx={activeX} cy={py(activePoint[key]!)} r="5" className={`hover-point ${key}-point`}/>)}</g> : null}
       {[0, .5, 1].map(ratio => <text key={ratio} x={width - pad.right + 8} y={height - pad.bottom - ratio * volumeBand + 4} className="axis-label sales-axis">{Math.round(volumeMax * ratio)}</text>)}
       {xIndexes.map(index => <text key={index} x={px(index)} y={height - 17} textAnchor="middle" className="axis-label">{formatDate(visible[index]?.date, locale, true)}</text>)}
     </svg>
+    {activePoint ? <div className={`chart-tooltip tooltip-${tooltipPosition}`} style={{ left: `${activeX / width * 100}%` }}>
+      <strong>{formatDate(activePoint.date, locale)}</strong>
+      <span><i className="tooltip-dot min-dot"/>{labels.min}<b>{activePoint.min == null ? '—' : fmtNumber(activePoint.min)}p</b></span>
+      <span><i className="tooltip-dot median-dot"/>{labels.median}<b>{activePoint.median == null ? '—' : fmtNumber(activePoint.median)}p</b></span>
+      <span><i className="tooltip-dot max-dot"/>{labels.max}<b>{activePoint.max == null ? '—' : fmtNumber(activePoint.max)}p</b></span>
+      <span><i className="tooltip-dot volume-dot"/>{labels.sales}<b>{activePoint.sales}</b></span>
+    </div> : null}
     <div className="legend"><span><i className="legend-dot min-dot"/>{labels.min}</span><span><i className="legend-dot median-dot"/>{labels.median}</span><span><i className="legend-dot max-dot"/>{labels.max}</span><span><i className="legend-dot volume-dot"/>{labels.sales}</span></div>
   </div>
 }
