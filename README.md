@@ -1,10 +1,10 @@
-# FrameAnalytics v0.8.1
+# FrameAnalytics v0.8.3
 
-Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline.
+Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline. The backend keeps its technical Scanner v3 name, while the user interface calls this section Statistics.
 
 ## Data
 
-The scanner uses `/api/scanner-v3`, item pages use `/api/item-v3` and `/api/metrics-v3`, and localized item names/icons use the cached `/api/catalog-v3` endpoint. Scalar and variant markets remain separate. Public item history covers up to 180 days.
+The statistics page uses `/api/scanner-v3`, item pages use `/api/item-v3` and `/api/metrics-v3`, and localized item names/icons use the cached `/api/catalog-v3` endpoint. Scalar and variant markets remain separate. Public item history covers up to 180 days. Item pages link to the matching Warframe Market item without presenting FrameAnalytics as an order interface.
 
 Platform and crossplay are independent preferences. Crossplay defaults to enabled. Nintendo Switch always disables crossplay and is never included in the crossplay scope. The current daily v3 dataset remains platform-specific and never merges platform histories.
 
@@ -18,7 +18,7 @@ The Updated column uses the WFM fetch timestamp. The latest non-empty trade buck
 
 Rank 0/no-rank is the default scanner view and all available hourly ranks can be expanded independently. Normalization v3.1 daily analytics still contain only the catalog maximum-rank mod market, so non-canonical ranks deliberately show hourly values only; their daily potential, score, and forecast remain empty rather than borrowing max-rank analytics.
 
-The test account is deliberately local-only. `/portfolio` is a separate application page and stores manually entered purchases in browser `localStorage`; permanent authentication and server synchronization are not presented as available yet. It requests the purchased item IDs from the finalized Hourly Index/Scanner in batches, shows the scanner columns for the exact purchased market series, and calculates current value, possible profit and return as `(current price − purchase price) × quantity`. It never contacts WFM directly.
+The temporary profile is deliberately local-only. `/profile` is a separate application page and stores manually entered purchases in browser `localStorage`; permanent authentication and server synchronization are not presented as available yet. The legacy `/portfolio` route remains readable for old links. The profile requests purchased item IDs from the finalized Hourly Index/Scanner in batches, shows the statistics columns for the exact purchased market series, and calculates current value, possible profit and return as `(current price − purchase price) × quantity`. It never contacts WFM directly.
 
 Events v1 observes Digital Extremes' first-party World State feed for Baro Ki'Teer and Prime Resurgence inventory. Because the official endpoint rejects some Cloudflare egress IPs, the repository includes an authenticated hourly GitHub Actions relay. The Worker validates the relayed JSON before storing it. It maps normalized game references to market items, expands a matched Prime Set to its tradeable components, adds contextual icons and graph markers, and applies a supply-event downward tendency to the arrow without silently changing the Scanner v3 score. Event history starts when Events v1 is deployed; older events are never fabricated.
 
@@ -33,7 +33,7 @@ npm run build
 
 ## Deploy
 
-Deploy Worker file `FrameAnalytics_Worker_v1.0.4.js` first because the frontend expects independent Scanner/Hourly Index pagination, server-side daily and hourly sorting, `ids=` batch filtering for the portfolio, localized names, and Events v1. No raw, normalization, Items, Metrics, Scanner, Hourly, or Hourly Index rebuild is required for these read-only API changes.
+Deploy Worker file `FrameAnalytics_Worker_v1.0.4.js` first because the frontend expects independent Scanner/Hourly Index pagination, server-side daily and hourly sorting, `ids=` batch filtering for the profile, localized names, and Events v1. No raw, normalization, Items, Metrics, Scanner, Hourly, or Hourly Index rebuild is required for these read-only API changes.
 
 The project includes an explicit `wrangler.jsonc` for the existing `wfm-trade-analyzer` Worker. The `dist` directory is deployed as static assets with SPA fallback enabled.
 

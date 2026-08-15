@@ -40,7 +40,17 @@ const en = {
   chooseRanges: 'Choose columns',
   itemImage: 'Item image',
   dataUnavailable: 'Data unavailable',
-  close: 'Close'
+  close: 'Close',
+  typicalPrice: 'Typical price',
+  typicalPriceHint: 'The middle daily price: half of the available days were cheaper and half were more expensive.',
+  lowerPrice: 'Lower price range',
+  lowerPriceHint: 'Only about 25% of available daily prices were at or below this value.',
+  upperPrice: 'Upper price range',
+  upperPriceHint: 'Only about 25% of available daily prices were above this value.',
+  priceFluctuation: 'Price fluctuation',
+  priceFluctuationHint: 'How strongly the price varied around its average. A smaller percentage means a more stable market.',
+  openOnWfm: 'Open on WFM',
+  wfmItemHint: 'Open this item on Warframe Market'
 } as const
 
 export type ExtraText = Record<keyof typeof en, string>
@@ -85,7 +95,17 @@ const ru: ExtraText = {
   chooseRanges: 'Выбрать столбцы',
   itemImage: 'Изображение предмета',
   dataUnavailable: 'Данные недоступны',
-  close: 'Закрыть'
+  close: 'Закрыть',
+  typicalPrice: 'Типичная цена',
+  typicalPriceHint: 'Центральная дневная цена: половину доступных дней предмет стоил дешевле, половину — дороже.',
+  lowerPrice: 'Нижняя граница',
+  lowerPriceHint: 'Только примерно в 25% доступных дней цена была не выше этого значения.',
+  upperPrice: 'Верхняя граница',
+  upperPriceHint: 'Только примерно в 25% доступных дней цена была выше этого значения.',
+  priceFluctuation: 'Колебания цены',
+  priceFluctuationHint: 'Насколько сильно менялась цена относительно среднего. Чем меньше процент, тем стабильнее рынок.',
+  openOnWfm: 'Открыть на WFM',
+  wfmItemHint: 'Открыть страницу этого предмета на Warframe Market'
 }
 
 export const getExtraText = (locale: Locale): ExtraText => locale === 'ru' ? ru : en

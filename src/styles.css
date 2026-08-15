@@ -400,11 +400,14 @@ html[data-theme="light"] .legend {
 .brand-plate {
   width: min(385px, 50vw);
   height: 78px;
+  display:flex;
+  align-items:center;
   padding: 0;
   background: transparent;
   border: 0;
   clip-path: none;
   box-shadow: none;
+  text-decoration:none;
 }
 
 .brand-plate img {
@@ -418,11 +421,21 @@ html[data-theme="light"] .legend {
 .footer-brand {
   width: 235px;
   height: 40px;
+  display:flex;
+  align-items:center;
   overflow: visible;
   background: transparent;
   clip-path: none;
   padding: 0;
+  text-decoration:none;
 }
+
+.brand-plate,
+.footer-brand { border-radius:10px; transition:filter .16s ease, transform .16s ease; }
+.brand-plate:hover,
+.footer-brand:hover { filter:brightness(1.1); transform:translateY(-1px); }
+.brand-plate:focus-visible,
+.footer-brand:focus-visible { outline:2px solid #54dfa9; outline-offset:4px; }
 
 .footer-brand img {
   width: 100%;
@@ -1415,6 +1428,10 @@ html[data-theme="light"] .pagination-buttons strong {
 .portfolio-remove:hover { border-color:rgba(255,116,121,.55); background:rgba(255,116,121,.16); }
 
 .detail-hero { display:flex; justify-content:space-between; gap:28px; align-items:stretch; margin-bottom:12px; padding:18px; }
+.detail-navigation { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:12px; }
+.detail-navigation .detail-brand { width:min(300px,48vw); height:54px; }
+.detail-navigation .detail-brand img { max-height:52px; }
+.detail-navigation .back-button { flex:none; margin:0; padding:9px 0; }
 .detail-hero h1 { max-width:720px; margin:5px 0 8px; overflow:hidden; text-overflow:ellipsis; font-size:34px; line-height:1.1; }
 .detail-hero .price-big { font-size:58px; }
 .detail-meta-row { display:flex; align-items:center; justify-content:flex-end; gap:12px; color:#7893b1; font-size:11px; }
@@ -1432,15 +1449,22 @@ html[data-theme="light"] .pagination-buttons strong {
 .range-strip strong { font-size:16px; }
 .range-strip small { font-size:10px; font-weight:800; }
 .range-strip i { position:absolute; right:7px; top:5px; color:#4ee7b0; font-size:8px; font-style:normal; }
-.insight-row { display:grid; grid-template-columns:1fr .7fr 1fr; gap:1px; margin-top:10px; overflow:hidden; border:1px solid #26384f; border-radius:13px; background:#26384f; }
-.insight-row > div { min-height:84px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:7px; padding:11px; text-align:center; background:rgba(11,22,36,.96); }
-.insight-row strong { display:flex; align-items:baseline; gap:6px; color:#edf6ff; font-size:24px; }
+.insight-row { display:grid; grid-template-columns:1fr .62fr .78fr .72fr; gap:1px; margin-top:10px; overflow:hidden; border:1px solid #26384f; border-radius:13px; background:#26384f; }
+.insight-row > div,
+.insight-row > a { min-height:72px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:6px; padding:8px 10px; text-align:center; background:rgba(11,22,36,.96); }
+.insight-row strong { display:flex; align-items:baseline; gap:6px; color:#edf6ff; font-size:21px; }
 .insight-row strong small { color:#8197b1; font-size:11px; }
-.insight-forecast { flex-direction:row !important; gap:14px !important; }
+.insight-forecast { flex-direction:row !important; gap:10px !important; }
+.insight-market-link { color:#83a4c8; text-decoration:none; transition:color .15s ease, background .15s ease; }
+.insight-market-link svg { width:23px; height:23px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.insight-market-link:hover { color:#55e1ad; background:#10283a; }
+.insight-market-link:focus-visible { position:relative; z-index:1; outline:2px solid #54dfa9; outline-offset:-3px; }
 .analysis-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-top:10px; overflow:hidden; border:1px solid #26384f; border-radius:11px; background:#26384f; }
 .analysis-strip > span { display:flex; align-items:center; justify-content:center; gap:9px; padding:8px 10px; background:rgba(8,17,29,.82); }
-.analysis-strip small { color:#6f89a8; font-size:9px; font-weight:850; text-transform:uppercase; }
+.analysis-strip small { display:inline-flex; align-items:center; gap:5px; color:#6f89a8; font-size:9px; font-weight:850; text-transform:uppercase; }
 .analysis-strip strong { color:#dce9f8; font-size:13px; }
+.analysis-item { cursor:help; }
+.metric-help { width:14px; height:14px; display:inline-grid; place-items:center; border:1px solid currentColor; border-radius:50%; font-size:9px; font-style:normal; line-height:1; opacity:.82; }
 
 .account-backdrop { position:fixed; inset:0; z-index:1000; display:flex; justify-content:flex-end; background:rgba(2,7,12,.58); backdrop-filter:blur(5px); }
 .account-panel { width:min(440px,100%); height:100%; display:flex; flex-direction:column; padding:22px; color:#e9f2ff; background:#091321; border-left:1px solid #2a3d55; box-shadow:-18px 0 50px rgba(0,0,0,.32); }
@@ -1490,10 +1514,13 @@ html[data-theme="light"] .insight-row,
 html[data-theme="light"] .analysis-strip { border-color:#a6b9bf; background:#a6b9bf; }
 html[data-theme="light"] .range-strip > div,
 html[data-theme="light"] .insight-row > div,
+html[data-theme="light"] .insight-row > a,
 html[data-theme="light"] .analysis-strip > span { background:#d5e1e4; }
 html[data-theme="light"] .insight-row strong,
 html[data-theme="light"] .analysis-strip strong,
 html[data-theme="light"] .detail-meta-row strong { color:#18303a; }
+html[data-theme="light"] .insight-market-link { color:#3d6172; }
+html[data-theme="light"] .insight-market-link:hover { color:#006e58; background:#c7d7db; }
 html[data-theme="light"] .account-panel,
 html[data-theme="light"] .purchase-dialog { color:#18303a; background:#d6e1e4; border-color:#9fb3ba; }
 html[data-theme="light"] .account-summary,
@@ -1606,4 +1633,6 @@ html[data-theme="light"] .hover-point { stroke:#f6fafb; }
   .range-strip > div { border-bottom:1px solid #26384f; }
   .analysis-strip { grid-template-columns:1fr; }
   .detail-hero .price-big { font-size:48px; }
+  .detail-navigation { align-items:flex-start; flex-direction:column; gap:4px; }
+  .detail-navigation .detail-brand { width:min(280px,90vw); }
 }

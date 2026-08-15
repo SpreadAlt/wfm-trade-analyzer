@@ -218,7 +218,7 @@ const readRoute = (): RouteState => {
   const params = new URLSearchParams(location.search)
   const rankValue = Number(params.get('rank'))
   const rank = params.has('rank') && Number.isInteger(rankValue) && rankValue >= 0 ? rankValue : null
-  if (/^\/portfolio\/?$/.test(location.pathname)) {
+  if (/^\/(?:profile|portfolio)\/?$/.test(location.pathname)) {
     return { kind: 'portfolio', slug: null, id: null, variant: null, rank: null }
   }
   return match
@@ -227,11 +227,11 @@ const readRoute = (): RouteState => {
 }
 
 const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; setLocale: (value: Locale) => void; theme: Theme; setTheme: (value: Theme) => void; t: T }) => <footer className="footer-bar">
-  <div className="footer-brand"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></div>
+  <a className="footer-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a>
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.8.1</div>
+  <div className="footer-version">{t('version')} 0.8.3</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 
@@ -344,7 +344,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
   useEffect(() => { setChartRange(periodRange(period)) }, [period])
 
   return <main className="app-shell detail-shell">
-    <button className="back-button" onClick={onBack}>{t('back')}</button>
+    <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button className="back-button" onClick={onBack}>{t('back')}</button></div>
     {loading ? <section className="panel state-panel"><div className="spinner"/><strong>{u.loading}</strong></section> : error || !detail ? <section className="panel state-panel error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={onRetry}>{u.retry}</button></section> : <>
       <section className="detail-hero panel">
         <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)}</div><h1>{name}{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale}/> : null}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{selectedRank != null || canonicalRank != null ? <span>{x.rank}: {selectedRank ?? canonicalRank}</span> : null}{!series?.hasHistory && !hourlySeries ? <span className="no-history-tag">{x.noHistory}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
@@ -352,8 +352,8 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
       </section>
       <section className="detail-dashboard panel">
         <div className="range-strip">{visibleRanges.map(range => <div className={`${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</div>
-        <div className="insight-row"><div><span>{mode === 'buy' ? t('buyPotential') : t('sellPotential')}</span><strong>{analytics?.[mode].potential != null && analytics[mode].potential! > 0 ? `+${fmtPlat(analytics[mode].potential)}` : '—'}<small>{analytics?.[mode].potentialPct != null && analytics[mode].potentialPct! > 0 ? fmtPlainPercent(analytics[mode].potentialPct) : ''}</small></strong></div><div><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div><div className="insight-forecast"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={currentEvent ? 'down' : consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat} large/>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</div></div>
-        {analytics ? <div className="analysis-strip"><span><small>{u.baseline}</small><strong>{fmtPlat(analytics.baseline)}</strong></span><span><small>{u.q25}</small><strong>{fmtPlat(analytics.q25)}</strong></span><span><small>{u.q75}</small><strong>{fmtPlat(analytics.q75)}</strong></span><span><small>{u.volatility}</small><strong>{fmtPlainPercent(analytics.volatility)}</strong></span></div> : null}
+        <div className="insight-row"><div><span>{mode === 'buy' ? t('buyPotential') : t('sellPotential')}</span><strong>{analytics?.[mode].potential != null && analytics[mode].potential! > 0 ? `+${fmtPlat(analytics[mode].potential)}` : '—'}<small>{analytics?.[mode].potentialPct != null && analytics[mode].potentialPct! > 0 ? fmtPlainPercent(analytics[mode].potentialPct) : ''}</small></strong></div><div><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div><div className="insight-forecast"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={currentEvent ? 'down' : consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</div><a className="insight-market-link" href={`https://warframe.market/items/${encodeURIComponent(detail.slug)}`} target="_blank" rel="noopener noreferrer" title={x.wfmItemHint}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"/></svg><span>{x.openOnWfm}</span></a></div>
+        {analytics ? <div className="analysis-strip"><span className="analysis-item" title={x.typicalPriceHint} aria-label={`${x.typicalPrice}. ${x.typicalPriceHint}`}><small>{x.typicalPrice}<i className="metric-help" aria-hidden="true">?</i></small><strong>{fmtPlat(analytics.baseline)}</strong></span><span className="analysis-item" title={x.lowerPriceHint} aria-label={`${x.lowerPrice}. ${x.lowerPriceHint}`}><small>{x.lowerPrice}<i className="metric-help" aria-hidden="true">?</i></small><strong>{fmtPlat(analytics.q25)}</strong></span><span className="analysis-item" title={x.upperPriceHint} aria-label={`${x.upperPrice}. ${x.upperPriceHint}`}><small>{x.upperPrice}<i className="metric-help" aria-hidden="true">?</i></small><strong>{fmtPlat(analytics.q75)}</strong></span><span className="analysis-item" title={x.priceFluctuationHint} aria-label={`${x.priceFluctuation}. ${x.priceFluctuationHint}`}><small>{x.priceFluctuation}<i className="metric-help" aria-hidden="true">?</i></small><strong>{fmtPlainPercent(analytics.volatility)}</strong></span></div> : null}
       </section>
       <section className="panel chart-panel">
         <div className="panel-title-row"><div><div className="eyebrow">{t('closedSales')} · {u.analysisWindow}: {rangeLabel(chartRange, x)}</div><h2>{u.priceHistory}</h2></div><div className="time-tabs time-tabs-all">{TIME_RANGES.map(range => { const unavailable = HOURLY_RANGES.has(range) && range !== '24h' && !hourlySeries; return <button key={range} disabled={unavailable} title={unavailable ? x.hourlyUnavailable : undefined} className={chartRange === range ? 'time-tab active' : 'time-tab'} onClick={() => !unavailable && setChartRange(range)}>{rangeLabel(range, x)}</button> })}</div></div>
@@ -406,7 +406,7 @@ const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, 
   const eventFor = (itemId: string) => events.find(event => event.itemId === itemId && (event.status === 'active' || event.status === 'upcoming')) || null
 
   return <main className="app-shell portfolio-shell">
-    <header className="topbar"><div><div className="brand-plate"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></div><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(account)} onClick={() => undefined}/></div></header>
+    <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(account)} onClick={() => undefined}/></div></header>
     <div className="portfolio-heading"><button type="button" className="back-button" onClick={onBack}>← {text.back}</button><div><span>{text.savedLocally}</span><h1>{text.title}</h1><p>{text.unavailable}</p></div></div>
     {!account ? <section className="panel portfolio-onboarding"><div className="account-orb"><span>FA</span></div><strong>{text.unavailable}</strong><p>{text.explanation}</p><button type="button" className="primary-action" onClick={onCreate}>{text.create}</button></section> : <>
       <section className="portfolio-summary-grid">
@@ -579,7 +579,7 @@ export default function App() {
         platform, crossplay, rank: 'all', period, mode, ids: batch,
         offset: 0, limit: 200, sort: 'name', direction: 'asc', language: locale
       }, controller.signal).then(data => {
-        if (data.groupedByItem) throw new Error('Portfolio requires independent market rows')
+        if (data.groupedByItem) throw new Error('Profile requires independent market rows')
         return data.items
       }))
       : batches.map(batch => fetchScanner({
@@ -825,7 +825,7 @@ export default function App() {
   const openPortfolio = () => {
     if (route.kind === 'portfolio') return
     const params = new URLSearchParams({ platform, period: String(period), crossplay: String(crossplay) })
-    history.pushState({ frameanalyticsPortfolioFrom: route.kind }, '', `/portfolio?${params}`)
+    history.pushState({ frameanalyticsPortfolioFrom: route.kind }, '', `/profile?${params}`)
     setRoute(readRoute())
     setOpenPanel(null)
     scrollTo({ top: 0 })
@@ -872,14 +872,14 @@ export default function App() {
     if (route.kind === 'item' && route.id) params.set('id', route.id)
     if (route.kind === 'item' && route.variant) params.set('variant', route.variant)
     if (route.kind === 'item' && route.rank != null) params.set('rank', String(route.rank))
-    const path = route.kind === 'item' && route.slug ? `/items/${encodeURIComponent(route.slug)}` : route.kind === 'portfolio' ? '/portfolio' : '/'
+    const path = route.kind === 'item' && route.slug ? `/items/${encodeURIComponent(route.slug)}` : route.kind === 'portfolio' ? '/profile' : '/'
     history.replaceState(history.state, '', `${path}?${params}`)
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
 
   return <>
     <div className="background-layer"/><div className="background-shade"/>
     {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(temporaryAccount)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onCreate={() => setTemporaryAccount(createTemporaryAccount())} onRetry={() => setPortfolioReload(value => value + 1)} onRemove={id => setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null)} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
-      <header className="topbar"><div><div className="brand-plate"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></div><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(temporaryAccount)} onClick={openPortfolio}/></div></header>
+      <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(temporaryAccount)} onClick={openPortfolio}/></div></header>
       <section className="mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button></section>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>

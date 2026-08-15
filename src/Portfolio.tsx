@@ -43,22 +43,22 @@ export const createTemporaryAccount = (): TemporaryAccount => ({
 })
 
 export const portfolioText = (locale: Locale) => locale === 'ru' ? {
-  account: 'Тестовый кабинет', title: 'Локальный портфель', unavailable: 'Постоянная авторизация пока недоступна.',
+  account: 'Профиль', title: 'Мой профиль', unavailable: 'Постоянная авторизация пока недоступна.',
   explanation: 'Создайте временный аккаунт: покупки сохранятся только в этом браузере и не синхронизируются.',
-  create: 'Создать временный аккаунт', empty: 'В портфеле пока нет покупок.', close: 'Закрыть',
+  create: 'Создать временный профиль', empty: 'В профиле пока нет покупок.', close: 'Закрыть',
   price: 'Цена покупки', quantity: 'Количество', date: 'Дата покупки', add: 'Добавить покупку', cancel: 'Отмена',
   savedLocally: 'Сохранено локально', remove: 'Удалить', total: 'Вложено', currentValue: 'Стоимость сейчас',
-  possibleProfit: 'Возможная прибыль сейчас', returnPct: 'Доходность', purchases: 'Покупки', back: 'К сканеру',
-  loading: 'Загружаем рыночные данные портфеля…', loadError: 'Не удалось загрузить рыночные данные.', retry: 'Повторить',
+  possibleProfit: 'Возможная прибыль сейчас', returnPct: 'Доходность', purchases: 'Покупки', back: 'К статистике',
+  loading: 'Загружаем рыночные данные профиля…', loadError: 'Не удалось загрузить рыночные данные.', retry: 'Повторить',
   unavailableMarket: 'Рыночная серия пока недоступна', profitHint: '(текущая цена − цена покупки) × количество'
 } : {
-  account: 'Test account', title: 'Local portfolio', unavailable: 'Permanent sign-in is not available yet.',
+  account: 'Profile', title: 'My profile', unavailable: 'Permanent sign-in is not available yet.',
   explanation: 'Create a temporary account. Purchases stay only in this browser and are not synchronized.',
-  create: 'Create temporary account', empty: 'No purchases have been added yet.', close: 'Close',
+  create: 'Create temporary profile', empty: 'No purchases have been added to this profile yet.', close: 'Close',
   price: 'Purchase price', quantity: 'Quantity', date: 'Purchase date', add: 'Add purchase', cancel: 'Cancel',
   savedLocally: 'Stored locally', remove: 'Remove', total: 'Invested', currentValue: 'Current value',
-  possibleProfit: 'Possible profit now', returnPct: 'Return', purchases: 'Purchases', back: 'Back to scanner',
-  loading: 'Loading portfolio market data…', loadError: 'Could not load market data.', retry: 'Retry',
+  possibleProfit: 'Possible profit now', returnPct: 'Return', purchases: 'Purchases', back: 'Back to statistics',
+  loading: 'Loading profile market data…', loadError: 'Could not load market data.', retry: 'Retry',
   unavailableMarket: 'Market series is not available yet', profitHint: '(current price − purchase price) × quantity'
 }
 
