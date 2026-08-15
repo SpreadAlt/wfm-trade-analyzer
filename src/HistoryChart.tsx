@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Locale } from './i18n'
-import type { HistoryPoint, TimeRange } from './types'
+import type { HistoryPoint, MarketEvent, TimeRange } from './types'
 
 const fmtNumber = (value: number, digits = 1) => value.toFixed(digits).replace(/\.0$/, '')
 const intlLocale = (locale: Locale) => locale === 'zh-hans' ? 'zh-Hans' : locale === 'zh-hant' ? 'zh-Hant' : locale
@@ -32,12 +32,13 @@ const buildLinePath = (history: HistoryPoint[], key: 'min' | 'median' | 'max', p
   return path.trim()
 }
 
-export const HistoryChart = ({ history, latestDate, range, locale, labels }: {
+export const HistoryChart = ({ history, latestDate, range, locale, labels, events = [] }: {
   history: HistoryPoint[]
   latestDate: string
   range: TimeRange
   locale: Locale
   labels: { empty: string; chart: string; min: string; median: string; max: string; sales: string }
+  events?: MarketEvent[]
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const cutoff = useMemo(() => {
@@ -72,6 +73,19 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels }: {
   const activePoint = activeIndex == null ? null : visible[activeIndex]
   const activeX = activeIndex == null ? 0 : px(activeIndex)
   const tooltipPosition = activeX < width * .25 ? 'start' : activeX > width * .75 ? 'end' : 'center'
+  const visibleEvents = events.filter(event => {
+    const at = Date.parse(event.startAt || '')
+    return Number.isFinite(at) && at >= parsePointDate(visible[0].date) && at <= parsePointDate(visible[visible.length - 1].date)
+  }).map(event => {
+    const eventAt = Date.parse(event.startAt || '')
+    let nearest = 0
+    let nearestDistance = Number.POSITIVE_INFINITY
+    visible.forEach((point, index) => {
+      const distance = Math.abs(parsePointDate(point.date) - eventAt)
+      if (distance < nearestDistance) { nearest = index; nearestDistance = distance }
+    })
+    return { event, x: px(nearest) }
+  })
 
   const updateHover = (clientX: number, bounds: DOMRect) => {
     const viewX = (clientX - bounds.left) * width / Math.max(1, bounds.width)
@@ -101,6 +115,12 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels }: {
       <path d={buildLinePath(visible, 'min', px, py)} className="line min-line"/>
       <path d={buildLinePath(visible, 'median', px, py)} className="line median-line"/>
       <path d={buildLinePath(visible, 'max', px, py)} className="line max-line"/>
+      {visibleEvents.map(({ event, x }) => <g key={event.fingerprint} className={`chart-event-marker ${event.eventType}`}>
+        <line x1={x} x2={x} y1={pad.top} y2={height - pad.bottom} className="event-guide"/>
+        <circle cx={x} cy={pad.top + 10} r="8" className="event-node"/>
+        <text x={x} y={pad.top + 14} textAnchor="middle" className="event-symbol">{event.eventType === 'baro' ? 'B' : 'P'}</text>
+        <title>{`${event.eventType === 'baro' ? "Baro Ki'Teer" : 'Prime Resurgence'} · ${formatDate(event.startAt || '', locale)}`}</title>
+      </g>)}
       {activePoint ? <g className="chart-hover" aria-hidden="true">
         <line x1={activeX} x2={activeX} y1={pad.top} y2={height - pad.bottom} className="hover-guide"/>
         {(['min', 'median', 'max'] as const).map(key => activePoint[key] == null ? null : <circle key={key} cx={activeX} cy={py(activePoint[key]!)} r="5" className={`hover-point ${key}-point`}/>)}</g> : null}

@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fetchCatalog, fetchHourly, fetchItem, fetchMetrics, fetchScanner } from './api'
+import { fetchCatalog, fetchEvents, fetchHourly, fetchHourlyIndex, fetchItem, fetchMetrics, fetchScanner } from './api'
 import { getExtraText } from './extraText'
 import { HistoryChart } from './HistoryChart'
-import { CATEGORY_IDS, ForecastIndicator, formatDimensions, ItemIcon } from './MarketVisuals'
+import { CATEGORY_IDS, ForecastIndicator, formatDimensions, ItemIcon, MarketEventBadge } from './MarketVisuals'
 import type { CategoryId } from './MarketVisuals'
+import { AccountButton, createTemporaryAccount, loadTemporaryAccount, PortfolioPanel, PurchaseDialog, saveTemporaryAccount } from './Portfolio'
+import type { PortfolioPurchase, TemporaryAccount } from './Portfolio'
 import { localeNames, translations } from './i18n'
 import type { Locale, Theme, TranslationKey } from './i18n'
 import { paginationText } from './paginationText'
 import { uiText } from './uiText'
 import type { UiText } from './uiText'
 import type {
-  AnalysisPeriod, CatalogItem, HourlyRange, HourlyResponse, HourlySeries, ItemDetail, ItemSeries,
-  MetricSeries, MetricsItem, PeriodAnalytics, Platform, ScannerItem, ScannerMode, ScannerSignal,
+  AnalysisPeriod, CatalogItem, HourlyIndexRow, HourlyIndexResponse, HourlyRange, HourlyResponse, HourlySeries, ItemDetail, ItemSeries,
+  MarketEvent, MetricSeries, MetricsItem, PeriodAnalytics, Platform, ScannerItem, ScannerMode, ScannerSignal,
   ScannerSort, SortDirection, TimeRange
 } from './types'
 
@@ -34,6 +36,7 @@ const PAGE_SIZES: PageSize[] = [25, 50, 100, 200]
 const TIME_RANGES: TimeRange[] = ['1h', '4h', '12h', '24h', '7d', '30d', '90d', '180d']
 const DEFAULT_RANGES: TimeRange[] = ['24h', '7d', '30d']
 const HOURLY_RANGES = new Set<TimeRange>(['1h', '4h', '12h', '24h'])
+const HOURLY_INDEX_SORTS = new Set<ScannerSort>(['currentPrice', 'change1h', 'change4h', 'change12h', 'change24h'])
 
 const fmtNumber = (value: number | null | undefined, digits = 1) => value == null || !Number.isFinite(value) ? '—' : value.toFixed(digits).replace(/\.0$/, '')
 const fmtPercent = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
@@ -96,6 +99,32 @@ const emptySignal = (): ScannerSignal => ({
   regimeGapPct: null, falling: false, rising: false, regimeShift: false, liquidEnough: false,
   enoughCoverage: false, meaningful: false,
   breakdown: { potential: 0, channelPosition: 0, coverage: 0, liquidity: 0, stability: 0 }, flags: []
+})
+
+const hourlySeriesFromIndex = (row: HourlyIndexRow): HourlySeries => ({
+  marketKey: row.marketKey,
+  dimensions: row.dimensions || {},
+  currentPrice: row.currentPrice,
+  latestAt: row.latestAt,
+  changes: {
+    '1h': { percent: row.change1h, platinum: row.change1hPlatinum, referenceAt: null },
+    '4h': { percent: row.change4h, platinum: row.change4hPlatinum, referenceAt: null },
+    '12h': { percent: row.change12h, platinum: row.change12hPlatinum, referenceAt: null },
+    '24h': { percent: row.change24h, platinum: row.change24hPlatinum, referenceAt: null }
+  },
+  history: []
+})
+
+const scannerFallbackFromIndex = (row: HourlyIndexRow, period: AnalysisPeriod): ScannerItem => ({
+  rowId: row.rowId, itemId: row.itemId, id: row.id, name: row.name, displayName: row.displayName,
+  slug: row.slug, category: row.category, subcategory: row.subcategory, defaultEnabled: row.defaultEnabled,
+  marketMode: 'none', marketKey: row.marketKey, variantKey: row.marketKey.startsWith('subtype=') ? row.marketKey : null,
+  dimensions: row.dimensions, selectedModRank: row.selectedModRank, period, hasHistory: false, hasCurrentDay: false,
+  currentPrice: row.currentPrice, change1h: row.change1h, change24h: row.change24h, change7d: null, changePeriod: null,
+  sales24h: null, averageVolume7d: null, channelPosition: null, coveragePct: null, volatility: null,
+  updatedDate: row.fetchedAt, buy: emptySignal(), sell: emptySignal(), buyPotential: null, buyPotentialPct: null,
+  buyScore: null, buyDecision: 'LOW_PRIORITY', sellPotential: null, sellPotentialPct: null, sellScore: null,
+  sellDecision: 'LOW_PRIORITY'
 })
 
 const rangeLabel = (range: TimeRange, x: ReturnType<typeof getExtraText>) => x[`range${range}` as keyof typeof x]
@@ -170,7 +199,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.7.3</div>
+  <div className="footer-version">{t('version')} 0.8.0</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 
@@ -209,12 +238,13 @@ const MarketSelector = ({ platform, crossplay, locale, onPlatform, onCrossplay }
   </div>
 }
 
-const Detail = ({ detail, metrics, hourly, summary, catalogItem, variantKey, selectedRank, platform, crossplay, period, visibleRanges, mode, locale, loading, hourlyLoading, error, onBack, onRetry, onVariant, onRank, onPlatform, onCrossplay, t }: {
+const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variantKey, selectedRank, platform, crossplay, period, visibleRanges, mode, locale, loading, hourlyLoading, error, hasAccount, onBack, onRetry, onVariant, onRank, onPlatform, onCrossplay, onOpenAccount, onAddPurchase, t }: {
   detail: ItemDetail | null
   metrics: MetricsItem | null
   hourly: HourlyResponse | null
   summary: ScannerItem | null
   catalogItem?: CatalogItem
+  events: MarketEvent[]
   variantKey: string | null
   selectedRank: number | null
   platform: Platform
@@ -226,17 +256,21 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, variantKey, sel
   loading: boolean
   hourlyLoading: boolean
   error: string | null
+  hasAccount: boolean
   onBack: () => void
   onRetry: () => void
   onVariant: (variant: string | null) => void
   onRank: (rank: number | null) => void
   onPlatform: (platform: Platform) => void
   onCrossplay: () => void
+  onOpenAccount: () => void
+  onAddPurchase: (purchase: Omit<PortfolioPurchase, 'id' | 'createdAt'>) => void
   t: T
 }) => {
   const u = uiText[locale]
   const x = getExtraText(locale)
   const [chartRange, setChartRange] = useState<TimeRange>(periodRange(period))
+  const [purchaseOpen, setPurchaseOpen] = useState(false)
   const storedSeries: ItemSeries | null = detail ? (variantKey ? detail.variants[variantKey] || null : detail) : null
   const canonicalRank = storedSeries?.selectedModRank ?? null
   const canonicalSelected = selectedRank == null || selectedRank === canonicalRank
@@ -250,6 +284,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, variantKey, sel
   const name = catalogItem?.name || detail?.name || summary?.name || ''
   const variantLabel = formatDimensions(storedSeries?.dimensions || summary?.dimensions, locale)
   const currentPrice = hourlySeries?.currentPrice ?? series?.currentPrice ?? summary?.currentPrice ?? null
+  const currentEvent = events.find(event => event.status === 'active' || event.status === 'upcoming') || null
   const rangeValue = (range: TimeRange) => {
     if (HOURLY_RANGES.has(range)) return hourlySeries?.changes[range as HourlyRange]?.percent ?? (range === '24h' ? series?.change24h ?? summary?.change24h ?? null : null)
     if (range === '7d') return series?.change7d ?? summary?.change7d ?? null
@@ -279,21 +314,20 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, variantKey, sel
   return <main className="app-shell detail-shell">
     <button className="back-button" onClick={onBack}>{t('back')}</button>
     {loading ? <section className="panel state-panel"><div className="spinner"/><strong>{u.loading}</strong></section> : error || !detail ? <section className="panel state-panel error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={onRetry}>{u.retry}</button></section> : <>
-      <section className="detail-header detail-header-v3">
-        <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)}</div><h1>{name}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{selectedRank != null || canonicalRank != null ? <span>{x.rank}: {selectedRank ?? canonicalRank}</span> : null}{!series?.hasHistory && !hourlySeries ? <span className="no-history-tag">{x.noHistory}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
-        <div className="detail-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/>{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><select value={variantKey || ''} onChange={event => onVariant(event.target.value || null)}><option value="">{x.chooseVariant}</option>{Object.entries(detail.variants).map(([key, value]) => <option key={key} value={key}>{formatDimensions(value.dimensions, locale) || key}</option>)}</select></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><select value={selectedRank ?? canonicalRank ?? ''} onChange={event => onRank(event.target.value === '' ? null : Number(event.target.value))}>{rankOptions.map(rank => <option value={rank} key={rank}>{x.rank} {rank}</option>)}</select></label> : null}<div className="updated-card"><span>{t('updated')}</span><strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong></div></div>
+      <section className="detail-hero panel">
+        <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)}</div><h1>{name}{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale}/> : null}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{selectedRank != null || canonicalRank != null ? <span>{x.rank}: {selectedRank ?? canonicalRank}</span> : null}{!series?.hasHistory && !hourlySeries ? <span className="no-history-tag">{x.noHistory}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
+        <div className="detail-actions"><div className="detail-action-row"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={hasAccount} onClick={onOpenAccount}/></div>{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><select value={variantKey || ''} onChange={event => onVariant(event.target.value || null)}><option value="">{x.chooseVariant}</option>{Object.entries(detail.variants).map(([key, value]) => <option key={key} value={key}>{formatDimensions(value.dimensions, locale) || key}</option>)}</select></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><select value={selectedRank ?? canonicalRank ?? ''} onChange={event => onRank(event.target.value === '' ? null : Number(event.target.value))}>{rankOptions.map(rank => <option value={rank} key={rank}>{x.rank} {rank}</option>)}</select></label> : null}<div className="detail-meta-row"><span>{t('updated')}: <strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong></span><button type="button" className="portfolio-add" onClick={() => hasAccount ? setPurchaseOpen(true) : onOpenAccount()}>{locale === 'ru' ? 'Добавить покупку' : 'Add purchase'}</button></div></div>
       </section>
-      <section className="range-card-grid">{visibleRanges.map(range => <div className={`range-card ${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</section>
-      <section className="signal-grid signal-grid-v3">
-        <div className={`signal-card potential-card ${mode === 'sell' ? 'sell' : ''}`}><span>{mode === 'buy' ? t('buyPotential') : t('sellPotential')}</span><strong>{analytics?.[mode].potential != null && analytics[mode].potential! > 0 ? `+${fmtPlat(analytics[mode].potential)}` : '—'}{analytics?.[mode].potentialPct != null && analytics[mode].potentialPct! > 0 ? <small> {fmtPlainPercent(analytics[mode].potentialPct)}</small> : null}</strong></div>
-        <div className="signal-card score-card"><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div>
-        <div className="signal-card forecast-card"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat} large/><small>{x.forecastHint}</small></div>
+      <section className="detail-dashboard panel">
+        <div className="range-strip">{visibleRanges.map(range => <div className={`${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</div>
+        <div className="insight-row"><div><span>{mode === 'buy' ? t('buyPotential') : t('sellPotential')}</span><strong>{analytics?.[mode].potential != null && analytics[mode].potential! > 0 ? `+${fmtPlat(analytics[mode].potential)}` : '—'}<small>{analytics?.[mode].potentialPct != null && analytics[mode].potentialPct! > 0 ? fmtPlainPercent(analytics[mode].potentialPct) : ''}</small></strong></div><div><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div><div className="insight-forecast"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={currentEvent ? 'down' : consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat} large/>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</div></div>
+        {analytics ? <div className="analysis-strip"><span><small>{u.baseline}</small><strong>{fmtPlat(analytics.baseline)}</strong></span><span><small>{u.q25}</small><strong>{fmtPlat(analytics.q25)}</strong></span><span><small>{u.q75}</small><strong>{fmtPlat(analytics.q75)}</strong></span><span><small>{u.volatility}</small><strong>{fmtPlainPercent(analytics.volatility)}</strong></span></div> : null}
       </section>
-      {analytics ? <section className="analysis-grid"><div className="analysis-card"><span>{u.baseline}</span><strong>{fmtPlat(analytics.baseline)}</strong></div><div className="analysis-card"><span>{u.q25}</span><strong>{fmtPlat(analytics.q25)}</strong></div><div className="analysis-card"><span>{u.q75}</span><strong>{fmtPlat(analytics.q75)}</strong></div><div className="analysis-card"><span>{u.volatility}</span><strong>{fmtPlainPercent(analytics.volatility)}</strong></div></section> : null}
       <section className="panel chart-panel">
         <div className="panel-title-row"><div><div className="eyebrow">{t('closedSales')} · {u.analysisWindow}: {rangeLabel(chartRange, x)}</div><h2>{u.priceHistory}</h2></div><div className="time-tabs time-tabs-all">{TIME_RANGES.map(range => { const unavailable = HOURLY_RANGES.has(range) && range !== '24h' && !hourlySeries; return <button key={range} disabled={unavailable} title={unavailable ? x.hourlyUnavailable : undefined} className={chartRange === range ? 'time-tab active' : 'time-tab'} onClick={() => !unavailable && setChartRange(range)}>{rangeLabel(range, x)}</button> })}</div></div>
-        <HistoryChart history={chartHistory} latestDate={chartLatest} range={chartRange} locale={locale} labels={{ empty: u.noData, chart: u.priceHistory, min: t('min'), median: t('median'), max: t('max'), sales: t('sales') }}/>
+        <HistoryChart history={chartHistory} latestDate={chartLatest} range={chartRange} locale={locale} events={events} labels={{ empty: u.noData, chart: u.priceHistory, min: t('min'), median: t('median'), max: t('max'), sales: t('sales') }}/>
       </section>
+      <PurchaseDialog locale={locale} name={name} currentPrice={currentPrice} open={purchaseOpen} onClose={() => setPurchaseOpen(false)} onSave={value => { onAddPurchase({ itemId: detail.id, slug: detail.slug, name, marketKey, selectedModRank: selectedRank ?? canonicalRank, ...value }); setPurchaseOpen(false) }}/>
     </>}
   </main>
 }
@@ -319,6 +353,9 @@ export default function App() {
   const [scannerLoading, setScannerLoading] = useState(true)
   const [scannerError, setScannerError] = useState<string | null>(null)
   const [scannerReload, setScannerReload] = useState(0)
+  const [hourlyIndexData, setHourlyIndexData] = useState<HourlyIndexResponse | null>(null)
+  const [hourlyIndexLoading, setHourlyIndexLoading] = useState(false)
+  const [hourlyIndexError, setHourlyIndexError] = useState<string | null>(null)
   const [catalog, setCatalog] = useState<Map<string, CatalogItem>>(new Map())
   const [rangeMetrics, setRangeMetrics] = useState<Record<string, MetricsItem>>({})
   const [rangesLoading, setRangesLoading] = useState(false)
@@ -347,6 +384,9 @@ export default function App() {
     const saved = localStorage.getItem('frameanalytics-theme')
     return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system'
   })
+  const [temporaryAccount, setTemporaryAccount] = useState<TemporaryAccount | null>(loadTemporaryAccount)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [marketEvents, setMarketEvents] = useState<MarketEvent[]>([])
   const popoverRef = useRef<HTMLElement | null>(null)
   const hourlyCheckedAt = useRef<Record<string, number>>({})
 
@@ -356,6 +396,7 @@ export default function App() {
   const p = paginationText[locale]
   const catalogItem = (id: string) => catalog.get(id)
   const itemName = (item: { id: string; name: string }) => catalogItem(item.id)?.name || item.name
+  const hourlySortActive = supportsHourly(platform, crossplay) && HOURLY_INDEX_SORTS.has(sort)
 
   useEffect(() => { const timer = setTimeout(() => setQuery(queryInput.trim()), 300); return () => clearTimeout(timer) }, [queryInput])
   useEffect(() => { const timer = setInterval(() => setHourlyRefresh(value => value + 1), 5 * 60 * 1000); return () => clearInterval(timer) }, [])
@@ -394,36 +435,62 @@ export default function App() {
     }
   }, [visibleRanges, period])
   useEffect(() => { localStorage.setItem('frameanalytics-rank-filter', rankFilter) }, [rankFilter])
-  useEffect(() => { if (rankFilter === 'base' && sort !== 'name') { setSort('name'); setDirection('asc') } }, [rankFilter, sort])
-
+  useEffect(() => { saveTemporaryAccount(temporaryAccount) }, [temporaryAccount])
   useEffect(() => {
     const controller = new AbortController()
     fetchCatalog(locale, controller.signal).then(response => setCatalog(new Map(response.items.map(item => [item.id, item])))).catch(() => setCatalog(new Map()))
     return () => controller.abort()
   }, [locale])
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchEvents(controller.signal).then(response => setMarketEvents(response.events)).catch(() => setMarketEvents([]))
+    return () => controller.abort()
+  }, [hourlyRefresh])
 
   useEffect(() => {
     setPage(1)
   }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, sort, direction, pageSize])
 
   useEffect(() => {
+    if (hourlySortActive) { setScannerLoading(false); return }
     const controller = new AbortController()
     setScannerLoading(true); setScannerError(null)
     fetchScanner({
       platform, period, mode, crossplay, search: query,
       categories: categories.length === CATEGORY_IDS.length ? undefined : categories,
-      minPrice, minPotential, offset: (page - 1) * pageSize, limit: pageSize, sort, direction
+      minPrice, minPotential, offset: (page - 1) * pageSize, limit: pageSize, sort, direction, language: locale
     }, controller.signal).then(data => { setScannerData(data); setScannerLoading(false) }).catch(error => {
       if (error instanceof DOMException && error.name === 'AbortError') return
       setScannerError(error instanceof Error ? error.message : String(error)); setScannerLoading(false)
     })
     return () => controller.abort()
-  }, [platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, scannerReload])
+  }, [platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive])
+
+  useEffect(() => {
+    if (!hourlySortActive) { setHourlyIndexLoading(false); setHourlyIndexError(null); return }
+    const controller = new AbortController()
+    setHourlyIndexLoading(true); setHourlyIndexError(null)
+    fetchHourlyIndex({
+      platform, crossplay, rank: rankFilter, period, mode, search: query,
+      categories: categories.length === CATEGORY_IDS.length ? undefined : categories,
+      minPrice, minPotential, offset: (page - 1) * pageSize, limit: pageSize,
+      sort: sort as 'currentPrice' | 'change1h' | 'change4h' | 'change12h' | 'change24h', direction,
+      language: locale
+    }, controller.signal).then(data => {
+      if (!data.groupedByItem) throw new Error('Hourly Index requires grouped item mode')
+      setHourlyIndexData(data); setHourlyIndexLoading(false)
+    }).catch(error => {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setHourlyIndexError(error instanceof Error ? error.message : String(error)); setHourlyIndexLoading(false)
+    })
+    return () => controller.abort()
+  }, [hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload])
 
   const selectedSummary = useMemo(() => {
-    if (route.kind !== 'item' || !scannerData) return null
-    return scannerData.items.find(item => item.id === route.id && (route.variant ? item.variantKey === route.variant : true)) || null
-  }, [route, scannerData])
+    if (route.kind !== 'item') return null
+    const dailyRows = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.daily).filter((item): item is ScannerItem => Boolean(item)) : scannerData?.items || []
+    return dailyRows.find(item => item.id === route.id && (route.variant ? item.variantKey === route.variant : true)) || null
+  }, [route, scannerData, hourlyIndexData, hourlySortActive])
 
   useEffect(() => {
     if (route.kind !== 'item' || !route.id) { setDetail(null); setDetailMetrics(null); setDetailHourly(null); setDetailError(null); return }
@@ -440,7 +507,7 @@ export default function App() {
   }, [route.kind, route.id, platform, crossplay, detailReload])
 
   useEffect(() => {
-    if (!scannerData?.items.length || !supportsHourly(platform, crossplay)) { setHourlyLoading(false); setHourlyPartial(false); return }
+    if (hourlySortActive || !scannerData?.items.length || !supportsHourly(platform, crossplay)) { setHourlyLoading(false); setHourlyPartial(false); return }
     const ids = [...new Set(scannerData.items.map(item => item.id))]
     const now = Date.now()
     const missing = ids.filter(id => {
@@ -470,12 +537,13 @@ export default function App() {
       setHourlyLoading(false)
     })
     return () => controller.abort()
-  }, [scannerData, platform, crossplay, hourlyRefresh])
+  }, [scannerData, platform, crossplay, hourlyRefresh, hourlySortActive])
 
   useEffect(() => {
     const needsSupplement = visibleRanges.some(range => ['30d', '90d', '180d'].includes(range) && range !== periodRange(period))
-    if (!needsSupplement || !scannerData?.items.length) { setRangesLoading(false); return }
-    const ids = [...new Set(scannerData.items.map(item => item.id))]
+    const sourceIds = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.itemId) : (scannerData?.items || []).map(item => item.id)
+    if (!needsSupplement || !sourceIds.length) { setRangesLoading(false); return }
+    const ids = [...new Set(sourceIds)]
     const missing = ids.filter(id => !rangeMetrics[`${platform}:${id}`])
     if (!missing.length) { setRangesLoading(false); return }
     const controller = new AbortController()
@@ -488,18 +556,34 @@ export default function App() {
       setRangesError(results.some(result => result.status === 'rejected')); setRangesLoading(false)
     })
     return () => controller.abort()
-  }, [visibleRanges, period, scannerData, platform, rangeMetrics])
+  }, [visibleRanges, period, scannerData, hourlyIndexData, hourlySortActive, platform, rangeMetrics])
 
-  const pageCount = Math.max(1, Math.ceil((scannerData?.filteredItems || 0) / pageSize))
+  const activeTotal = hourlySortActive ? hourlyIndexData?.filteredItems || 0 : scannerData?.filteredItems || 0
+  const activeOffset = hourlySortActive ? hourlyIndexData?.offset || 0 : scannerData?.offset || 0
+  const activeReturned = hourlySortActive ? hourlyIndexData?.returned || 0 : scannerData?.returned || 0
+  const activeLoading = hourlySortActive ? hourlyIndexLoading : scannerLoading
+  const activeError = hourlySortActive ? hourlyIndexError : scannerError
+  const pageCount = Math.max(1, Math.ceil(activeTotal / pageSize))
   useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
-  const showingStart = scannerData?.filteredItems ? scannerData.offset + 1 : 0
-  const showingEnd = scannerData?.filteredItems ? scannerData.offset + scannerData.returned : 0
+  const showingStart = activeTotal ? activeOffset + 1 : 0
+  const showingEnd = activeTotal ? activeOffset + activeReturned : 0
 
   const getMetricSeries = (item: ScannerItem): MetricSeries | null => {
     const metrics = rangeMetrics[`${platform}:${item.id}`]
     return metrics ? (item.variantKey ? metrics.variants[item.variantKey] || null : metrics) : null
   }
-  const displayRows = useMemo<DisplayMarketRow[]>(() => (scannerData?.items || []).flatMap((item): DisplayMarketRow[] => {
+  const displayRows = useMemo<DisplayMarketRow[]>(() => hourlySortActive ? (hourlyIndexData?.items || []).map((indexRow): DisplayMarketRow => {
+    const item = indexRow.daily || scannerFallbackFromIndex(indexRow, period)
+    return {
+      rowId: indexRow.rowId,
+      item,
+      marketKey: indexRow.marketKey,
+      selectedModRank: indexRow.selectedModRank,
+      canonical: Boolean(indexRow.daily),
+      hourly: indexRow.hasHourlyHistory ? hourlySeriesFromIndex(indexRow) : null,
+      hourlyFetchedAt: indexRow.fetchedAt
+    }
+  }) : (scannerData?.items || []).flatMap((item): DisplayMarketRow[] => {
     const hourly = hourlyRows[hourlyKey(platform, crossplay, item.id)]
     if (item.selectedModRank == null) {
       return [{ rowId: item.rowId, item, marketKey: item.marketKey, selectedModRank: null, canonical: true, hourly: findHourlySeries(hourly, item.marketKey), hourlyFetchedAt: hourly?.fetchedAt || null }]
@@ -514,7 +598,7 @@ export default function App() {
       const marketKey = `mod_rank=${rank}`
       return { rowId: `${item.id}::${marketKey}`, item, marketKey, selectedModRank: rank, canonical: rank === item.selectedModRank, hourly: findHourlySeries(hourly, marketKey), hourlyFetchedAt: hourly?.fetchedAt || null }
     })
-  }), [scannerData, hourlyRows, platform, crossplay, rankFilter])
+  }), [hourlySortActive, hourlyIndexData, period, scannerData, hourlyRows, platform, crossplay, rankFilter])
   const rowCurrentPrice = (row: DisplayMarketRow) => row.hourly?.currentPrice ?? (row.canonical ? row.item.currentPrice : null)
   const rowRangeValue = (row: DisplayMarketRow, range: TimeRange) => {
     const item = row.item
@@ -537,6 +621,7 @@ export default function App() {
     return platinumChange(rowCurrentPrice(row), percent, metricPeriod?.referencePrice)
   }
   const rowTrendDirection = (row: DisplayMarketRow) => consensusDirection(visibleRanges.map(range => rowRangeValue(row, range)))
+  const currentEventFor = (itemId: string) => marketEvents.find(event => event.itemId === itemId && (event.status === 'active' || event.status === 'upcoming')) || null
 
   const changeSort = (next: ScannerSort, range?: TimeRange) => {
     if (range && !HOURLY_RANGES.has(range)) setPeriod(Number(range.replace('d', '')) as AnalysisPeriod)
@@ -544,11 +629,9 @@ export default function App() {
     else { setSort(next); setDirection(next === 'name' ? 'asc' : 'desc') }
   }
   const indicator = (key: ScannerSort) => sort === key ? (direction === 'asc' ? '↑' : '↓') : ''
-  const rangeSort = (range: TimeRange): ScannerSort | null => rankFilter === 'base' || HOURLY_RANGES.has(range) ? null : range === '7d' ? 'change7d' : 'changePeriod'
+  const rangeSort = (range: TimeRange): ScannerSort | null => range === '1h' ? supportsHourly(platform, crossplay) ? 'change1h' : null : range === '4h' ? supportsHourly(platform, crossplay) ? 'change4h' : null : range === '12h' ? supportsHourly(platform, crossplay) ? 'change12h' : null : range === '24h' ? 'change24h' : range === '7d' ? 'change7d' : 'changePeriod'
   const toggleCategory = (id: CategoryId) => setCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
   const toggleRange = (range: TimeRange) => setVisibleRanges(current => current.includes(range) ? current.filter(value => value !== range) : TIME_RANGES.filter(value => current.includes(value) || value === range))
-  const statusText = scannerLoading ? u.loading : scannerError ? u.loadError : scannerData ? `${u.dataDate}: ${formatDate(scannerData.latestDate, locale)}` : u.loadError
-
   const itemHref = (row: DisplayMarketRow) => {
     const item = row.item
     const params = new URLSearchParams({ platform, period: String(period), crossplay: String(crossplay), id: item.id })
@@ -574,6 +657,12 @@ export default function App() {
     history.replaceState(history.state, '', `/items/${encodeURIComponent(route.slug)}?${params}`)
     setRoute(readRoute())
   }
+  const addPurchase = (purchase: Omit<PortfolioPurchase, 'id' | 'createdAt'>) => {
+    setTemporaryAccount(current => {
+      const account = current || createTemporaryAccount()
+      return { ...account, purchases: [...account.purchases, { ...purchase, id: crypto.randomUUID(), createdAt: new Date().toISOString() }] }
+    })
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -587,8 +676,8 @@ export default function App() {
 
   return <>
     <div className="background-layer"/><div className="background-shade"/>
-    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} t={t}/> : <main className="app-shell">
-      <header className="topbar"><div><div className="brand-plate"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></div><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><div className={`status-pill ${scannerLoading ? 'loading' : scannerError ? 'error' : ''}`}><span className="status-dot"/>{statusText}</div></div></header>
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(temporaryAccount)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={() => setAccountOpen(true)} onAddPurchase={addPurchase} t={t}/> : <main className="app-shell">
+      <header className="topbar"><div><div className="brand-plate"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></div><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(temporaryAccount)} onClick={() => setAccountOpen(true)}/></div></header>
       <section className="mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button></section>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
@@ -598,32 +687,33 @@ export default function App() {
         <div className="filter-field category-filter"><span>{u.categories}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'categories' ? null : 'categories')}>{u.categories}<b>{categories.length}/{CATEGORY_IDS.length}</b><i>⌄</i></button>{openPanel === 'categories' ? <div className="category-panel"><div className="category-actions"><button onClick={() => setCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button onClick={() => setCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={categories.includes(id)} onChange={() => toggleCategory(id)}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
         <div className="filter-field ranges-filter"><span>{x.shownRanges}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'ranges' ? null : 'ranges')}>{x.chooseRanges}<b>{visibleRanges.length}/{TIME_RANGES.length}</b><i>⌄</i></button>{openPanel === 'ranges' ? <div className="category-panel ranges-panel"><div className="category-actions"><button onClick={() => setVisibleRanges([...TIME_RANGES])}>{x.allRanges}</button><button onClick={() => setVisibleRanges(DEFAULT_RANGES)}>{u.defaults}</button></div><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={range}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div> : null}</div>
       </section>
-      <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{scannerData?.filteredItems ?? 0}</strong>{scannerData ? <em>{scannerData.catalogTotal ?? 3837} {x.catalogSummary} · {scannerData.marketSeries ?? scannerData.totalItems} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><select value={pageSize} onChange={event => setPageSize(Number(event.target.value) as PageSize)}>{PAGE_SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
+      <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><select value={pageSize} onChange={event => setPageSize(Number(event.target.value) as PageSize)}>{PAGE_SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className="panel table-panel"><div className="table-scroll"><table className="market-table"><thead><tr>
         <th><button className="sort-button" onClick={() => changeSort('name')}><span>{t('item')}</span><span className="sort-indicator">{indicator('name')}</span></button></th>
-        <th><button className="sort-button" disabled={rankFilter === 'base'} title={rankFilter === 'base' ? x.hourlyOnlyRank : undefined} onClick={() => changeSort('currentPrice')}><span>{t('current')}</span><span className="sort-indicator">{indicator('currentPrice')}</span></button></th>
-        {visibleRanges.map(range => { const key = rangeSort(range); return <th key={range} className={HOURLY_RANGES.has(range) ? 'hourly-column' : ''}><button className="sort-button" disabled={!key} title={HOURLY_RANGES.has(range) ? x.hourlyLive : undefined} onClick={() => key && changeSort(key, range)}><span>{rangeLabel(range, x)}</span><span className="sort-indicator">{key && (range === periodRange(period) || range === '24h' || range === '7d') ? indicator(key) : ''}</span></button></th> })}
+        <th><button className="sort-button" onClick={() => changeSort('currentPrice')}><span>{t('current')}</span><span className="sort-indicator">{indicator('currentPrice')}</span></button></th>
+        {visibleRanges.map(range => { const key = rangeSort(range); return <th key={range} className={HOURLY_RANGES.has(range) ? 'hourly-column' : ''}><button className="sort-button" disabled={!key} title={HOURLY_RANGES.has(range) ? key ? x.hourlyLive : x.hourlyUnavailable : undefined} onClick={() => key && changeSort(key, range)}><span>{rangeLabel(range, x)}</span><span className="sort-indicator">{key && (HOURLY_RANGES.has(range) || range === periodRange(period) || range === '7d') ? indicator(key) : ''}</span></button></th> })}
         <th><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('sales24h')}><span>{t('sales24h')}</span><span className="sort-indicator">{indicator('sales24h')}</span></button></th>
         <th><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('potential')}><span>{t('potential')}</span><span className="sort-indicator">{indicator('potential')}</span></button></th>
         <th><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('score')}><span>{t('score')}</span><span className="sort-indicator">{indicator('score')}</span></button></th>
         <th title={x.forecastHint}><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('decision')}><span>{x.forecast}</span><span className="sort-indicator">{indicator('decision')}</span></button></th>
         <th><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('updatedDate')}><span>{t('updated')}</span><span className="sort-indicator">{indicator('updatedDate')}</span></button></th>
       </tr></thead><tbody>
-        {scannerLoading ? <tr><td colSpan={7 + visibleRanges.length} className="state-cell"><div className="spinner"/><strong>{u.loading}</strong></td></tr> : scannerError ? <tr><td colSpan={7 + visibleRanges.length} className="state-cell error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={() => setScannerReload(value => value + 1)}>{u.retry}</button></td></tr> : !displayRows.length ? <tr><td colSpan={7 + visibleRanges.length} className="state-cell"><strong>{u.noData}</strong></td></tr> : displayRows.map(row => {
+        {activeLoading ? <tr><td colSpan={7 + visibleRanges.length} className="state-cell"><div className="spinner"/><strong>{u.loading}</strong></td></tr> : activeError ? <tr><td colSpan={7 + visibleRanges.length} className="state-cell error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={() => setScannerReload(value => value + 1)}>{u.retry}</button></td></tr> : !displayRows.length ? <tr><td colSpan={7 + visibleRanges.length} className="state-cell"><strong>{u.noData}</strong></td></tr> : displayRows.map(row => {
           const item = row.item
           const signal = row.canonical ? item[mode] : emptySignal()
           const href = itemHref(row)
           const variant = formatDimensions(item.dimensions, locale)
           return <tr key={row.rowId} className={!row.canonical ? 'hourly-only-row' : !item.hasHistory ? 'no-history-row' : ''}>
-            <td><a className="item-link item-link-v3" href={href} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openItem(row) }}><ItemIcon item={catalogItem(item.id)} name={itemName(item)}/><span><span className="item-name">{itemName(item)}</span><span className="item-category">{categoryLabel(item.category, locale, u, x.prime)}{variant ? ` · ${variant}` : ''}{row.selectedModRank != null ? ` · ${x.rank} ${row.selectedModRank}` : ''}{row.canonical && !item.hasHistory ? ` · ${x.noHistory}` : ''}</span></span></a></td>
+            <td><a className="item-link item-link-v3" href={href} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openItem(row) }}><ItemIcon item={catalogItem(item.id)} name={itemName(item)}/><span><span className="item-name" title={itemName(item)}><span className="item-name-text">{itemName(item)}</span>{currentEventFor(item.id) ? <MarketEventBadge event={currentEventFor(item.id)!} locale={locale} compact/> : null}</span><span className="item-category" title={`${categoryLabel(item.category, locale, u, x.prime)}${variant ? ` · ${variant}` : ''}${row.selectedModRank != null ? ` · ${x.rank} ${row.selectedModRank}` : ''}`}>{categoryLabel(item.category, locale, u, x.prime)}{variant ? ` · ${variant}` : ''}{row.selectedModRank != null ? ` · ${x.rank} ${row.selectedModRank}` : ''}{row.canonical && !item.hasHistory ? ` · ${x.noHistory}` : ''}</span></span></a></td>
             <td className="price-cell">{fmtPlat(rowCurrentPrice(row))}</td>
             {visibleRanges.map(range => { const live = row.hourly; return <td key={range} className={`${valueClass(rowRangeValue(row, range))} ${HOURLY_RANGES.has(range) ? live ? 'hourly-column hourly-live' : 'hourly-column hourly-missing' : ''}`} title={HOURLY_RANGES.has(range) ? live ? `${x.hourlyLive} · ${formatDate(row.hourlyFetchedAt, locale)}` : x.hourlyUnavailable : !row.canonical ? x.hourlyOnlyRank : undefined}><span className="change-cell-values"><strong>{fmtPercent(rowRangeValue(row, range))}</strong><small>{fmtPlatDelta(rowRangePlatinum(row, range))}</small></span></td> })}
-            <td>{row.canonical ? item.sales24h ?? '—' : '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={row.canonical ? item.change7d : null} direction={rowTrendDirection(row)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td className="updated-cell">{formatDate(row.hourlyFetchedAt || (row.canonical ? item.updatedDate : null), locale)}</td>
+            <td>{row.canonical ? item.sales24h ?? '—' : '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={row.canonical ? item.change7d : null} direction={currentEventFor(item.id) ? 'down' : rowTrendDirection(row)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td className="updated-cell">{formatDate(row.hourlyFetchedAt || (row.canonical ? item.updatedDate : null), locale)}</td>
           </tr>
         })}
       </tbody></table></div></section>
-      {!scannerLoading && !scannerError && (scannerData?.filteredItems || 0) > 0 ? <nav className="pagination-bar" aria-label="Pagination"><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{scannerData?.filteredItems}</strong></div><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage(1)}>« {p.first}</button><button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>‹ {p.previous}</button><span>{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button disabled={page >= pageCount} onClick={() => setPage(value => Math.min(pageCount, value + 1))}>{p.next} ›</button><button disabled={page >= pageCount} onClick={() => setPage(pageCount)}>{p.last} »</button></div></nav> : null}
+      {!activeLoading && !activeError && activeTotal > 0 ? <nav className="pagination-bar" aria-label="Pagination"><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{activeTotal}</strong></div><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage(1)}>« {p.first}</button><button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>‹ {p.previous}</button><span>{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button disabled={page >= pageCount} onClick={() => setPage(value => Math.min(pageCount, value + 1))}>{p.next} ›</button><button disabled={page >= pageCount} onClick={() => setPage(pageCount)}>{p.last} »</button></div></nav> : null}
     </main>}
+    <PortfolioPanel locale={locale} account={temporaryAccount} open={accountOpen} onClose={() => setAccountOpen(false)} onCreate={() => setTemporaryAccount(createTemporaryAccount())} onRemove={id => setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null)}/>
     <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
   </>
 }

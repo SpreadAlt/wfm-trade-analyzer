@@ -68,7 +68,7 @@ export type ScannerItem = {
   sellDecision: string
 }
 
-export type ScannerSort = 'name' | 'decision' | 'score' | 'potential' | 'potentialPct' | 'currentPrice' | 'change24h' | 'change7d' | 'changePeriod' | 'sales24h' | 'averageVolume7d' | 'coveragePct' | 'volatility' | 'updatedDate'
+export type ScannerSort = 'name' | 'decision' | 'score' | 'potential' | 'potentialPct' | 'currentPrice' | 'change1h' | 'change4h' | 'change12h' | 'change24h' | 'change7d' | 'changePeriod' | 'sales24h' | 'averageVolume7d' | 'coveragePct' | 'volatility' | 'updatedDate'
 export type SortDirection = 'asc' | 'desc'
 
 export type ScannerQuery = {
@@ -84,6 +84,7 @@ export type ScannerQuery = {
   limit: number
   sort: ScannerSort
   direction: SortDirection
+  language?: string
 }
 
 export type ScannerResponse = {
@@ -105,10 +106,13 @@ export type ScannerResponse = {
   noHistoryRows?: number
   defaultEnabledCount: number
   filteredItems: number
+  filteredRows?: number
   offset: number
   limit: number
   returned: number
+  returnedRows?: number
   hasMore: boolean
+  groupedByItem?: boolean
   crossplayRequested?: boolean
   crossplaySupported?: boolean
   marketScope?: 'platform' | 'crossplay'
@@ -225,4 +229,100 @@ export type HourlyResponse = {
   fetchedAt: string
   cadenceMinutes: number
   series: HourlySeries[]
+}
+
+export type HourlyIndexRow = {
+  rowId: string
+  itemId: string
+  id: string
+  slug: string
+  name: string
+  displayName: string
+  category: string
+  subcategory: string
+  defaultEnabled: boolean
+  marketKey: string
+  dimensions: Dimensions
+  selectedModRank: number | null
+  hasHourlyHistory: boolean
+  hourlyState: 'available' | 'missing' | 'error' | string
+  currentPrice: number | null
+  latestAt: string | null
+  fetchedAt: string | null
+  change1h: number | null
+  change1hPlatinum: number | null
+  change4h: number | null
+  change4hPlatinum: number | null
+  change12h: number | null
+  change12hPlatinum: number | null
+  change24h: number | null
+  change24hPlatinum: number | null
+  daily: ScannerItem | null
+}
+
+export type HourlyIndexResponse = {
+  ok: true
+  hourlyIndexVersion: string
+  hourlyIndexRuntimeRevision: string
+  buildId: string
+  generatedAt: string
+  scope: 'crossplay' | 'switch'
+  platform: Platform
+  crossplay: boolean
+  switchIncluded: false
+  catalogTotal: number
+  totalRows: number
+  marketSeries: number
+  filteredItems: number
+  filteredRows: number
+  offset: number
+  limit: number
+  returned: number
+  returnedRows: number
+  hasMore: boolean
+  groupedByItem: boolean
+  rank: 'base' | 'all' | string
+  items: HourlyIndexRow[]
+}
+
+export type HourlyIndexQuery = {
+  platform: Platform
+  crossplay: boolean
+  rank: 'base' | 'all'
+  period: AnalysisPeriod
+  mode: ScannerMode
+  search?: string
+  categories?: string[]
+  minPrice?: number
+  minPotential?: number
+  offset: number
+  limit: number
+  sort: 'name' | 'currentPrice' | 'change1h' | 'change4h' | 'change12h' | 'change24h'
+  direction: SortDirection
+  language?: string
+}
+
+export type MarketEvent = {
+  fingerprint: string
+  itemId: string
+  slug: string
+  name: string
+  eventType: 'baro' | 'prime_resurgence'
+  status: 'upcoming' | 'active' | 'ended'
+  startAt: string | null
+  endAt: string | null
+  observedAt: string
+  sourceRef: string
+}
+
+export type EventsResponse = {
+  ok: true
+  eventsVersion: string
+  generatedAt: string
+  source: string
+  historyPolicy: 'forward-only-observed-world-state'
+  events: MarketEvent[]
+  current: MarketEvent[]
+  matchedItems: number
+  unmatchedCount: number
 }

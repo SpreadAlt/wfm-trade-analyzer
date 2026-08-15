@@ -95,7 +95,7 @@ export const translations: Record<Locale, Record<TranslationKey, string>> = {
     change1h: 'Изм. 1ч',
     change24h: 'Изм. 24ч',
     change7d: 'Изм. 7д',
-    sales24h: 'Продажа 24ч',
+    sales24h: 'Продажи 24ч',
     potential: 'Потенциал',
     score: 'Оценка',
     decision: 'Решение',

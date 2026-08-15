@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Locale } from './i18n'
-import type { CatalogItem, Dimensions, ScannerSignal } from './types'
+import type { CatalogItem, Dimensions, MarketEvent, ScannerSignal } from './types'
 
 export type CategoryId = 'prime' | 'mod' | 'relic' | 'weapon' | 'cosmetic' | 'arcane' | 'resource' | 'archwing' | 'companion' | 'necramech' | 'equipment' | 'collectible' | 'ayatan' | 'utility' | 'misc' | 'syndicate'
 
@@ -74,5 +74,15 @@ export const ForecastIndicator = ({ signal, fallbackChange, direction, title, tr
   return <span className={`forecast-cluster ${large ? 'forecast-large' : ''}`} title={label} aria-label={label} role="img">
     <span className={`forecast-icon ${decisionTone(signal.decision)}`}><ForecastGlyph strong={strong}/></span>
     <span className={`trend-icon trend-${resolvedDirection}`}><TrendGlyph direction={resolvedDirection}/></span>
+  </span>
+}
+
+export const MarketEventBadge = ({ event, locale, compact = false }: { event: MarketEvent; locale: Locale; compact?: boolean }) => {
+  const baro = event.eventType === 'baro'
+  const title = locale === 'ru'
+    ? baro ? 'Товар в текущем или предстоящем ассортименте Баро Ки’Тиира' : 'Предмет в текущей или предстоящей ротации Возрождения Прайм'
+    : baro ? "Item in Baro Ki'Teer's current or upcoming inventory" : 'Item in the current or upcoming Prime Resurgence rotation'
+  return <span className={`market-event-badge ${baro ? 'baro-event' : 'resurgence-event'} ${compact ? 'compact' : ''}`} title={title} aria-label={title} role="img">
+    {baro ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18h12M8 18l1-8h6l1 8M10 10V7h4v3M7 6l2 1M17 6l-2 1"/></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.3 5.1L20 9l-4 4 1 6-5-2.7L7 19l1-6-4-4 5.7-.9L12 3Z"/><circle cx="12" cy="12" r="2.3"/></svg>}
   </span>
 }
