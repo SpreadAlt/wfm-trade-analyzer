@@ -1,4 +1,4 @@
-# FrameAnalytics v0.8.3
+# FrameAnalytics v0.8.4
 
 Frontend for the canonical Items v3 → Metrics v3 → Scanner v3 pipeline. The backend keeps its technical Scanner v3 name, while the user interface calls this section Statistics.
 
