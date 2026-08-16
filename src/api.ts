@@ -8,7 +8,6 @@ const fetchJson = async <T,>(path: string, signal?: AbortSignal): Promise<T> => 
     headers: { Accept: 'application/json' },
     signal
   })
-
   if (!response.ok) {
     let detail = ''
     try {
@@ -22,7 +21,6 @@ const fetchJson = async <T,>(path: string, signal?: AbortSignal): Promise<T> => 
 
   return response.json() as Promise<T>
 }
-
 export const fetchScanner = (query: ScannerQuery, signal?: AbortSignal) => {
   const params = new URLSearchParams({
     platform: query.platform,
@@ -45,7 +43,6 @@ export const fetchScanner = (query: ScannerQuery, signal?: AbortSignal) => {
   if (query.language) params.set('lang', query.language)
   return fetchJson<ScannerResponse>(`/api/scanner-v3?${params}`, signal)
 }
-
 export const fetchItem = (platform: Platform, id: string, signal?: AbortSignal) => {
   const params = new URLSearchParams({ platform, id })
   return fetchJson<ItemResponse>(`/api/item-v3?${params}`, signal)
@@ -55,7 +52,6 @@ export const fetchMetrics = (platform: Platform, id: string, signal?: AbortSigna
   const params = new URLSearchParams({ platform, id })
   return fetchJson<MetricsResponse>(`/api/metrics-v3?${params}`, signal)
 }
-
 export const fetchCatalog = (language: string, signal?: AbortSignal) => {
   const params = new URLSearchParams({ lang: language })
   return fetchJson<CatalogResponse>(`/api/catalog-v3?${params}`, signal)
@@ -65,7 +61,6 @@ export const fetchHourly = (platform: Platform, crossplay: boolean, id: string, 
   const params = new URLSearchParams({ platform, crossplay: String(crossplay), id, rank: 'all' })
   return fetchJson<HourlyResponse>(`/api/hourly-v1?${params}`, signal)
 }
-
 export const fetchHourlyIndex = (query: HourlyIndexQuery, signal?: AbortSignal) => {
   const params = new URLSearchParams({
     platform: query.platform,
@@ -86,7 +81,7 @@ export const fetchHourlyIndex = (query: HourlyIndexQuery, signal?: AbortSignal) 
   if (query.minPrice && query.minPrice > 0) params.set('minPrice', String(query.minPrice))
   if (query.minPotential && query.minPotential > 0) params.set('minPotential', String(query.minPotential))
   if (query.language) params.set('lang', query.language)
+  params.set('t', String(Date.now()))
   return fetchJson<HourlyIndexResponse>(`/api/hourly-index-v1?${params}`, signal)
 }
-
 export const fetchEvents = (signal?: AbortSignal) => fetchJson<EventsResponse>('/api/events-v1', signal)
