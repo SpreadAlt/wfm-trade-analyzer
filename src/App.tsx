@@ -47,7 +47,7 @@ const valueClass = (value: number | null | undefined) => value == null || value 
 const intlLocale = (locale: Locale) => locale === 'zh-hans' ? 'zh-Hans' : locale === 'zh-hant' ? 'zh-Hant' : locale
 const periodRange = (period: AnalysisPeriod): TimeRange => `${period}d` as TimeRange
 const hourlyKey = (platform: Platform, crossplay: boolean, id: string) => `${platform}:${crossplay ? 'crossplay' : 'platform'}:${id}`
-const supportsHourly = (platform: Platform, crossplay: boolean) => platform === 'switch' || crossplay
+const supportsHourly = (platform: Platform, crossplay: boolean) => platform !== 'switch' && crossplay
 const findHourlySeries = (hourly: HourlyResponse | null | undefined, marketKey: string): HourlySeries | null => hourly?.series.find(value => value.marketKey === marketKey) || null
 const analysisPeriodForRanges = (ranges: TimeRange[]): AnalysisPeriod => {
   if (ranges.includes('180d')) return 180
@@ -247,7 +247,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.8.5</div>
+  <div className="footer-version">{t('version')} 0.8.6</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 
@@ -778,6 +778,9 @@ export default function App() {
     const hourly = hourlyRows[hourlyKey(platform, crossplay, item.id)]
     if (item.selectedModRank == null) {
       return [{ rowId: item.rowId, item, marketKey: item.marketKey, selectedModRank: null, canonical: true, hourly: findHourlySeries(hourly, item.marketKey), hourlyFetchedAt: hourly?.fetchedAt || null }]
+    }
+    if (!supportsHourly(platform, crossplay)) {
+      return [{ rowId: item.rowId, item, marketKey: item.marketKey, selectedModRank: item.selectedModRank, canonical: true, hourly: null, hourlyFetchedAt: null }]
     }
     if (rankFilter === 'base') {
       const marketKey = 'mod_rank=0'
