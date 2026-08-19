@@ -10,7 +10,6 @@ import { localeNames, translations } from './i18n'
 import type { Locale, Theme, TranslationKey } from './i18n'
 import { paginationText } from './paginationText'
 import { SmartBuyPanel } from './SmartBuy'
-import { SiteStatsPage } from './SiteStats'
 import { uiText } from './uiText'
 import type { UiText } from './uiText'
 import type {
@@ -213,18 +212,12 @@ const loadRanges = (): TimeRange[] => {
   } catch { return DEFAULT_RANGES }
 }
 const loadRankFilter = (): RankFilter => localStorage.getItem('frameanalytics-rank-filter') === 'all' ? 'all' : 'base'
-type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'stats'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
+type RouteState = { kind: 'scanner' | 'item' | 'portfolio'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
 const readRoute = (): RouteState => {
   const match = location.pathname.match(/^\/items?\/([^/]+)\/?$/)
   const params = new URLSearchParams(location.search)
   const rankValue = Number(params.get('rank'))
   const rank = params.has('rank') && Number.isInteger(rankValue) && rankValue >= 0 ? rankValue : null
-  if (/^\/profile\/smart-buy\/?$/.test(location.pathname)) {
-    return { kind: 'smartbuy', slug: null, id: null, variant: null, rank: null }
-  }
-  if (/^\/system\/telemetry\/?$/.test(location.pathname)) {
-    return { kind: 'stats', slug: null, id: null, variant: null, rank: null }
-  }
   if (/^\/(?:profile|portfolio)\/?$/.test(location.pathname)) {
     return { kind: 'portfolio', slug: null, id: null, variant: null, rank: null }
   }
@@ -237,7 +230,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.9.3</div>
+  <div className="footer-version">{t('version')} 0.9.2</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 const PlatformGlyph = ({ platform }: { platform: Platform }) => <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -379,7 +372,7 @@ type PortfolioMarketEntry = {
   purchase: PortfolioPurchase
   row: DisplayMarketRow | null
 }
-const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, mode, visibleRanges, locale, catalog, events, onBack, onOpenSmartBuy, onCreate, onRetry, onRemove, onOpenItem, onPlatform, onCrossplay, onMode, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
+const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, mode, visibleRanges, locale, catalog, events, onBack, onCreate, onRetry, onRemove, onOpenItem, onPlatform, onCrossplay, onMode, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
   account: TemporaryAccount | null
   entries: PortfolioMarketEntry[]
   loading: boolean
@@ -392,7 +385,6 @@ const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, 
   catalog: Map<string, CatalogItem>
   events: MarketEvent[]
   onBack: () => void
-  onOpenSmartBuy: () => void
   onCreate: () => void
   onRetry: () => void
   onRemove: (id: string) => void
@@ -418,16 +410,13 @@ const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, 
   return <main className="app-shell portfolio-shell">
     <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {text.back}</button></div>
     <div className="portfolio-heading"><div><span>{text.savedLocally}</span><h1>{text.title}</h1><p>{text.unavailable}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(account)} onClick={() => undefined}/></div></div>
-    <section className="panel portfolio-smart-buy-launch">
-      <div><span className="eyebrow">Warframe Market</span><strong>{locale === 'ru' ? 'Умная покупка' : 'Smart Buy'}</strong><p>{locale === 'ru' ? 'Отдельная страница для подбора продавцов по вашим публичным buy-ордерам.' : 'A separate page for matching sellers against your public buy orders.'}</p></div>
-      <button type="button" className="primary-action" onClick={onOpenSmartBuy}>{locale === 'ru' ? 'Открыть умную покупку' : 'Open Smart Buy'} →</button>
-    </section>
     {!account ? <section className="panel portfolio-onboarding"><div className="account-orb"><span>FA</span></div><strong>{text.unavailable}</strong><p>{text.explanation}</p><button type="button" className="primary-action" onClick={onCreate}>{text.create}</button></section> : <>
       <section className="portfolio-summary-grid">
         <article className="panel"><span>{text.total}</span><strong>{fmtPlat(invested)}</strong><small>{account.purchases.length} · {text.purchases.toLowerCase()}</small></article>
         <article className="panel"><span>{text.currentValue}</span><strong>{pricedEntries.length ? fmtPlat(currentValue) : '—'}</strong><small>{pricedEntries.length}/{entries.length}</small></article>
         <article className={`panel ${valueClass(profit)}`} title={text.profitHint}><span>{text.possibleProfit}</span><strong>{pricedEntries.length ? fmtPlatDelta(profit) : '—'}</strong><small>{text.returnPct}: {fmtPercent(returnPct)}</small></article>
       </section>
+      <SmartBuyPanel locale={locale} catalog={catalog}/>
       <section className="mode-tabs portfolio-mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => onMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => onMode('sell')}>{t('sell')}</button></section>
       {!account.purchases.length ? <section className="panel portfolio-empty">{text.empty}</section> : <section className="panel table-panel portfolio-table-panel"><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
         <th>{t('item')}</th><th>{text.price}</th><th>{text.quantity}</th><th>{t('current')}</th>
@@ -456,11 +445,6 @@ const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, 
     </>}
   </main>
 }
-const SmartBuyPage = ({ locale, catalog, onBack }: { locale: Locale; catalog: Map<string, CatalogItem>; onBack: () => void }) => <main className="app-shell portfolio-shell smart-buy-page-shell">
-  <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'Личный кабинет' : 'Profile'}</button></div>
-  <SmartBuyPanel locale={locale} catalog={catalog}/>
-</main>
-
 export default function App() {
   const [mode, setMode] = useState<ScannerMode>('buy')
   const [queryInput, setQueryInput] = useState('')
@@ -623,7 +607,7 @@ export default function App() {
     setPage(1)
   }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, sort, direction, pageSize])
   useEffect(() => {
-    if (route.kind !== 'scanner' || hourlySortActive) { setScannerLoading(false); return }
+    if (hourlySortActive) { setScannerLoading(false); return }
     const controller = new AbortController()
     setScannerLoading(true); setScannerError(null)
     fetchScanner({
@@ -635,9 +619,9 @@ export default function App() {
       setScannerError(error instanceof Error ? error.message : String(error)); setScannerLoading(false)
     })
     return () => controller.abort()
-  }, [route.kind, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive])
+  }, [platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive])
   useEffect(() => {
-    if (route.kind !== 'scanner' || !hourlySortActive) { setHourlyIndexLoading(false); setHourlyIndexError(null); return }
+    if (!hourlySortActive) { setHourlyIndexLoading(false); setHourlyIndexError(null); return }
     const controller = new AbortController()
     setHourlyIndexLoading(true); setHourlyIndexError(null)
     fetchHourlyIndex({
@@ -654,7 +638,7 @@ export default function App() {
       setHourlyIndexError(error instanceof Error ? error.message : String(error)); setHourlyIndexLoading(false)
     })
     return () => controller.abort()
-  }, [route.kind, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh])
+  }, [hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh])
   const selectedSummary = useMemo(() => {
     if (route.kind !== 'item') return null
     const dailyRows = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.daily).filter((item): item is ScannerItem => Boolean(item)) : scannerData?.items || []
@@ -841,22 +825,6 @@ export default function App() {
     else { history.replaceState(null, '', '/'); setRoute(readRoute()) }
     scrollTo({ top: 0 })
   }
-  const openSmartBuy = () => {
-    const params = new URLSearchParams({ platform, period: String(period), crossplay: String(crossplay) })
-    history.pushState({ frameanalyticsSmartBuyFrom: route.kind }, '', `/profile/smart-buy?${params}`)
-    setRoute(readRoute())
-    setOpenPanel(null)
-    scrollTo({ top: 0 })
-  }
-  const closeSmartBuy = () => {
-    if (history.state?.frameanalyticsSmartBuyFrom) history.back()
-    else {
-      const params = new URLSearchParams({ platform, period: String(period), crossplay: String(crossplay) })
-      history.replaceState(null, '', `/profile?${params}`)
-      setRoute(readRoute())
-    }
-    scrollTo({ top: 0 })
-  }
   const openPortfolioItem = (purchase: PortfolioPurchase) => {
     const params = new URLSearchParams({ platform, period: String(period), crossplay: String(crossplay), id: purchase.itemId })
     if (purchase.marketKey.includes('=') && !purchase.marketKey.startsWith('mod_rank=')) params.set('variant', purchase.marketKey)
@@ -893,12 +861,12 @@ export default function App() {
     if (route.kind === 'item' && route.id) params.set('id', route.id)
     if (route.kind === 'item' && route.variant) params.set('variant', route.variant)
     if (route.kind === 'item' && route.rank != null) params.set('rank', String(route.rank))
-    const path = route.kind === 'item' && route.slug ? `/items/${encodeURIComponent(route.slug)}` : route.kind === 'portfolio' ? '/profile' : route.kind === 'smartbuy' ? '/profile/smart-buy' : route.kind === 'stats' ? '/system/telemetry' : '/'
+    const path = route.kind === 'item' && route.slug ? `/items/${encodeURIComponent(route.slug)}` : route.kind === 'portfolio' ? '/profile' : '/'
     history.replaceState(history.state, '', `${path}?${params}`)
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
   return <>
     <div className="background-layer"/><div className="background-shade"/>
-    {route.kind === 'stats' ? <SiteStatsPage locale={locale}/> : route.kind === 'smartbuy' ? <SmartBuyPage locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(temporaryAccount)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onOpenSmartBuy={openSmartBuy} onCreate={() => setTemporaryAccount(createTemporaryAccount())} onRetry={() => setPortfolioReload(value => value + 1)} onRemove={id => setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null)} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(temporaryAccount)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onCreate={() => setTemporaryAccount(createTemporaryAccount())} onRetry={() => setPortfolioReload(value => value + 1)} onRemove={id => setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null)} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
       <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(temporaryAccount)} onClick={openPortfolio}/></div></header>
       <section className="mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button></section>
       <section className="panel filters filters-v3" ref={popoverRef}>
