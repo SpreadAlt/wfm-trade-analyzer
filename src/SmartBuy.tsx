@@ -42,7 +42,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   onlineMin: 'Мин. онлайн',
   average24h: 'Средняя 24ч',
   sellerCount: 'Продавцы',
-  sellerPremiumFilter: 'Макс. переплата продавцу к текущему минимуму',
+  sellerPremiumFilter: 'Макс. отклонение цены продавца',
   sortBasis: 'Ориентир сортировки',
   sortMinimum: 'Текущий минимум',
   sortAverage24h: 'Средняя 24ч',
@@ -55,8 +55,8 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   within20: '±20%',
   belowMarket: 'Ниже рынка',
   aboveMarket: 'Выше рынка',
-  minimumOnly: 'Только по минимальной цене',
-  upTo: (value: string) => `до +${value}% от минимума`,
+  minimumOnly: 'Только по базе',
+  upTo: (value: string) => `до +${value}% к базе`,
   positions: 'позиций',
   units: 'шт.',
   full: 'полностью',
@@ -84,7 +84,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   exact: 'на уровне минимума',
   noOnline: 'Сейчас нет подходящего продавца онлайн.',
   cached: 'Рыночные ответы кратковременно кэшируются, чтобы не создавать лишнюю нагрузку на Warframe Market.',
-  priceFilterHint: 'Фильтр смотрит только на переплату продавцу: цену конкретного sell-лота относительно текущего минимума той же exact-series. Ваша buy-цена в фильтрации и ранжировании не используется.'
+  priceFilterHint: 'Фильтр и итоговая переплата продавцу считаются только относительно выбранной базы: текущего минимума активных sell-лотов этой exact-series или средней цены сделок за 24 часа. Ваша buy-цена в фильтрации и ранжировании не используется.'
 } : {
   eyebrow: 'Warframe Market',
   title: 'Smart Buy',
@@ -111,7 +111,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   onlineMin: 'Online min',
   average24h: '24h average',
   sellerCount: 'Sellers',
-  sellerPremiumFilter: 'Max seller premium vs current minimum',
+  sellerPremiumFilter: 'Max seller price deviation',
   sortBasis: 'Sorting reference',
   sortMinimum: 'Current minimum',
   sortAverage24h: '24h average',
@@ -124,8 +124,8 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   within20: '±20%',
   belowMarket: 'Below market',
   aboveMarket: 'Above market',
-  minimumOnly: 'Current minimum only',
-  upTo: (value: string) => `up to +${value}% vs minimum`,
+  minimumOnly: 'Base price only',
+  upTo: (value: string) => `up to +${value}% vs base`,
   positions: 'positions',
   units: 'units',
   full: 'full',
@@ -153,7 +153,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   exact: 'at minimum',
   noOnline: 'No matching seller is online right now.',
   cached: 'Market responses are briefly cached to avoid unnecessary load on Warframe Market.',
-  priceFilterHint: 'The filter uses only seller overpayment: each sell listing versus the current minimum of the exact same market series. Your buy price is not used for filtering or ranking.'
+  priceFilterHint: 'Filtering and seller overpay totals are calculated only against the selected base: the current minimum active sell listing of the exact same market series or the 24h trade average. Your buy price is not used for filtering or ranking.'
 }
 
 const numberText = (value: number | null | undefined, digits = 1) => value == null || !Number.isFinite(value) ? '—' : value.toFixed(digits).replace(/\.0$/, '')
@@ -200,6 +200,8 @@ const profileFromStorage = () => {
 
 const offerForDemand = (offers: SmartBuySellerOffer[], demandKey: string) => offers.find(offer => offer.demandKey === demandKey) || null
 
+const metricTone = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? 'neutral' : value > 0 ? 'negative' : value < 0 ? 'positive' : 'neutral'
+
 type RankedSeller = {
   seller: SmartBuySeller
   offers: SmartBuySellerOffer[]
@@ -245,29 +247,35 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
     return () => controller.abort()
   }, [linkedProfile, reload])
 
-  // The wishlist itself is never filtered by the user's buy price.
-  // Price filtering is applied only to each seller's current sell listing
-  // relative to the current minimum of the exact same market series.
-  const filteredWishlist = useMemo(
-    () => data?.wishlist || [],
-    [data]
-  )
+  const filteredWishlist = useMemo(() => data?.wishlist || [], [data])
+
+  const activeMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPct : offer.premiumPct
+  const activeDeltaPerUnit = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPlatinumPerUnit : offer.premiumPlatinumPerUnit
+  const activeDeltaTotal = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPlatinumTotal : offer.premiumPlatinumTotal
+  const secondaryMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.premiumPct : offer.deviation24hPct
+  const secondaryDeltaPerUnit = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.premiumPlatinumPerUnit : offer.deviation24hPlatinumPerUnit
+  const secondaryDeltaTotal = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.premiumPlatinumTotal : offer.deviation24hPlatinumTotal
+  const primaryMetricLabel = sortBasis === 'average24h' ? text.vs24h : text.premium
+  const secondaryMetricLabel = sortBasis === 'average24h' ? text.premium : text.vs24h
+  const secondaryReferenceText = (offer: SmartBuySellerOffer) => sortBasis === 'average24h'
+    ? `${text.marketMin}: ${plat(offer.marketMinUnitPrice)}`
+    : `${text.average24h}: ${plat(offer.average24hUnitPrice)}`
+  const sellerFilterLabel = sortBasis === 'average24h'
+    ? (locale === 'ru' ? 'Макс. отклонение продавца к средней 24ч' : 'Max seller deviation vs 24h average')
+    : (locale === 'ru' ? 'Макс. переплата продавцу к текущему минимуму' : 'Max seller overpay vs current minimum')
 
   const rankedSellers = useMemo<RankedSeller[]>(() => {
     if (!data || !filteredWishlist.length) return []
     const allowed = new Map(filteredWishlist.map(row => [row.demandKey, row]))
     const maxPremium = limitNumber(sellerPremium)
-    const sortMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h'
-      ? offer.deviation24hPct
-      : offer.premiumPct
+    const sortMetric = (offer: SmartBuySellerOffer) => activeMetric(offer)
     return data.sellers.flatMap(seller => {
       if (onlineOnly && !ONLINE.has(seller.user.status)) return []
       const offers = seller.offers.filter(offer => {
         if (!allowed.has(offer.demandKey)) return false
-        // The filter ALWAYS uses the current exact-series market minimum.
-        // The slider below changes sorting only; it never changes this filter.
         if (maxPremium == null) return true
-        return offer.premiumPct != null && offer.premiumPct <= maxPremium + 0.0001
+        const metric = activeMetric(offer)
+        return metric != null && Number.isFinite(metric) && metric <= maxPremium + 0.0001
       }).sort((left, right) =>
         (sortMetric(left) ?? Number.POSITIVE_INFINITY) - (sortMetric(right) ?? Number.POSITIVE_INFINITY) ||
         left.unitPrice - right.unitPrice ||
@@ -288,8 +296,10 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
         unitsCovered += Math.min(wishlist.quantity, offer.fillableQuantity)
         if (offer.fillableQuantity >= wishlist.quantity) fullPositions++
         estimatedCost += offer.estimatedCost || 0
-        if (offer.premiumPlatinumTotal != null && Number.isFinite(offer.premiumPlatinumTotal)) totalPremiumPlatinum += offer.premiumPlatinumTotal
-        if (offer.premiumPct != null && Number.isFinite(offer.premiumPct)) premiums.push(offer.premiumPct)
+        const totalDelta = activeDeltaTotal(offer)
+        if (totalDelta != null && Number.isFinite(totalDelta)) totalPremiumPlatinum += totalDelta
+        const premiumMetric = activeMetric(offer)
+        if (premiumMetric != null && Number.isFinite(premiumMetric)) premiums.push(premiumMetric)
         const metric = sortMetric(offer)
         if (metric != null && Number.isFinite(metric)) sortMetrics.push(metric)
       }
@@ -328,7 +338,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
           if (fill >= needed) fullRemainingPositions++
           newUnits += fill
           stepCost += fill * offer.unitPrice
-          const metric = sortBasis === 'average24h' ? offer.deviation24hPct : offer.premiumPct
+          const metric = activeMetric(offer)
           if (metric != null && Number.isFinite(metric)) sortMetrics.push(metric)
         }
 
@@ -422,7 +432,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
           </div>
           <small>{sortBasis === 'average24h' ? text.sortHintAverage24h : text.sortHintMinimum}</small>
         </div>
-        <label><span>{text.sellerPremiumFilter}</span><select value={sellerPremium} onChange={event => setSellerPremium(event.target.value as PremiumLimit)}><option value="0">{text.minimumOnly}</option><option value="5">{text.upTo('5')}</option><option value="10">{text.upTo('10')}</option><option value="20">{text.upTo('20')}</option><option value="50">{text.upTo('50')}</option><option value="any">{text.any}</option></select></label>
+        <label><span>{sellerFilterLabel}</span><select value={sellerPremium} onChange={event => setSellerPremium(event.target.value as PremiumLimit)}><option value="0">{text.minimumOnly}</option><option value="5">{text.upTo('5')}</option><option value="10">{text.upTo('10')}</option><option value="20">{text.upTo('20')}</option><option value="50">{text.upTo('50')}</option><option value="any">{text.any}</option></select></label>
         <label className="smart-buy-check"><input type="checkbox" checked={onlineOnly} onChange={event => setOnlineOnly(event.target.checked)}/><span>{text.onlineOnly}</span></label>
         <div className="smart-buy-generated"><span>{text.updated}</span><strong>{new Date(data.generatedAt).toLocaleString()}</strong><small>{text.processed}: {data.marketSeriesProcessed}/{data.marketSeriesRequested}</small></div>
       </div>
@@ -449,7 +459,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
 
         <div className="smart-buy-subheading seller-heading"><div><span className="eyebrow">{text.sellers}</span><strong>{rankedSellers.length}</strong></div><p>{text.multiHint}</p></div>
         {!rankedSellers.length ? <div className="smart-buy-state compact"><strong>{text.sellersEmpty}</strong></div> : <div className="smart-buy-sellers">{rankedSellers.slice(0, 40).map(({ seller, offers, positionsCovered, fullPositions, unitsCovered, totalRequestedUnits, estimatedCost, totalPremiumPlatinum }) => <article className={`smart-buy-seller ${positionsCovered > 1 ? 'multi' : ''}`} key={seller.user.id || seller.user.slug}>
-          <header><a href={wfmProfileUrl(locale, seller.user.slug)} target="_blank" rel="noreferrer" title={text.openProfile}><i className={statusClass(seller.user.status)}/><span><strong>{maskNickname(seller.user.ingameName)}</strong><small>{statusLabel(seller.user.status)} · rep {seller.user.reputation}</small></span></a><div className="smart-buy-coverage"><strong>{positionsCovered}/{filteredWishlist.length}</strong><span>{text.positions}</span><small>{fullPositions} {text.full} · {unitsCovered}/{totalRequestedUnits} {text.units}</small></div><div className="smart-buy-cost"><small>{text.estimated}</small><strong>{plat(estimatedCost)}</strong><small className={totalPremiumPlatinum > 0 ? 'negative' : 'neutral'}>{text.overpayTotal}: {signedPlat(totalPremiumPlatinum)}</small></div></header>
+          <header><a href={wfmProfileUrl(locale, seller.user.slug)} target="_blank" rel="noreferrer" title={text.openProfile}><i className={statusClass(seller.user.status)}/><span><strong>{maskNickname(seller.user.ingameName)}</strong><small>{statusLabel(seller.user.status)} · rep {seller.user.reputation}</small></span></a><div className="smart-buy-coverage"><strong>{positionsCovered}/{filteredWishlist.length}</strong><span>{text.positions}</span><small>{fullPositions} {text.full} · {unitsCovered}/{totalRequestedUnits} {text.units}</small></div><div className="smart-buy-cost"><small>{text.estimated}</small><strong>{plat(estimatedCost)}</strong><small className={metricTone(totalPremiumPlatinum)}>{primaryMetricLabel}: {signedPlat(totalPremiumPlatinum)}</small></div></header>
           <div className="smart-buy-offers">{offers.map(offer => {
             const wanted = filteredWishlist.find(row => row.demandKey === offer.demandKey)
             const item = itemFor(offer.itemId)
@@ -458,8 +468,8 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
               {itemUrl ? <a className="smart-buy-offer-name" href={itemUrl} target="_blank" rel="noreferrer" title={text.openItem}>{itemName(offer.itemId)} ↗</a> : <span className="smart-buy-offer-name">{itemName(offer.itemId)}</span>}
               <span>{text.canSell} <strong>{offer.fillableQuantity}</strong> {text.of} {wanted?.quantity ?? offer.requestedQuantity}</span>
               <span>{text.price} <strong>{plat(offer.unitPrice)}</strong></span>
-              <span className={`smart-buy-offer-metric ${offer.premiumPct != null && offer.premiumPct <= 0 ? 'positive' : offer.premiumPct != null && offer.premiumPct > 10 ? 'negative' : 'neutral'}`}><small>{text.premium}</small><strong>{percent(offer.premiumPct)} · {signedPlat(offer.premiumPlatinumPerUnit)} {text.perUnit}</strong><em>{signedPlat(offer.premiumPlatinumTotal)} {text.total}</em></span>
-              <span className={`smart-buy-offer-metric ${offer.deviation24hPct == null ? 'neutral' : offer.deviation24hPct > 0 ? 'negative' : offer.deviation24hPct < 0 ? 'positive' : 'neutral'}`}><small>{text.vs24h}</small><strong>{percent(offer.deviation24hPct)} · {signedPlat(offer.deviation24hPlatinumPerUnit)} {text.perUnit}</strong><em>{text.average24h}: {plat(offer.average24hUnitPrice)}</em></span>
+<span className={`smart-buy-offer-metric primary ${metricTone(activeMetric(offer))}`}><small>{primaryMetricLabel}</small><strong>{percent(activeMetric(offer))}</strong><span className="smart-buy-metric-line">{signedPlat(activeDeltaPerUnit(offer))} {text.perUnit}</span><em>{signedPlat(activeDeltaTotal(offer))} {text.total}</em></span>
+              <span className={`smart-buy-offer-metric secondary ${metricTone(secondaryMetric(offer))}`}><small>{secondaryMetricLabel}</small><strong>{percent(secondaryMetric(offer))}</strong><span className="smart-buy-metric-line">{signedPlat(secondaryDeltaPerUnit(offer))} {text.perUnit}</span><em>{secondaryReferenceText(offer)}</em></span>
             </div>
           })}</div>
           <a className="smart-buy-open" href={wfmProfileUrl(locale, seller.user.slug)} target="_blank" rel="noreferrer">{text.openProfile} ↗</a>

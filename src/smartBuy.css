@@ -151,3 +151,91 @@ html[data-theme="light"] .smart-buy-sort-control > span,html[data-theme="light"]
 html[data-theme="light"] .portfolio-smart-buy-launch strong { color:#18303a; }
 html[data-theme="light"] .portfolio-smart-buy-launch p { color:#526d78; }
 @media (max-width:680px) { .portfolio-smart-buy-launch { flex-direction:column; align-items:stretch; }.portfolio-smart-buy-launch .primary-action { width:100%; } }
+
+/* v0.9.4 readability + responsive filter overrides */
+.smart-buy-filters {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
+}
+.smart-buy-sort-control {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.smart-buy-sort-toggle {
+  width: 100%;
+  max-width: 430px;
+}
+.smart-buy-check {
+  align-self: end;
+  min-height: 40px;
+}
+.smart-buy-generated {
+  align-self: end;
+}
+.smart-buy-offers {
+  gap: 8px;
+}
+.smart-buy-offer {
+  grid-template-columns: minmax(190px, 1.15fr) minmax(120px, .7fr) minmax(95px, .48fr) minmax(190px, .9fr) minmax(190px, .9fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 11px;
+}
+.smart-buy-offer > span {
+  line-height: 1.35;
+}
+.smart-buy-offer-metric {
+  border: 1px solid rgba(56, 83, 111, .7);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(7, 18, 31, .45);
+  gap: 4px;
+}
+.smart-buy-offer-metric.primary {
+  background: rgba(9, 25, 43, .82);
+}
+.smart-buy-offer-metric.secondary {
+  background: rgba(7, 18, 31, .58);
+}
+.smart-buy-offer-metric small {
+  font-size: 8px;
+  line-height: 1.25;
+}
+.smart-buy-offer-metric strong {
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: normal;
+}
+.smart-buy-metric-line {
+  color: #dce9fb;
+  font-weight: 750;
+  line-height: 1.2;
+}
+.smart-buy-offer-metric em {
+  font-size: 10px;
+  white-space: normal;
+  line-height: 1.25;
+}
+@media (max-width: 1200px) {
+  .smart-buy-offer {
+    grid-template-columns: minmax(170px, 1.1fr) minmax(115px, .75fr) minmax(95px, .5fr) 1fr 1fr;
+  }
+}
+@media (max-width: 900px) {
+  .smart-buy-filters {
+    grid-template-columns: 1fr;
+  }
+  .smart-buy-offer {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+@media (max-width: 640px) {
+  .smart-buy-offer {
+    grid-template-columns: 1fr;
+  }
+  .smart-buy-sort-toggle {
+    max-width: none;
+  }
+}
