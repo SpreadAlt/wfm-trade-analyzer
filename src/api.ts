@@ -120,6 +120,11 @@ export type SmartBuyWishlistRow = {
   createdAt: string | null
   marketMinUnitPrice: number | null
   onlineMinUnitPrice: number | null
+  average24hUnitPrice: number | null
+  average24hFromAt: string | null
+  average24hToAt: string | null
+  average24hSales: number | null
+  average24hPoints: number
   gapPct: number | null
   onlineGapPct: number | null
   absoluteGapPct: number | null
@@ -142,7 +147,14 @@ export type SmartBuySellerOffer = {
   requestedQuantity: number
   fullQuantity: boolean
   estimatedCost: number | null
+  marketMinUnitPrice: number | null
   premiumPct: number | null
+  premiumPlatinumPerUnit: number | null
+  premiumPlatinumTotal: number | null
+  average24hUnitPrice: number | null
+  deviation24hPct: number | null
+  deviation24hPlatinumPerUnit: number | null
+  deviation24hPlatinumTotal: number | null
   updatedAt: string | null
 }
 

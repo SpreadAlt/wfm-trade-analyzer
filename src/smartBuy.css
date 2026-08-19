@@ -53,9 +53,15 @@
 .smart-buy-coverage strong,.smart-buy-cost strong { color:#eef6ff; font-size:18px; }
 .smart-buy-coverage span,.smart-buy-coverage small,.smart-buy-cost small { color:#718ba7; font-size:9px; }
 .smart-buy-offers { display:grid; gap:4px; margin-top:10px; }
-.smart-buy-offer { display:grid; grid-template-columns:minmax(180px,1.3fr) minmax(125px,.8fr) minmax(100px,.55fr) minmax(125px,.7fr); align-items:center; gap:10px; padding:7px 9px; color:#829bb7; background:rgba(13,27,43,.72); border-radius:8px; font-size:10px; }
+.smart-buy-offer { display:grid; grid-template-columns:minmax(180px,1.15fr) minmax(125px,.7fr) minmax(95px,.5fr) minmax(180px,1fr) minmax(180px,1fr); align-items:center; gap:10px; padding:7px 9px; color:#829bb7; background:rgba(13,27,43,.72); border-radius:8px; font-size:10px; }
 .smart-buy-offer strong { color:#dceafa; }
 .smart-buy-offer-name { overflow:hidden; color:#c9d9ea; font-weight:850; text-overflow:ellipsis; white-space:nowrap; }
+
+.smart-buy-offer-metric { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.smart-buy-offer-metric small { color:#6f88a5; font-size:8px; font-weight:850; text-transform:uppercase; }
+.smart-buy-offer-metric strong { font-size:10px; white-space:nowrap; }
+.smart-buy-offer-metric em { color:#6f88a5; font-size:9px; font-style:normal; white-space:nowrap; }
+html[data-theme="light"] .smart-buy-offer-metric small,html[data-theme="light"] .smart-buy-offer-metric em { color:#526d78; }
 .smart-buy-open { display:inline-flex; margin-top:9px; color:#76c7f7; text-decoration:none; font-size:10px; font-weight:850; }
 .smart-buy-open:hover { color:#9cddff; }
 html[data-theme="light"] .smart-buy-heading h2,html[data-theme="light"] .smart-buy-item strong,html[data-theme="light"] .smart-buy-subheading > div > strong,html[data-theme="light"] .smart-buy-seller header a,html[data-theme="light"] .smart-buy-coverage strong,html[data-theme="light"] .smart-buy-cost strong { color:#18303a; }
