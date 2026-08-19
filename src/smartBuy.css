@@ -122,3 +122,32 @@ html[data-theme="light"] .smart-buy-route-step > span small,html[data-theme="lig
 @media (max-width:720px) {
   .smart-buy-values { grid-template-columns:repeat(3,1fr); }
 }
+
+/* v0.9.3: price-reference slider. The seller premium filter remains tied to current minimum. */
+.smart-buy-sort-control { display:flex; flex-direction:column; gap:6px; min-width:310px; }
+.smart-buy-sort-control > span { color:#7891ae; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.05em; }
+.smart-buy-sort-control > small { max-width:430px; color:#627d9b; font-size:9px; line-height:1.35; }
+.smart-buy-sort-toggle { display:grid; grid-template-columns:minmax(92px,auto) 44px minmax(92px,auto); align-items:center; gap:8px; min-height:40px; padding:5px 8px; background:rgba(5,12,22,.86); border:1px solid #2a3d55; border-radius:10px; }
+.smart-buy-sort-toggle > b { color:#5f7894; font-size:10px; text-align:center; transition:color .15s ease; }
+.smart-buy-sort-toggle > b.active { color:#e6f4ff; }
+.smart-buy-slider { position:relative; width:42px; height:22px; cursor:pointer; }
+.smart-buy-slider input { position:absolute; opacity:0; pointer-events:none; }
+.smart-buy-slider i { position:absolute; inset:0; background:#1a3046; border:1px solid #35516d; border-radius:999px; transition:.18s ease; }
+.smart-buy-slider i::after { content:''; position:absolute; top:3px; left:3px; width:14px; height:14px; background:#74cfff; border-radius:50%; box-shadow:0 1px 4px rgba(0,0,0,.35); transition:.18s ease; }
+.smart-buy-slider input:checked + i { background:#173b35; border-color:#3b7e69; }
+.smart-buy-slider input:checked + i::after { transform:translateX(19px); background:#66e3b2; }
+.smart-buy-slider input:focus-visible + i { outline:2px solid #73c9ff; outline-offset:2px; }
+html[data-theme="light"] .smart-buy-sort-toggle { background:#e4ecee; border-color:#a8bbc2; }
+html[data-theme="light"] .smart-buy-sort-toggle > b { color:#68808a; }
+html[data-theme="light"] .smart-buy-sort-toggle > b.active { color:#18303a; }
+html[data-theme="light"] .smart-buy-sort-control > span,html[data-theme="light"] .smart-buy-sort-control > small { color:#526d78; }
+@media (max-width:900px) { .smart-buy-sort-control { min-width:0; } }
+
+.portfolio-smart-buy-launch { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 0 12px; padding:15px 17px; border-color:rgba(83,181,255,.28); }
+.portfolio-smart-buy-launch > div { display:flex; flex-direction:column; gap:4px; }
+.portfolio-smart-buy-launch strong { color:#edf6ff; font-size:17px; }
+.portfolio-smart-buy-launch p { max-width:760px; margin:0; color:#708aa7; font-size:10px; line-height:1.45; }
+.smart-buy-page-shell .smart-buy-panel { margin-bottom:0; }
+html[data-theme="light"] .portfolio-smart-buy-launch strong { color:#18303a; }
+html[data-theme="light"] .portfolio-smart-buy-launch p { color:#526d78; }
+@media (max-width:680px) { .portfolio-smart-buy-launch { flex-direction:column; align-items:stretch; }.portfolio-smart-buy-launch .primary-action { width:100%; } }

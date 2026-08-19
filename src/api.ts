@@ -86,6 +86,140 @@ export const fetchHourlyIndex = (query: HourlyIndexQuery, signal?: AbortSignal) 
 }
 export const fetchEvents = (signal?: AbortSignal) => fetchJson<EventsResponse>('/api/events-v1', signal)
 
+export type SiteApiStatus = {
+  ok: boolean
+  name: string
+  stage: string
+  publicItemVersion: string
+  itemHistoryVersion: string
+  normalizedVersion: string
+  metricsVersion: string
+  scannerVersion: string
+  categoryVersion: string
+  hourlyVersion: string
+  hourlyPlanRevision: string
+  eventsVersion: string
+  hourlyIndexVersion: string
+  hourlyIndexRuntimeRevision: string
+  smartBuyVersion: string
+  smartBuyRuntimeRevision: string
+  catalogTotal: number
+}
+
+export type SiteHourlyStatus = {
+  ok: boolean
+  runtimeRevision: string
+  planRevision: string
+  prepared: boolean
+  enabled: boolean
+  activeScopes?: string[]
+  disabledScopes?: string[]
+  groups?: { stored: number; target: number; remaining: number }
+  expectedWfmRequestsDay?: number
+  expectedQueueMessagesDay?: number
+  expectedQueueOperationsDay?: number
+  runtimeLimits?: { maxWfmRequestsDay?: number; maxQueueOperationsDay?: number }
+  checkpointedGroups?: number
+  checkpointedItems?: number
+  firstFetchedAt?: string | null
+  lastFetchedAt?: string | null
+  queue?: { backlogCount?: number }
+  upstreamCooldown?: { until?: string | null; upstreamStatus?: number | null } | null
+  runtimeThrottle?: {
+    requestIntervalMs?: number
+    pauseEvery?: number
+    pauseMs?: number
+    groupStartSpacingSeconds?: number
+    recommendedConsumerMaxConcurrency?: number
+    maxBacklog?: number
+    bootstrapBatchGroups?: number
+    scheduledBatchGroups?: number
+  }
+}
+
+export type SiteFreshnessBucket = {
+  scope: string
+  tier: string
+  groups: number
+  fresh: number
+  due: number
+  stale: number
+  missing: number
+  checkpointed: number
+  errorItems: number
+  oldestAgeMinutes: number | null
+  newestObservedAt: string | null
+}
+
+export type SiteHourlyFreshness = {
+  ok: boolean
+  generatedAt: string
+  healthy: boolean
+  totals: { groups: number; items: number; fresh: number; due: number; stale: number; missing: number; checkpointed: number; errorItems: number }
+  buckets: SiteFreshnessBucket[]
+  queue?: { backlogCount?: number }
+  cooldown?: { active: boolean; until: string | null; upstreamStatus: number | null }
+}
+
+export type SiteHourlyIndexStatus = {
+  ok: boolean
+  hourlyIndexRuntimeRevision: string
+  prepared: boolean
+  sourceGroups?: number
+  finalizedAt?: string | null
+  globalManifestReady?: boolean
+  shards?: { stored: number; target: number; remaining: number; bytes: number; complete: boolean }
+  automation?: {
+    enabled: boolean
+    refreshMinutes: number
+    latestPublicGeneratedAt: string | null
+    nextRefreshAt: string | null
+    due: boolean
+    hourlyQueueOperationsDay: number
+    combinedQueueOperationsDay: number
+    freeQueueOperationsDay: number
+    withinFreeQueueBudget: boolean
+    budget?: { messagesPerDay?: number; operationsPerDay?: number; buildsPerDay?: number }
+  }
+  queue?: { backlogCount?: number }
+}
+
+export type SiteSmartBuyStatus = {
+  ok: boolean
+  smartBuyVersion: string
+  smartBuyRuntimeRevision: string
+  upstream: {
+    baseUrl: string
+    publicRateLimitRequestsPerSecond: number
+    requestIntervalMs: number
+    configuredRequestsPerSecond: number
+    sharedHourlyCooldown: boolean
+  }
+  limits: {
+    maxMarketSeriesPerRequest: number
+    maxFrontendPages: number
+    maxFrontendMarketSeries: number
+  }
+  cache: {
+    prefix: string
+    profileTtlSeconds: number
+    userOrdersTtlSeconds: number
+    itemOrdersTtlSeconds: number
+    entries: number
+    bytes: number
+    profileEntries: number
+    userOrderEntries: number
+    itemOrderEntries: number
+  }
+}
+
+const noncePath = (path: string) => `${path}${path.includes('?') ? '&' : '?'}t=${Date.now()}`
+export const fetchSiteApiStatus = (signal?: AbortSignal) => fetchJson<SiteApiStatus>(noncePath('/'), signal)
+export const fetchSiteHourlyStatus = (signal?: AbortSignal) => fetchJson<SiteHourlyStatus>(noncePath('/hourly-v1-status'), signal)
+export const fetchSiteHourlyFreshness = (signal?: AbortSignal) => fetchJson<SiteHourlyFreshness>(noncePath('/hourly-v1-freshness?scope=all&limit=25'), signal)
+export const fetchSiteHourlyIndexStatus = (signal?: AbortSignal) => fetchJson<SiteHourlyIndexStatus>(noncePath('/hourly-index-v1-status'), signal)
+export const fetchSiteSmartBuyStatus = (signal?: AbortSignal) => fetchJson<SiteSmartBuyStatus>(noncePath('/smart-buy-v1-status'), signal)
+
 export type SmartBuyDimensions = {
   rank?: number
   subtype?: string

@@ -14,6 +14,7 @@ const WFM_LOCALES = new Set([
 ])
 
 type PremiumLimit = 'any' | '0' | '5' | '10' | '20' | '50'
+type SortBasis = 'minimum' | 'average24h'
 
 const textFor = (locale: Locale) => locale === 'ru' ? {
   eyebrow: 'Warframe Market',
@@ -32,7 +33,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   wishlist: 'Что вы хотите купить',
   sellers: 'Продавцы, которые закрывают ваши покупки',
   route: 'Умный маршрут',
-  routeHint: 'Сначала выбираются продавцы, которые закрывают больше нужных позиций и количества; при равенстве предпочтение отдаётся меньшей переплате относительно текущего минимума.',
+  routeHint: 'Сначала выбираются продавцы, которые закрывают больше нужных позиций и количества; ценовой критерий при равенстве задаёт ползунок сортировки.',
   routeComplete: 'Список покрывается выбранным маршрутом.',
   routePartial: 'Часть списка не удалось покрыть с текущими фильтрами.',
   wanted: 'Нужно',
@@ -42,6 +43,11 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   average24h: 'Средняя 24ч',
   sellerCount: 'Продавцы',
   sellerPremiumFilter: 'Макс. переплата продавцу к текущему минимуму',
+  sortBasis: 'Ориентир сортировки',
+  sortMinimum: 'Текущий минимум',
+  sortAverage24h: 'Средняя 24ч',
+  sortHintMinimum: 'При равном покрытии выше продавцы с меньшей переплатой относительно текущего минимума exact-series.',
+  sortHintAverage24h: 'При равном покрытии выше продавцы с меньшей ценой относительно средней цены сделок за последние 24 часа exact-series.',
   onlineOnly: 'Только онлайн',
   any: 'Любое',
   within5: '±5%',
@@ -96,7 +102,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   wishlist: 'What you want to buy',
   sellers: 'Sellers covering your purchases',
   route: 'Smart route',
-  routeHint: 'Sellers covering more wanted positions and units are picked first; lower premium versus the current minimum breaks ties.',
+  routeHint: 'Sellers covering more wanted positions and units are picked first; the slider chooses the price tie-breaker.',
   routeComplete: 'The selected route covers the filtered list.',
   routePartial: 'Some items cannot be covered with the current filters.',
   wanted: 'Wanted',
@@ -106,6 +112,11 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   average24h: '24h average',
   sellerCount: 'Sellers',
   sellerPremiumFilter: 'Max seller premium vs current minimum',
+  sortBasis: 'Sorting reference',
+  sortMinimum: 'Current minimum',
+  sortAverage24h: '24h average',
+  sortHintMinimum: 'When coverage is equal, sellers with the lowest premium versus the current exact-series minimum rank higher.',
+  sortHintAverage24h: 'When coverage is equal, sellers with the lowest price versus the exact-series 24h trade average rank higher.',
   onlineOnly: 'Online only',
   any: 'Any',
   within5: '±5%',
@@ -199,6 +210,7 @@ type RankedSeller = {
   estimatedCost: number
   totalPremiumPlatinum: number
   averagePremium: number | null
+  averageSortMetric: number | null
 }
 
 type RouteStep = RankedSeller & {
@@ -218,6 +230,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const [sellerPremium, setSellerPremium] = useState<PremiumLimit>('10')
+  const [sortBasis, setSortBasis] = useState<SortBasis>('minimum')
   const [onlineOnly, setOnlineOnly] = useState(true)
 
   useEffect(() => {
@@ -244,13 +257,22 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
     if (!data || !filteredWishlist.length) return []
     const allowed = new Map(filteredWishlist.map(row => [row.demandKey, row]))
     const maxPremium = limitNumber(sellerPremium)
+    const sortMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h'
+      ? offer.deviation24hPct
+      : offer.premiumPct
     return data.sellers.flatMap(seller => {
       if (onlineOnly && !ONLINE.has(seller.user.status)) return []
       const offers = seller.offers.filter(offer => {
         if (!allowed.has(offer.demandKey)) return false
+        // The filter ALWAYS uses the current exact-series market minimum.
+        // The slider below changes sorting only; it never changes this filter.
         if (maxPremium == null) return true
         return offer.premiumPct != null && offer.premiumPct <= maxPremium + 0.0001
-      })
+      }).sort((left, right) =>
+        (sortMetric(left) ?? Number.POSITIVE_INFINITY) - (sortMetric(right) ?? Number.POSITIVE_INFINITY) ||
+        left.unitPrice - right.unitPrice ||
+        left.itemId.localeCompare(right.itemId)
+      )
       if (!offers.length) return []
       let unitsCovered = 0
       let totalRequestedUnits = 0
@@ -258,6 +280,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
       let estimatedCost = 0
       let totalPremiumPlatinum = 0
       const premiums: number[] = []
+      const sortMetrics: number[] = []
       for (const wishlist of filteredWishlist) {
         totalRequestedUnits += wishlist.quantity
         const offer = offerForDemand(offers, wishlist.demandKey)
@@ -267,18 +290,21 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
         estimatedCost += offer.estimatedCost || 0
         if (offer.premiumPlatinumTotal != null && Number.isFinite(offer.premiumPlatinumTotal)) totalPremiumPlatinum += offer.premiumPlatinumTotal
         if (offer.premiumPct != null && Number.isFinite(offer.premiumPct)) premiums.push(offer.premiumPct)
+        const metric = sortMetric(offer)
+        if (metric != null && Number.isFinite(metric)) sortMetrics.push(metric)
       }
       const averagePremium = premiums.length ? premiums.reduce((sum, value) => sum + value, 0) / premiums.length : null
-      return [{ seller, offers, positionsCovered: offers.length, fullPositions, unitsCovered, totalRequestedUnits, estimatedCost, totalPremiumPlatinum, averagePremium }]
+      const averageSortMetric = sortMetrics.length ? sortMetrics.reduce((sum, value) => sum + value, 0) / sortMetrics.length : null
+      return [{ seller, offers, positionsCovered: offers.length, fullPositions, unitsCovered, totalRequestedUnits, estimatedCost, totalPremiumPlatinum, averagePremium, averageSortMetric }]
     }).sort((left, right) =>
       right.positionsCovered - left.positionsCovered ||
       right.fullPositions - left.fullPositions ||
       right.unitsCovered - left.unitsCovered ||
-      (left.averagePremium ?? Number.POSITIVE_INFINITY) - (right.averagePremium ?? Number.POSITIVE_INFINITY) ||
+      (left.averageSortMetric ?? Number.POSITIVE_INFINITY) - (right.averageSortMetric ?? Number.POSITIVE_INFINITY) ||
       left.estimatedCost - right.estimatedCost ||
       left.seller.user.ingameName.localeCompare(right.seller.user.ingameName)
     )
-  }, [data, filteredWishlist, onlineOnly, sellerPremium])
+  }, [data, filteredWishlist, onlineOnly, sellerPremium, sortBasis])
 
   const smartRoute = useMemo(() => {
     const remaining = new Map(filteredWishlist.map(row => [row.demandKey, row.quantity]))
@@ -291,7 +317,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
         let fullRemainingPositions = 0
         let newUnits = 0
         let stepCost = 0
-        const premiums: number[] = []
+        const sortMetrics: number[] = []
 
         for (const offer of candidate.offers) {
           const needed = remaining.get(offer.demandKey) || 0
@@ -302,7 +328,8 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
           if (fill >= needed) fullRemainingPositions++
           newUnits += fill
           stepCost += fill * offer.unitPrice
-          if (offer.premiumPct != null && Number.isFinite(offer.premiumPct)) premiums.push(offer.premiumPct)
+          const metric = sortBasis === 'average24h' ? offer.deviation24hPct : offer.premiumPct
+          if (metric != null && Number.isFinite(metric)) sortMetrics.push(metric)
         }
 
         return {
@@ -311,14 +338,14 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
           fullRemainingPositions,
           newUnits,
           stepCost,
-          averagePremium: premiums.length ? premiums.reduce((sum, value) => sum + value, 0) / premiums.length : Number.POSITIVE_INFINITY
+          averageSortMetric: sortMetrics.length ? sortMetrics.reduce((sum, value) => sum + value, 0) / sortMetrics.length : Number.POSITIVE_INFINITY
         }
       }).filter(value => value.newUnits > 0)
         .sort((left, right) =>
           right.fullRemainingPositions - left.fullRemainingPositions ||
           right.newPositions - left.newPositions ||
           right.newUnits - left.newUnits ||
-          left.averagePremium - right.averagePremium ||
+          left.averageSortMetric - right.averageSortMetric ||
           left.stepCost - right.stepCost
         )
 
@@ -345,7 +372,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
     const uncoveredUnits = [...remaining.values()].reduce((sum, value) => sum + Math.max(0, value), 0)
     const uncoveredPositions = [...remaining.values()].filter(value => value > 0).length
     return { chosen, uncoveredUnits, uncoveredPositions }
-  }, [filteredWishlist, rankedSellers])
+  }, [filteredWishlist, rankedSellers, sortBasis])
 
   const saveProfile = () => {
     const value = profileInput.trim()
@@ -383,6 +410,18 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
 
     {loading ? <div className="smart-buy-state"><div className="spinner"/><strong>{text.loading}</strong></div> : error ? <div className="smart-buy-state error-state"><strong>{text.loadError}</strong><small>{error}</small><button type="button" className="retry-button" onClick={() => setReload(value => value + 1)}>{text.refresh}</button></div> : data ? <>
       <div className="smart-buy-filters">
+        <div className="smart-buy-sort-control">
+          <span>{text.sortBasis}</span>
+          <div className="smart-buy-sort-toggle">
+            <b className={sortBasis === 'minimum' ? 'active' : ''}>{text.sortMinimum}</b>
+            <label className="smart-buy-slider">
+              <input type="checkbox" checked={sortBasis === 'average24h'} onChange={event => setSortBasis(event.target.checked ? 'average24h' : 'minimum')} aria-label={text.sortBasis}/>
+              <i/>
+            </label>
+            <b className={sortBasis === 'average24h' ? 'active' : ''}>{text.sortAverage24h}</b>
+          </div>
+          <small>{sortBasis === 'average24h' ? text.sortHintAverage24h : text.sortHintMinimum}</small>
+        </div>
         <label><span>{text.sellerPremiumFilter}</span><select value={sellerPremium} onChange={event => setSellerPremium(event.target.value as PremiumLimit)}><option value="0">{text.minimumOnly}</option><option value="5">{text.upTo('5')}</option><option value="10">{text.upTo('10')}</option><option value="20">{text.upTo('20')}</option><option value="50">{text.upTo('50')}</option><option value="any">{text.any}</option></select></label>
         <label className="smart-buy-check"><input type="checkbox" checked={onlineOnly} onChange={event => setOnlineOnly(event.target.checked)}/><span>{text.onlineOnly}</span></label>
         <div className="smart-buy-generated"><span>{text.updated}</span><strong>{new Date(data.generatedAt).toLocaleString()}</strong><small>{text.processed}: {data.marketSeriesProcessed}/{data.marketSeriesRequested}</small></div>

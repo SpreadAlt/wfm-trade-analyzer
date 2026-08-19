@@ -1,0 +1,41 @@
+.site-stats-shell { max-width:1320px; }
+.site-stats-topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.site-stats-hero { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; padding:20px; }
+.site-stats-hero h1 { margin:4px 0 7px; color:#eef6ff; font-size:28px; }
+.site-stats-hero p { max-width:820px; margin:0 0 5px; color:#7f97b2; font-size:12px; line-height:1.55; }
+.site-stats-hero small { color:#607c99; font-size:9px; }
+.site-health { flex:none; padding:8px 12px; border-radius:999px; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.06em; }
+.site-health.ok { color:#71e5b5; background:rgba(82,230,173,.08); border:1px solid rgba(82,230,173,.25); }
+.site-health.warn { color:#efbb69; background:rgba(239,187,105,.08); border:1px solid rgba(239,187,105,.25); }
+.site-stats-state { min-height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+.site-stats-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:10px 0; }
+.site-stat-card { padding:14px; min-width:0; }
+.site-stat-card > span { display:block; color:#6f89a6; font-size:9px; font-weight:900; text-transform:uppercase; letter-spacing:.06em; }
+.site-stat-card > strong { display:block; margin:5px 0 10px; color:#eaf4ff; font-size:19px; }
+.site-stat-card dl { display:grid; gap:5px; margin:0; }
+.site-stat-card dl div { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding-top:5px; border-top:1px solid rgba(55,76,99,.5); }
+.site-stat-card dt { color:#6b84a0; font-size:9px; }
+.site-stat-card dd { margin:0; color:#b8cce0; font-size:9px; text-align:right; word-break:break-word; }
+.freshness-strip { display:flex; height:5px; margin:0 0 10px; overflow:hidden; background:#18283a; border-radius:999px; }
+.freshness-strip i.fresh { background:#4bd8a3; }.freshness-strip i.due { background:#e2b75f; }.freshness-strip i.stale { background:#ed7078; }
+.site-stats-limits,.site-stats-cache,.site-stats-buckets,.site-stats-versions { margin-top:10px; padding:16px; }
+.site-section-heading { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:11px; }
+.site-section-heading > strong { color:#dceafa; font-size:11px; }
+.limit-meter { height:8px; margin:0 0 13px; overflow:hidden; background:#17283a; border:1px solid #263b50; border-radius:999px; }
+.limit-meter i { display:block; height:100%; background:linear-gradient(90deg,#4fd9a5,#e5b75d,#ed7379); }
+.site-limit-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.site-limit-grid > div { display:flex; flex-direction:column; gap:3px; padding:10px; background:rgba(8,18,30,.55); border:1px solid #263a50; border-radius:10px; }
+.site-limit-grid span { color:#6f88a4; font-size:8px; font-weight:850; text-transform:uppercase; }
+.site-limit-grid strong { color:#dceafa; font-size:13px; }
+.site-limit-grid small { color:#607b98; font-size:8px; }
+.site-stats-buckets table { width:100%; border-collapse:collapse; font-size:10px; }
+.site-stats-buckets th,.site-stats-buckets td { padding:8px 10px; border-bottom:1px solid #26394e; text-align:center; }
+.site-stats-buckets th { color:#6f88a4; font-size:8px; text-transform:uppercase; }
+.site-stats-buckets td { color:#b8cbe0; }
+.version-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.version-chips span { padding:6px 9px; color:#9db5ce; background:rgba(8,18,30,.55); border:1px solid #263a50; border-radius:999px; font-size:9px; }
+html[data-theme="light"] .site-stats-hero h1,html[data-theme="light"] .site-stat-card > strong,html[data-theme="light"] .site-section-heading > strong,html[data-theme="light"] .site-limit-grid strong { color:#18303a; }
+html[data-theme="light"] .site-stats-hero p,html[data-theme="light"] .site-stat-card dt,html[data-theme="light"] .site-stat-card dd,html[data-theme="light"] .site-limit-grid span,html[data-theme="light"] .site-stats-buckets td { color:#526d78; }
+html[data-theme="light"] .site-limit-grid > div,html[data-theme="light"] .version-chips span { background:rgba(216,228,231,.85); border-color:#a7bbc2; }
+@media (max-width:1050px) { .site-stats-grid { grid-template-columns:repeat(2,1fr); }.site-limit-grid { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:620px) { .site-stats-grid,.site-limit-grid { grid-template-columns:1fr; }.site-stats-hero { flex-direction:column; }.site-health { align-self:flex-start; } }
