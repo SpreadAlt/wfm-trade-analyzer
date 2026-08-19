@@ -248,11 +248,11 @@ const mergeSmartBuyPages = (pages: SmartBuyResponse[]): SmartBuyResponse => {
     left.user.ingameName.localeCompare(right.user.ingameName)
   )
 
-  const latestGeneratedAt = pages
+  const generatedAtValues = pages
     .map(page => page.generatedAt)
     .filter(Boolean)
     .sort()
-    .at(-1) || base.generatedAt
+  const latestGeneratedAt = generatedAtValues[generatedAtValues.length - 1] || base.generatedAt
 
   return {
     ...base,

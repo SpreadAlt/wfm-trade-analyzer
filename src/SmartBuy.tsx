@@ -148,7 +148,7 @@ const maskNickname = (value: string) => {
   const chars = Array.from(value || '')
   if (!chars.length) return '•••'
   if (chars.length === 1) return `${chars[0]}•`
-  if (chars.length <= 4) return `${chars[0]}${'•'.repeat(Math.max(2, chars.length - 2))}${chars.at(-1)}`
+  if (chars.length <= 4) return `${chars[0]}${'•'.repeat(Math.max(2, chars.length - 2))}${chars[chars.length - 1]}`
   const start = chars.length >= 10 ? 3 : 2
   const end = chars.length >= 8 ? 2 : 1
   const hidden = Math.max(3, Math.min(7, chars.length - start - end))
