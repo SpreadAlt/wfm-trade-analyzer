@@ -85,3 +85,89 @@ export const fetchHourlyIndex = (query: HourlyIndexQuery, signal?: AbortSignal) 
   return fetchJson<HourlyIndexResponse>(`/api/hourly-index-v1?${params}`, signal)
 }
 export const fetchEvents = (signal?: AbortSignal) => fetchJson<EventsResponse>('/api/events-v1', signal)
+
+export type SmartBuyUser = {
+  id: string | null
+  slug: string
+  ingameName: string
+  reputation: number
+  platform: string | null
+  crossplay: boolean
+  locale: string | null
+  status: string
+  lastSeen: string | null
+  profileUrl: string
+}
+export type SmartBuyDimensions = {
+  rank?: number
+  subtype?: string
+  charges?: number
+  amberStars?: number
+  cyanStars?: number
+}
+export type SmartBuyWishlistRow = {
+  demandKey: string
+  itemId: string
+  dimensions: SmartBuyDimensions
+  orderIds: string[]
+  quantity: number
+  perTrade: number
+  wantedPlatinum: number
+  wantedUnitPrice: number
+  updatedAt: string | null
+  createdAt: string | null
+  marketMinUnitPrice: number | null
+  marketMinFromOnline: boolean
+  gapPct: number | null
+  absoluteGapPct: number | null
+  sellers: number
+  onlineSellers: number
+  marketFetchedAt: string
+}
+export type SmartBuySellerOffer = {
+  demandKey: string
+  itemId: string
+  orderId: string | null
+  dimensions: SmartBuyDimensions
+  platinum: number | null
+  perTrade: number
+  unitPrice: number
+  availableQuantity: number
+  fillableQuantity: number
+  requestedQuantity: number
+  fullQuantity: boolean
+  estimatedCost: number | null
+  premiumPct: number | null
+  updatedAt: string | null
+}
+export type SmartBuySeller = {
+  user: SmartBuyUser
+  offers: SmartBuySellerOffer[]
+  marketSeriesCovered: number
+  unitsCovered: number
+  fullSeriesCovered: number
+  estimatedCost: number
+}
+export type SmartBuyResponse = {
+  ok: true
+  smartBuyVersion: string
+  smartBuyRuntimeRevision: string
+  generatedAt: string
+  publicOnly: true
+  hiddenOrdersAvailable: false
+  profile: SmartBuyUser
+  marketScope: { platform: string; crossplay: boolean }
+  publicOrders: number
+  visibleBuyOrders: number
+  marketSeriesRequested: number
+  marketSeriesProcessed: number
+  truncated: boolean
+  maxMarketSeries: number
+  cache: { profile: boolean; userOrders: boolean; itemHits: number; itemMisses: number; itemTtlSeconds: number }
+  wishlist: SmartBuyWishlistRow[]
+  sellers: SmartBuySeller[]
+}
+export const fetchSmartBuy = (profile: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ profile, t: String(Date.now()) })
+  return fetchJson<SmartBuyResponse>(`/api/smart-buy-v1?${params}`, signal)
+}
