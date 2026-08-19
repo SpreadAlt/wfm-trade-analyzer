@@ -303,30 +303,34 @@ export type SiteHourlyStatus = {
 }
 
 export type SiteHourlyFreshnessBucket = {
-  scope?: string
-  tier?: string
-  groups?: number
-  fresh?: number
-  due?: number
-  stale?: number
-  missing?: number
-  oldestAgeMinutes?: number | null
+  scope: string
+  tier: string
+  groups: number
+  fresh: number
+  due: number
+  stale: number
+  missing: number
+  checkpointed?: number
+  errorItems?: number
+  oldestAgeMinutes: number | null
+  [key: string]: any
+}
+
+export type SiteHourlyFreshnessTotals = {
+  groups: number
+  items: number
+  fresh: number
+  due: number
+  stale: number
+  missing: number
+  checkpointed: number
+  errorItems: number
   [key: string]: any
 }
 
 export type SiteHourlyFreshness = {
   ok?: boolean
-  totals?: {
-    groups?: number
-    items?: number
-    fresh?: number
-    due?: number
-    stale?: number
-    missing?: number
-    checkpointed?: number
-    errorItems?: number
-    [key: string]: any
-  }
+  totals: SiteHourlyFreshnessTotals
   buckets: SiteHourlyFreshnessBucket[]
   [key: string]: any
 }
