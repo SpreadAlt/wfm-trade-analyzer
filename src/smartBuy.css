@@ -239,3 +239,40 @@ html[data-theme="light"] .portfolio-smart-buy-launch p { color:#526d78; }
     max-width: none;
   }
 }
+
+/* v0.9.5: larger typography and denser seller cards */
+.smart-buy-panel { font-size:13px; }
+.smart-buy-heading p { font-size:13px; }
+.smart-buy-note { font-size:11px; }
+.smart-buy-profile-chip strong { font-size:15px; }
+.smart-buy-profile-chip small,.smart-buy-seller header a small { font-size:11px; }
+.smart-buy-link-row label,.smart-buy-filters label { font-size:11px; }
+.smart-buy-link-row input,.smart-buy-filters select,.smart-buy-secondary { font-size:13px; }
+.smart-buy-subheading > div > strong { font-size:14px; }
+.smart-buy-subheading p { font-size:11px; }
+.smart-buy-item-name,.smart-buy-item strong { font-size:14px; }
+.smart-buy-item small { font-size:11px; }
+.smart-buy-values small { font-size:9px; }
+.smart-buy-values strong { font-size:14px; }
+.smart-buy-seller { padding:11px 13px; }
+.smart-buy-seller header { gap:12px; }
+.smart-buy-seller header a strong { font-size:16px; }
+.smart-buy-coverage strong,.smart-buy-cost strong { font-size:20px; }
+.smart-buy-coverage span,.smart-buy-coverage small,.smart-buy-cost small { font-size:10px; }
+.smart-buy-offers { margin-top:8px; }
+.smart-buy-offer { padding:9px 12px; font-size:12px; }
+.smart-buy-offer-name { font-size:13px; }
+.smart-buy-offer > span:not(.smart-buy-offer-metric) strong { font-size:14px; }
+.smart-buy-offer-metric { justify-content:center; min-height:72px; padding:8px 11px; }
+.smart-buy-offer-metric small { font-size:9px; }
+.smart-buy-offer-metric strong { font-size:17px; }
+.smart-buy-metric-line { font-size:13px; }
+.smart-buy-offer-metric em { font-size:10px; }
+.smart-buy-open { font-size:11px; }
+.smart-buy-sort-control > span { font-size:11px; }
+.smart-buy-sort-control > small { max-width:700px; font-size:10px; }
+.smart-buy-sort-toggle > b { font-size:12px; }
+@media (min-width: 1200px) {
+  .smart-buy-seller header { grid-template-columns:minmax(260px,1fr) 130px 165px; }
+  .smart-buy-offer { grid-template-columns:minmax(260px,1.2fr) minmax(145px,.65fr) minmax(110px,.45fr) minmax(220px,.9fr) minmax(220px,.9fr); }
+}

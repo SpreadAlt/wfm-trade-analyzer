@@ -38,7 +38,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   routePartial: 'Часть списка не удалось покрыть с текущими фильтрами.',
   wanted: 'Нужно',
   myPrice: 'Моя цена',
-  marketMin: 'Мин. рынка',
+  marketMin: 'Мин. активных лотов',
   onlineMin: 'Мин. онлайн',
   average24h: 'Средняя 24ч',
   sellerCount: 'Продавцы',
@@ -46,7 +46,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   sortBasis: 'Ориентир сортировки',
   sortMinimum: 'Текущий минимум',
   sortAverage24h: 'Средняя 24ч',
-  sortHintMinimum: 'При равном покрытии выше продавцы с меньшей переплатой относительно текущего минимума exact-series.',
+  sortHintMinimum: 'База — минимальная цена среди видимых текущих sell-лотов той же exact-series. При равном покрытии выше продавцы с меньшей переплатой к этой цене.',
   sortHintAverage24h: 'При равном покрытии выше продавцы с меньшей ценой относительно средней цены сделок за последние 24 часа exact-series.',
   onlineOnly: 'Только онлайн',
   any: 'Любое',
@@ -66,7 +66,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   canSell: 'может продать',
   of: 'из',
   price: 'цена',
-  premium: 'К текущему минимуму',
+  premium: 'К минимуму активных лотов',
   overpayTotal: 'Переплата',
   perUnit: '/шт.',
   total: 'всего',
@@ -84,7 +84,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   exact: 'на уровне минимума',
   noOnline: 'Сейчас нет подходящего продавца онлайн.',
   cached: 'Рыночные ответы кратковременно кэшируются, чтобы не создавать лишнюю нагрузку на Warframe Market.',
-  priceFilterHint: 'Фильтр и итоговая переплата продавцу считаются только относительно выбранной базы: текущего минимума активных sell-лотов этой exact-series или средней цены сделок за 24 часа. Ваша buy-цена в фильтрации и ранжировании не используется.'
+  priceFilterHint: 'Фильтр и итоговая переплата считаются только относительно выбранной базы. В режиме минимума при включённом «Только онлайн» база — минимальная цена онлайн/в игре среди текущих sell-лотов exact-series; при выключенном — минимум среди всех видимых sell-лотов. Ваша buy-цена не используется.'
 } : {
   eyebrow: 'Warframe Market',
   title: 'Smart Buy',
@@ -107,7 +107,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   routePartial: 'Some items cannot be covered with the current filters.',
   wanted: 'Wanted',
   myPrice: 'My price',
-  marketMin: 'Market min',
+  marketMin: 'Active listing min',
   onlineMin: 'Online min',
   average24h: '24h average',
   sellerCount: 'Sellers',
@@ -115,7 +115,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   sortBasis: 'Sorting reference',
   sortMinimum: 'Current minimum',
   sortAverage24h: '24h average',
-  sortHintMinimum: 'When coverage is equal, sellers with the lowest premium versus the current exact-series minimum rank higher.',
+  sortHintMinimum: 'The base is the lowest price among visible current sell listings of the exact same market series. Sellers with lower overpay to that base rank higher when coverage is equal.',
   sortHintAverage24h: 'When coverage is equal, sellers with the lowest price versus the exact-series 24h trade average rank higher.',
   onlineOnly: 'Online only',
   any: 'Any',
@@ -135,7 +135,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   canSell: 'can sell',
   of: 'of',
   price: 'price',
-  premium: 'Vs current minimum',
+  premium: 'Vs active listing minimum',
   overpayTotal: 'Premium',
   perUnit: '/unit',
   total: 'total',
@@ -153,7 +153,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   exact: 'at minimum',
   noOnline: 'No matching seller is online right now.',
   cached: 'Market responses are briefly cached to avoid unnecessary load on Warframe Market.',
-  priceFilterHint: 'Filtering and seller overpay totals are calculated only against the selected base: the current minimum active sell listing of the exact same market series or the 24h trade average. Your buy price is not used for filtering or ranking.'
+  priceFilterHint: 'Filtering and overpay totals use only the selected base. In minimum mode, Online only uses the lowest online/in-game current sell listing for the exact series; otherwise it uses the lowest visible sell listing. Your buy price is not used.'
 }
 
 const numberText = (value: number | null | undefined, digits = 1) => value == null || !Number.isFinite(value) ? '—' : value.toFixed(digits).replace(/\.0$/, '')
@@ -248,17 +248,33 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
   }, [linkedProfile, reload])
 
   const filteredWishlist = useMemo(() => data?.wishlist || [], [data])
-
-  const activeMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPct : offer.premiumPct
-  const activeDeltaPerUnit = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPlatinumPerUnit : offer.premiumPlatinumPerUnit
-  const activeDeltaTotal = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPlatinumTotal : offer.premiumPlatinumTotal
-  const secondaryMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.premiumPct : offer.deviation24hPct
-  const secondaryDeltaPerUnit = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.premiumPlatinumPerUnit : offer.deviation24hPlatinumPerUnit
-  const secondaryDeltaTotal = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.premiumPlatinumTotal : offer.deviation24hPlatinumTotal
+  const wishlistByDemand = useMemo(() => new Map(filteredWishlist.map(row => [row.demandKey, row])), [filteredWishlist])
+  const currentMinimumForOffer = (offer: SmartBuySellerOffer) => {
+    const row = wishlistByDemand.get(offer.demandKey)
+    if (!row) return offer.marketMinUnitPrice
+    return onlineOnly ? (row.onlineMinUnitPrice ?? row.marketMinUnitPrice) : row.marketMinUnitPrice
+  }
+  const pctAgainst = (price: number, base: number | null | undefined) => base != null && base > 0 ? ((price - base) / base) * 100 : null
+  const deltaAgainst = (price: number, base: number | null | undefined) => base != null ? price - base : null
+  const currentMinimumMetric = (offer: SmartBuySellerOffer) => pctAgainst(offer.unitPrice, currentMinimumForOffer(offer))
+  const currentMinimumDeltaPerUnit = (offer: SmartBuySellerOffer) => deltaAgainst(offer.unitPrice, currentMinimumForOffer(offer))
+  const currentMinimumDeltaTotal = (offer: SmartBuySellerOffer) => {
+    const delta = currentMinimumDeltaPerUnit(offer)
+    return delta == null ? null : delta * offer.fillableQuantity
+  }
+  const activeMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPct : currentMinimumMetric(offer)
+  const activeDeltaPerUnit = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPlatinumPerUnit : currentMinimumDeltaPerUnit(offer)
+  const activeDeltaTotal = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? offer.deviation24hPlatinumTotal : currentMinimumDeltaTotal(offer)
+  const secondaryMetric = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? currentMinimumMetric(offer) : offer.deviation24hPct
+  const secondaryDeltaPerUnit = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? currentMinimumDeltaPerUnit(offer) : offer.deviation24hPlatinumPerUnit
+  const secondaryDeltaTotal = (offer: SmartBuySellerOffer) => sortBasis === 'average24h' ? currentMinimumDeltaTotal(offer) : offer.deviation24hPlatinumTotal
   const primaryMetricLabel = sortBasis === 'average24h' ? text.vs24h : text.premium
   const secondaryMetricLabel = sortBasis === 'average24h' ? text.premium : text.vs24h
+  const activeReferenceText = (offer: SmartBuySellerOffer) => sortBasis === 'average24h'
+    ? `${text.average24h}: ${plat(offer.average24hUnitPrice)}`
+    : `${text.marketMin}: ${plat(currentMinimumForOffer(offer))}`
   const secondaryReferenceText = (offer: SmartBuySellerOffer) => sortBasis === 'average24h'
-    ? `${text.marketMin}: ${plat(offer.marketMinUnitPrice)}`
+    ? `${text.marketMin}: ${plat(currentMinimumForOffer(offer))}`
     : `${text.average24h}: ${plat(offer.average24hUnitPrice)}`
   const sellerFilterLabel = sortBasis === 'average24h'
     ? (locale === 'ru' ? 'Макс. отклонение продавца к средней 24ч' : 'Max seller deviation vs 24h average')
@@ -266,7 +282,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
 
   const rankedSellers = useMemo<RankedSeller[]>(() => {
     if (!data || !filteredWishlist.length) return []
-    const allowed = new Map(filteredWishlist.map(row => [row.demandKey, row]))
+    const allowed = wishlistByDemand
     const maxPremium = limitNumber(sellerPremium)
     const sortMetric = (offer: SmartBuySellerOffer) => activeMetric(offer)
     return data.sellers.flatMap(seller => {
@@ -314,7 +330,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
       left.estimatedCost - right.estimatedCost ||
       left.seller.user.ingameName.localeCompare(right.seller.user.ingameName)
     )
-  }, [data, filteredWishlist, onlineOnly, sellerPremium, sortBasis])
+  }, [data, filteredWishlist, wishlistByDemand, onlineOnly, sellerPremium, sortBasis])
 
   const smartRoute = useMemo(() => {
     const remaining = new Map(filteredWishlist.map(row => [row.demandKey, row.quantity]))
@@ -468,7 +484,7 @@ export const SmartBuyPanel = ({ locale, catalog }: { locale: Locale; catalog: Ma
               {itemUrl ? <a className="smart-buy-offer-name" href={itemUrl} target="_blank" rel="noreferrer" title={text.openItem}>{itemName(offer.itemId)} ↗</a> : <span className="smart-buy-offer-name">{itemName(offer.itemId)}</span>}
               <span>{text.canSell} <strong>{offer.fillableQuantity}</strong> {text.of} {wanted?.quantity ?? offer.requestedQuantity}</span>
               <span>{text.price} <strong>{plat(offer.unitPrice)}</strong></span>
-<span className={`smart-buy-offer-metric primary ${metricTone(activeMetric(offer))}`}><small>{primaryMetricLabel}</small><strong>{percent(activeMetric(offer))}</strong><span className="smart-buy-metric-line">{signedPlat(activeDeltaPerUnit(offer))} {text.perUnit}</span><em>{signedPlat(activeDeltaTotal(offer))} {text.total}</em></span>
+<span className={`smart-buy-offer-metric primary ${metricTone(activeMetric(offer))}`}><small>{primaryMetricLabel}</small><strong>{percent(activeMetric(offer))}</strong><span className="smart-buy-metric-line">{signedPlat(activeDeltaPerUnit(offer))} {text.perUnit}</span><em>{activeReferenceText(offer)} · {signedPlat(activeDeltaTotal(offer))} {text.total}</em></span>
               <span className={`smart-buy-offer-metric secondary ${metricTone(secondaryMetric(offer))}`}><small>{secondaryMetricLabel}</small><strong>{percent(secondaryMetric(offer))}</strong><span className="smart-buy-metric-line">{signedPlat(secondaryDeltaPerUnit(offer))} {text.perUnit}</span><em>{secondaryReferenceText(offer)}</em></span>
             </div>
           })}</div>
