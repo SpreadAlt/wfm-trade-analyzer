@@ -265,3 +265,119 @@ export const waitForSmartBuy = async (
 
   throw new DOMException('Aborted', 'AbortError')
 }
+
+// Compatibility exports for the existing SiteStats.tsx.
+// These readers intentionally use only public/read-only endpoints.
+export type SiteApiStatus = {
+  ok?: boolean
+  name?: string
+  stage?: string
+  role?: string
+  catalogTotal?: number
+  smartBuyVersion?: string
+  smartBuyRuntimeRevision?: string
+  smartBuyAsyncVersion?: string
+  smartBuyAsyncRuntimeRevision?: string
+  [key: string]: any
+}
+
+export type SiteHourlyStatus = {
+  ok?: boolean
+  runtimeRevision?: string
+  enabled?: boolean
+  lastFetchedAt?: string | null
+  queue?: {
+    backlogCount?: number
+    backlogBytes?: number
+    [key: string]: any
+  }
+  groups?: {
+    target?: number
+    [key: string]: any
+  }
+  upstreamCooldown?: {
+    until?: string | null
+    [key: string]: any
+  }
+  [key: string]: any
+}
+
+export type SiteHourlyFreshnessBucket = {
+  scope?: string
+  tier?: string
+  groups?: number
+  fresh?: number
+  due?: number
+  stale?: number
+  missing?: number
+  oldestAgeMinutes?: number | null
+  [key: string]: any
+}
+
+export type SiteHourlyFreshness = {
+  ok?: boolean
+  totals?: {
+    groups?: number
+    items?: number
+    fresh?: number
+    due?: number
+    stale?: number
+    missing?: number
+    checkpointed?: number
+    errorItems?: number
+    [key: string]: any
+  }
+  buckets: SiteHourlyFreshnessBucket[]
+  [key: string]: any
+}
+
+export type SiteHourlyIndexStatus = {
+  ok?: boolean
+  hourlyIndexVersion?: string
+  hourlyIndexRuntimeRevision?: string
+  generatedAt?: string | null
+  finalizedAt?: string | null
+  totalRows?: number
+  totalItems?: number
+  totalMarketSeries?: number
+  [key: string]: any
+}
+
+export type SiteSmartBuyStatus = {
+  ok?: boolean
+  smartBuyVersion?: string
+  smartBuyRuntimeRevision?: string
+  smartBuyAsyncVersion?: string
+  smartBuyAsyncRuntimeRevision?: string
+  role?: string
+  [key: string]: any
+}
+
+const siteNoncePath = (path: string) => {
+  const separator = path.includes('?') ? '&' : '?'
+  return `${path}${separator}t=${Date.now()}`
+}
+
+export const fetchSiteApiStatus = (signal?: AbortSignal) =>
+  fetchJson<SiteApiStatus>(siteNoncePath('/'), signal)
+
+export const fetchSiteHourlyStatus = (signal?: AbortSignal) =>
+  fetchJson<SiteHourlyStatus>(siteNoncePath('/hourly-v1-status'), signal)
+
+export const fetchSiteHourlyFreshness = (signal?: AbortSignal) =>
+  fetchJson<SiteHourlyFreshness>(siteNoncePath('/hourly-v1-freshness?scope=all&limit=25'), signal)
+
+export const fetchSiteHourlyIndexStatus = (signal?: AbortSignal) =>
+  fetchJson<SiteHourlyIndexStatus>(siteNoncePath('/hourly-index-v1-status'), signal)
+
+const SMART_BUY_WORKER_BASE = 'https://frameanalytics-smartbuy-test.smurfack403.workers.dev'
+
+export const fetchSiteSmartBuyStatus = async (signal?: AbortSignal): Promise<SiteSmartBuyStatus> => {
+  const response = await fetch(`${SMART_BUY_WORKER_BASE}/?t=${Date.now()}`, {
+    method: 'GET',
+    signal,
+    headers: { Accept: 'application/json' }
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json() as Promise<SiteSmartBuyStatus>
+}
