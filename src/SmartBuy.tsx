@@ -52,12 +52,13 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   avg24: 'Средняя 24ч',
   perUnit: '/шт.',
   totalDelta: 'разница всего',
+  vsSelectedBasis: 'Переплата к выбранной базе',
+  savingVsSelectedBasis: 'Экономия к выбранной базе',
   avgUnavailable: '24ч средняя недоступна',
   sellerProfile: 'Профиль продавца',
   message: 'Сообщение',
   copy: 'Копировать',
   copied: 'Скопировано',
-  messageHint: 'Каждое сообщение — максимум 6 предметов и 300 символов. Сообщения всегда на английском.',
   updated: 'Обновлено',
   queue: 'Очередь',
   profileLinked: 'Привязан',
@@ -101,12 +102,13 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   avg24: '24h average',
   perUnit: '/unit',
   totalDelta: 'total difference',
+  vsSelectedBasis: 'Premium vs selected baseline',
+  savingVsSelectedBasis: 'Saving vs selected baseline',
   avgUnavailable: '24h average unavailable',
   sellerProfile: 'Seller profile',
   message: 'Message',
   copy: 'Copy',
   copied: 'Copied',
-  messageHint: 'Each message is limited to 6 items and 300 characters. Messages are always in English.',
   updated: 'Updated',
   queue: 'Queue',
   profileLinked: 'Linked',
@@ -365,9 +367,22 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
   const comparisonClass = (value: number | null) =>
     value == null || Math.abs(value) < 0.0001 ? 'neutral' : value < 0 ? 'positive' : 'negative'
 
+  const sellerBasisDelta = (offers: SmartBuySellerOffer[]) => {
+    let delta = 0
+    for (const offer of offers) {
+      const wanted = wishlistByDemand.get(offer.demandKey)
+      if (!wanted) return null
+      const current = comparison(offer, wanted, priceBasis)
+      if (current.total == null || !Number.isFinite(current.total)) return null
+      delta += current.total
+    }
+    return delta
+  }
+
   const buildChatMessages = (seller: SmartBuySeller, offers: SmartBuySellerOffer[]): ChatMessage[] => {
     const prefix = `/w ${seller.user.ingameName} Hi! I want to buy `
-    const suffix = (total: number) => ` for ${compactPlat(total)}p total.`
+    const attribution = ' (warframe.market via frameanalytics)'
+    const suffix = (total: number) => ` for ${compactPlat(total)}p total.${attribution}`
     const messages: ChatMessage[] = []
 
     let parts: string[] = []
@@ -541,6 +556,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
           {rankedSellers.slice(0, 30).map(({ seller, offers, positionsCovered, fullPositions, unitsCovered, totalRequestedUnits, estimatedCost }) => {
             const sellerKey = seller.user.id || seller.user.slug
             const messages = buildChatMessages(seller, offers)
+            const selectedBasisDelta = sellerBasisDelta(offers)
 
             return <article className={`smart-buy-seller ${positionsCovered > 1 ? 'multi' : ''}`} key={sellerKey}>
               <header>
@@ -558,6 +574,11 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
                 <div className="smart-buy-cost">
                   <small>{text.estimated}</small>
                   <strong>{plat(estimatedCost)}</strong>
+                  <span className={`smart-buy-cost-delta ${comparisonClass(selectedBasisDelta)}`}>
+                    {selectedBasisDelta == null
+                      ? '—'
+                      : `${selectedBasisDelta > 0 ? text.vsSelectedBasis : selectedBasisDelta < 0 ? text.savingVsSelectedBasis : text.vsSelectedBasis}: ${selectedBasisDelta > 0 ? '+' : ''}${numberText(selectedBasisDelta, 2)}p`}
+                  </span>
                 </div>
               </header>
 
@@ -608,7 +629,6 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
                     }}>{copiedMessage === copyKey ? text.copied : text.copy}</button>
                   </div>
                 })}
-                <small className="smart-buy-message-hint">{text.messageHint}</small>
               </div>
 
               <a className="smart-buy-open" href={seller.user.profileUrl} target="_blank" rel="noreferrer">{text.sellerProfile} ↗</a>

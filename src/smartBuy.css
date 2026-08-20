@@ -51,6 +51,10 @@
 .smart-buy-coverage,.smart-buy-cost{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
 .smart-buy-coverage strong,.smart-buy-cost strong{color:#eef6ff;font-size:19px;line-height:1}
 .smart-buy-coverage span,.smart-buy-coverage small,.smart-buy-cost small{color:#718ba7;font-size:9px}
+.smart-buy-cost-delta{margin-top:3px;max-width:210px;color:#8aa0b8;font-size:9px;line-height:1.2;text-align:right;white-space:nowrap}
+.smart-buy-cost-delta.negative{color:#ff7078}
+.smart-buy-cost-delta.positive{color:#54dfa9}
+.smart-buy-cost-delta.neutral{color:#8095aa}
 .smart-buy-offers{display:grid;gap:6px}
 .smart-buy-offer{display:grid;grid-template-columns:minmax(360px,1.4fr) minmax(260px,.82fr) minmax(260px,.82fr);gap:10px;align-items:stretch;padding:8px 10px;background:rgba(13,27,43,.78);border-radius:9px}
 .smart-buy-offer-main{display:grid;grid-template-columns:minmax(220px,1.3fr) minmax(130px,.7fr) minmax(100px,.45fr);align-items:center;gap:10px;color:#829bb7;font-size:10px}
@@ -69,7 +73,6 @@
 .smart-buy-message-row>span{color:#6f89a6;font-size:9px;font-weight:850;text-transform:uppercase}
 .smart-buy-message-row input{width:100%;min-width:0;min-height:36px;box-sizing:border-box;padding:8px 10px;color:#cfe0ef;background:#071422;border:1px solid #294057;border-radius:9px;font:inherit;font-size:10px;outline:none}
 .smart-buy-message-row input:focus{border-color:#4fd1c4}
-.smart-buy-message-hint{color:#627d9b;font-size:9px}
 .smart-buy-open{display:inline-flex;margin-top:8px;color:#76c7f7;text-decoration:none;font-size:10px;font-weight:850}
 .smart-buy-open:hover{color:#9cddff}
 .portfolio-smart-buy-entry{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:0 0 12px;padding:16px 18px}
@@ -110,6 +113,7 @@ html[data-theme="light"] .smart-buy-message-row input{color:#203843;background:#
   .smart-buy-quota{align-items:flex-start}
   .smart-buy-seller header{grid-template-columns:1fr}
   .smart-buy-coverage,.smart-buy-cost{grid-column:auto;align-items:flex-start}
+  .smart-buy-cost-delta{text-align:left}
   .smart-buy-offer{grid-template-columns:1fr}
   .smart-buy-offer-main{grid-template-columns:1fr;gap:4px}
   .smart-buy-message-row{grid-template-columns:1fr}
