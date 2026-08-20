@@ -2,11 +2,17 @@ import type { CatalogResponse, EventsResponse, HourlyIndexQuery, HourlyIndexResp
 
 export const API_BASE = 'https://frameanalytics-api-test.smurfack403.workers.dev'
 
-const fetchJson = async <T,>(path: string, signal?: AbortSignal): Promise<T> => {
+const requestJson = async <T,>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> => {
   const response = await fetch(`${API_BASE}${path}`, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    signal
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
   })
   if (!response.ok) {
     let detail = ''
@@ -21,6 +27,9 @@ const fetchJson = async <T,>(path: string, signal?: AbortSignal): Promise<T> => 
 
   return response.json() as Promise<T>
 }
+
+const fetchJson = <T,>(path: string, signal?: AbortSignal) =>
+  requestJson<T>(path, { method: 'GET', signal })
 export const fetchScanner = (query: ScannerQuery, signal?: AbortSignal) => {
   const params = new URLSearchParams({
     platform: query.platform,
@@ -117,8 +126,10 @@ export type SmartBuyWishlistRow = {
   updatedAt: string | null
   createdAt: string | null
   marketMinUnitPrice: number | null
+  onlineMinUnitPrice?: number | null
   marketMinFromOnline: boolean
   gapPct: number | null
+  onlineGapPct?: number | null
   absoluteGapPct: number | null
   sellers: number
   onlineSellers: number
@@ -167,6 +178,214 @@ export type SmartBuyResponse = {
   wishlist: SmartBuyWishlistRow[]
   sellers: SmartBuySeller[]
 }
+export type SmartBuyJobProgress = {
+  stage: 'queued' | 'profile' | 'user-orders' | 'market-orders' | 'finalizing' | 'retrying' | 'completed' | 'failed' | string
+  processed: number
+  total: number | null
+  percent: number
+  currentItemId: string | null
+}
+export type SmartBuyQueueInfo = {
+  position: number | null
+  waitingAhead: number | null
+  queuedJobs: number | null
+  estimated: boolean
+}
+export type SmartBuyJobStatus = {
+  ok: true
+  smartBuyVersion: string
+  smartBuyRuntimeRevision: string
+  jobId: string
+  profileSlug: string
+  state: 'queued' | 'running' | 'retrying' | 'completed' | 'failed'
+  queuedAt: string
+  startedAt: string | null
+  completedAt: string | null
+  updatedAt: string
+  attempts: number
+  progress: SmartBuyJobProgress
+  batch?: { size: number; slot: number }
+  queue: SmartBuyQueueInfo
+  resultReady: boolean
+  error: string | null
+}
+export type SmartBuyJobStart = {
+  ok: true
+  smartBuyVersion: string
+  smartBuyRuntimeRevision: string
+  jobId: string
+  state: 'queued'
+  queuedAt: string
+}
+
+export const startSmartBuy = (profile: string, signal?: AbortSignal) =>
+  requestJson<SmartBuyJobStart>('/api/smart-buy-v2/start', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ profile })
+  })
+
+export const fetchSmartBuyStatus = (jobId: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ id: jobId, t: String(Date.now()) })
+  return fetchJson<SmartBuyJobStatus>(`/api/smart-buy-v2/status?${params}`, signal)
+}
+
+export const fetchSmartBuyResult = (jobId: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ id: jobId, t: String(Date.now()) })
+  return fetchJson<SmartBuyResponse>(`/api/smart-buy-v2/result?${params}`, signal)
+}
+
+export const waitForSmartBuy = async (
+  profile: string,
+  onStatus: (status: SmartBuyJobStatus) => void,
+  signal?: AbortSignal
+): Promise<SmartBuyResponse> => {
+  const started = await startSmartBuy(profile, signal)
+
+  while (!signal?.aborted) {
+    const status = await fetchSmartBuyStatus(started.jobId, signal)
+    onStatus(status)
+
+    if (status.state === 'completed') {
+      return fetchSmartBuyResult(started.jobId, signal)
+    }
+    if (status.state === 'failed') {
+      throw new Error(status.error || 'Smart Buy job failed')
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(resolve, 1500)
+      const abort = () => {
+        window.clearTimeout(timeout)
+        reject(new DOMException('Aborted', 'AbortError'))
+      }
+      signal?.addEventListener('abort', abort, { once: true })
+    })
+  }
+
+  throw new DOMException('Aborted', 'AbortError')
+}
+
+// Compatibility exports for the existing SiteStats.tsx.
+// These readers intentionally use only public/read-only endpoints.
+export type SiteApiStatus = {
+  ok?: boolean
+  name?: string
+  stage?: string
+  role?: string
+  catalogTotal?: number
+  smartBuyVersion?: string
+  smartBuyRuntimeRevision?: string
+  smartBuyAsyncVersion?: string
+  smartBuyAsyncRuntimeRevision?: string
+  [key: string]: any
+}
+
+export type SiteHourlyStatus = {
+  ok?: boolean
+  runtimeRevision?: string
+  enabled?: boolean
+  lastFetchedAt?: string | null
+  queue?: {
+    backlogCount?: number
+    backlogBytes?: number
+    [key: string]: any
+  }
+  groups?: {
+    target?: number
+    [key: string]: any
+  }
+  upstreamCooldown?: {
+    until?: string | null
+    [key: string]: any
+  }
+  [key: string]: any
+}
+
+export type SiteHourlyFreshnessBucket = {
+  scope: string
+  tier: string
+  groups: number
+  fresh: number
+  due: number
+  stale: number
+  missing: number
+  checkpointed?: number
+  errorItems?: number
+  oldestAgeMinutes: number | null
+  [key: string]: any
+}
+
+export type SiteHourlyFreshnessTotals = {
+  groups: number
+  items: number
+  fresh: number
+  due: number
+  stale: number
+  missing: number
+  checkpointed: number
+  errorItems: number
+  [key: string]: any
+}
+
+export type SiteHourlyFreshness = {
+  ok?: boolean
+  totals: SiteHourlyFreshnessTotals
+  buckets: SiteHourlyFreshnessBucket[]
+  [key: string]: any
+}
+
+export type SiteHourlyIndexStatus = {
+  ok?: boolean
+  hourlyIndexVersion?: string
+  hourlyIndexRuntimeRevision?: string
+  generatedAt?: string | null
+  finalizedAt?: string | null
+  totalRows?: number
+  totalItems?: number
+  totalMarketSeries?: number
+  [key: string]: any
+}
+
+export type SiteSmartBuyStatus = {
+  ok?: boolean
+  smartBuyVersion?: string
+  smartBuyRuntimeRevision?: string
+  smartBuyAsyncVersion?: string
+  smartBuyAsyncRuntimeRevision?: string
+  role?: string
+  [key: string]: any
+}
+
+const siteNoncePath = (path: string) => {
+  const separator = path.includes('?') ? '&' : '?'
+  return `${path}${separator}t=${Date.now()}`
+}
+
+export const fetchSiteApiStatus = (signal?: AbortSignal) =>
+  fetchJson<SiteApiStatus>(siteNoncePath('/'), signal)
+
+export const fetchSiteHourlyStatus = (signal?: AbortSignal) =>
+  fetchJson<SiteHourlyStatus>(siteNoncePath('/hourly-v1-status'), signal)
+
+export const fetchSiteHourlyFreshness = (signal?: AbortSignal) =>
+  fetchJson<SiteHourlyFreshness>(siteNoncePath('/hourly-v1-freshness?scope=all&limit=25'), signal)
+
+export const fetchSiteHourlyIndexStatus = (signal?: AbortSignal) =>
+  fetchJson<SiteHourlyIndexStatus>(siteNoncePath('/hourly-index-v1-status'), signal)
+
+const SMART_BUY_WORKER_BASE = 'https://frameanalytics-smartbuy-test.smurfack403.workers.dev'
+
+export const fetchSiteSmartBuyStatus = async (signal?: AbortSignal): Promise<SiteSmartBuyStatus> => {
+  const response = await fetch(`${SMART_BUY_WORKER_BASE}/?t=${Date.now()}`, {
+    method: 'GET',
+    signal,
+    headers: { Accept: 'application/json' }
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json() as Promise<SiteSmartBuyStatus>
+}
+
 export const fetchSmartBuy = (profile: string, signal?: AbortSignal) => {
   const params = new URLSearchParams({ profile, t: String(Date.now()) })
   return fetchJson<SmartBuyResponse>(`/api/smart-buy-v1?${params}`, signal)
