@@ -33,9 +33,15 @@ export type FrameAccountSnapshot = {
   smartBuy: SmartBuyUsage
 }
 
-type SmartBuyPermitResponse = {
+export type SmartBuyStartResponse = {
   ok: true
   permitId: string
+  profileSlug: string
+  smartBuyVersion: string
+  smartBuyRuntimeRevision: string
+  jobId: string
+  state: 'queued'
+  queuedAt: string
   smartBuy: SmartBuyUsage
 }
 
@@ -78,7 +84,7 @@ export type FrameAccountController = {
   signOut: () => Promise<void>
   linkWfmProfile: (profile: string) => Promise<void>
   unlinkWfmProfile: () => Promise<void>
-  reserveSmartBuy: () => Promise<SmartBuyPermitResponse>
+  startSmartBuy: () => Promise<SmartBuyStartResponse>
   loadPurchases: () => Promise<PortfolioPurchase[]>
   upsertPurchases: (purchases: PortfolioPurchase[]) => Promise<void>
   deletePurchase: (id: string) => Promise<void>
@@ -170,10 +176,10 @@ export const useFrameAccount = (): FrameAccountController => {
     })
   }, [action, refresh])
 
-  const reserveSmartBuy = useCallback(async () => {
-    let result!: SmartBuyPermitResponse
+  const startSmartBuy = useCallback(async () => {
+    let result!: SmartBuyStartResponse
     await action(async () => {
-      result = await requestJson<SmartBuyPermitResponse>('/api/smart-buy/permit', { method: 'POST' })
+      result = await requestJson<SmartBuyStartResponse>('/api/smart-buy/start', { method: 'POST' })
       setAccount(current => current ? { ...current, smartBuy: result.smartBuy } : current)
     })
     return result
@@ -198,12 +204,12 @@ export const useFrameAccount = (): FrameAccountController => {
 
   return useMemo(() => ({
     loading, busy, error, account, refresh, signUp, signIn, signOut,
-    linkWfmProfile, unlinkWfmProfile, reserveSmartBuy,
+    linkWfmProfile, unlinkWfmProfile, startSmartBuy,
     loadPurchases, upsertPurchases, deletePurchase,
     clearError: () => setError(null)
   }), [
     loading, busy, error, account, refresh, signUp, signIn, signOut,
-    linkWfmProfile, unlinkWfmProfile, reserveSmartBuy,
+    linkWfmProfile, unlinkWfmProfile, startSmartBuy,
     loadPurchases, upsertPurchases, deletePurchase
   ])
 }
@@ -278,29 +284,17 @@ export const AccountPanel = ({ locale, auth }: { locale: Locale; auth: FrameAcco
     } catch { /* error is rendered from controller */ }
   }
 
-  return <section className="panel account-panel account-auth-card">
-    <div className="account-auth-header">
-      <div className="account-auth-mark" aria-hidden="true"><span>FA</span></div>
-      <div className="account-auth-copy">
-        <span className="eyebrow">{t.title}</span>
-        <h2>{mode === 'signup' ? t.signUp : t.signIn}</h2>
-        <p>{t.needAccount}</p>
-      </div>
+  return <section className="panel account-panel">
+    <div className="account-auth-copy"><span className="eyebrow">{t.title}</span><h2>{mode === 'signup' ? t.signUp : t.signIn}</h2><p>{t.needAccount}</p></div>
+    <div className="account-tabs">
+      <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); auth.clearError() }}>{t.signIn}</button>
+      <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); auth.clearError() }}>{t.signUp}</button>
     </div>
-
-    <div className="account-tabs" role="tablist" aria-label={t.title}>
-      <button type="button" role="tab" aria-selected={mode === 'signin'} className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); auth.clearError() }}>{t.signIn}</button>
-      <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); auth.clearError() }}>{t.signUp}</button>
-    </div>
-
     <form className="account-form" onSubmit={submit}>
       {mode === 'signup' ? <label><span>{t.name}</span><input autoComplete="name" value={name} onChange={event => setName(event.target.value)} required/></label> : null}
       <label><span>{t.email}</span><input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>
       <label><span>{t.password}</span><input type="password" minLength={8} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} required/></label>
-      <button type="submit" className="primary-action account-submit" disabled={auth.busy}>
-        {auth.busy ? <span className="account-submit-spinner" aria-hidden="true"/> : null}
-        <span>{mode === 'signup' ? t.create : t.enter}</span>
-      </button>
+      <button type="submit" className="primary-action" disabled={auth.busy}>{mode === 'signup' ? t.create : t.enter}</button>
       {auth.error ? <small className="account-error">{auth.error}</small> : null}
     </form>
   </section>

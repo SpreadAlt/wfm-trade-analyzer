@@ -330,11 +330,11 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
     setClock(Date.now())
 
     try {
-      await auth.reserveSmartBuy()
+      const started = await auth.startSmartBuy()
       setClock(Date.now())
 
       const result = await waitForSmartBuy(
-        linkedProfile,
+        started.jobId,
         status => setJobStatus(status),
         controller.signal
       )

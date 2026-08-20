@@ -223,22 +223,6 @@ export type SmartBuyJobStatus = {
   resultReady: boolean
   error: string | null
 }
-export type SmartBuyJobStart = {
-  ok: true
-  smartBuyVersion: string
-  smartBuyRuntimeRevision: string
-  jobId: string
-  state: 'queued'
-  queuedAt: string
-}
-
-export const startSmartBuy = (profile: string, signal?: AbortSignal) =>
-  requestJson<SmartBuyJobStart>('/api/smart-buy-v2/start', {
-    method: 'POST',
-    signal,
-    body: JSON.stringify({ profile })
-  })
-
 export const fetchSmartBuyStatus = (jobId: string, signal?: AbortSignal) => {
   const params = new URLSearchParams({ id: jobId, t: String(Date.now()) })
   return fetchJson<SmartBuyJobStatus>(`/api/smart-buy-v2/status?${params}`, signal)
@@ -271,18 +255,16 @@ const smartBuyDelay = (ms: number, signal?: AbortSignal) =>
   })
 
 export const waitForSmartBuy = async (
-  profile: string,
+  jobId: string,
   onStatus: (status: SmartBuyJobStatus) => void,
   signal?: AbortSignal
 ): Promise<SmartBuyResponse> => {
-  const started = await startSmartBuy(profile, signal)
-
   while (!signal?.aborted) {
-    const status = await fetchSmartBuyStatus(started.jobId, signal)
+    const status = await fetchSmartBuyStatus(jobId, signal)
     onStatus(status)
 
     if (status.state === 'completed') {
-      return fetchSmartBuyResult(started.jobId, signal)
+      return fetchSmartBuyResult(jobId, signal)
     }
     if (status.state === 'failed') {
       throw new Error(status.error || 'Smart Buy job failed')
