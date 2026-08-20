@@ -15,7 +15,6 @@ type D1PreparedStatement = {
 
 type D1DatabaseLike = {
   prepare(query: string): D1PreparedStatement;
-  exec(query: string): Promise<unknown>;
 };
 
 type FetcherLike = {
@@ -84,16 +83,15 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
       const { runMigrations } = await getMigrations(auth.options);
       await runMigrations();
 
-      await env.frameanalytics_auth.exec(`
-        CREATE TABLE IF NOT EXISTS frameanalytics_profile (
+      const schemaStatements = [
+        `CREATE TABLE IF NOT EXISTS frameanalytics_profile (
           user_id TEXT PRIMARY KEY NOT NULL,
           wfm_profile TEXT,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS frameanalytics_purchase (
+        )`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_purchase (
           id TEXT PRIMARY KEY NOT NULL,
           user_id TEXT NOT NULL,
           item_id TEXT NOT NULL,
@@ -107,21 +105,22 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
           created_at TEXT NOT NULL,
           updated_at INTEGER NOT NULL,
           FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_frameanalytics_purchase_user
-          ON frameanalytics_purchase(user_id, created_at DESC);
-
-        CREATE TABLE IF NOT EXISTS frameanalytics_smart_buy_run (
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_purchase_user
+          ON frameanalytics_purchase(user_id, created_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_smart_buy_run (
           id TEXT PRIMARY KEY NOT NULL,
           user_id TEXT NOT NULL,
           created_at INTEGER NOT NULL,
           FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
-        );
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_smart_buy_run_user_time
+          ON frameanalytics_smart_buy_run(user_id, created_at DESC)`,
+      ];
 
-        CREATE INDEX IF NOT EXISTS idx_frameanalytics_smart_buy_run_user_time
-          ON frameanalytics_smart_buy_run(user_id, created_at DESC);
-      `);
+      for (const statement of schemaStatements) {
+        await env.frameanalytics_auth.prepare(statement).run();
+      }
     })().catch((error) => {
       schemaReady = null;
       throw error;
