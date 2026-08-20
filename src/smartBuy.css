@@ -1,120 +1,117 @@
-.smart-buy-panel { margin:0 0 12px; padding:18px; }
-.smart-buy-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
-.smart-buy-heading h2 { margin:4px 0 6px; color:#eef6ff; font-size:24px; }
-.smart-buy-heading p { max-width:820px; margin:0; color:#7f97b2; font-size:12px; line-height:1.55; }
-.smart-buy-profile-chip { flex:none; display:flex; align-items:center; gap:9px; min-width:190px; padding:10px 12px; color:#dceafa; text-decoration:none; background:rgba(7,15,26,.7); border:1px solid #293d55; border-radius:12px; }
-.smart-buy-profile-chip:hover { border-color:#4d6b89; background:rgba(17,33,51,.9); }
-.smart-buy-profile-chip > i,.smart-buy-seller header a > i { width:9px; height:9px; flex:none; border-radius:50%; background:#66788d; box-shadow:0 0 0 3px rgba(102,120,141,.12); }
-.smart-buy-profile-chip > i.online,.smart-buy-seller header a > i.online { background:#52e6ad; box-shadow:0 0 10px rgba(82,230,173,.52); }
-.smart-buy-profile-chip span,.smart-buy-seller header a span { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.smart-buy-profile-chip strong { overflow:hidden; text-overflow:ellipsis; }
-.smart-buy-profile-chip small,.smart-buy-seller header a small { color:#7790ad; font-size:10px; }
-.smart-buy-link-row { display:grid; grid-template-columns:minmax(260px,1fr) auto auto auto; align-items:end; gap:8px; margin-top:16px; }
-.smart-buy-link-row label,.smart-buy-filters label { display:flex; flex-direction:column; gap:6px; color:#7891ae; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.05em; }
-.smart-buy-link-row input,.smart-buy-filters select { width:100%; min-height:40px; padding:9px 11px; color:#dce9fb; background:rgba(5,12,22,.86); border:1px solid #2a3d55; border-radius:10px; outline:none; }
-.smart-buy-link-row input:focus,.smart-buy-filters select:focus { border-color:#53b5ff; }
-.smart-buy-secondary { min-height:40px; padding:9px 12px; color:#9bb4cf; background:#102035; border:1px solid #2c425b; border-radius:10px; font-weight:850; }
-.smart-buy-secondary:hover { color:#edf6ff; border-color:#4a6682; }
-.smart-buy-secondary.danger { color:#ff8d92; border-color:rgba(255,116,121,.28); background:rgba(255,116,121,.06); }
-.smart-buy-note { margin:8px 0 0; color:#627d9b; font-size:10px; line-height:1.45; }
-.smart-buy-state { min-height:120px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; padding:18px; color:#8ca3bd; text-align:center; }
-.smart-buy-state.compact { min-height:80px; }
-.smart-buy-state small { max-width:720px; color:#7088a4; }
-.smart-buy-filters { display:grid; grid-template-columns:repeat(2,minmax(180px,240px)) auto 1fr; align-items:end; gap:10px; margin:18px 0 10px; padding-top:14px; border-top:1px solid #26384e; }
-.smart-buy-check { min-height:40px; flex-direction:row !important; align-items:center; gap:8px !important; padding:0 4px 4px; }
-.smart-buy-check input { width:16px; height:16px; accent-color:#54dfa9; }
-.smart-buy-generated { justify-self:end; display:flex; flex-direction:column; align-items:flex-end; gap:3px; padding-bottom:5px; }
-.smart-buy-generated span { color:#6f89a7; font-size:9px; font-weight:850; text-transform:uppercase; }
-.smart-buy-generated strong { color:#b7cae0; font-size:11px; }
-.smart-buy-warning { margin:10px 0; padding:9px 11px; color:#e2bb66; background:rgba(226,187,102,.08); border:1px solid rgba(226,187,102,.25); border-radius:10px; font-size:11px; }
-.smart-buy-subheading { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:16px 2px 8px; }
-.smart-buy-subheading > div { display:flex; align-items:center; gap:9px; }
-.smart-buy-subheading > div > strong { color:#e8f3ff; font-size:12px; }
-.smart-buy-subheading p { margin:0; color:#6d86a2; font-size:10px; }
-.smart-buy-wishlist-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:8px; }
-.smart-buy-wanted-card { display:flex; flex-direction:column; gap:10px; padding:12px; background:rgba(7,15,26,.63); border:1px solid #25384f; border-radius:13px; }
-.smart-buy-item { display:flex; align-items:center; gap:10px; min-width:0; }
-.smart-buy-item > div { display:flex; flex-direction:column; min-width:0; }
-.smart-buy-item strong { overflow:hidden; color:#edf6ff; text-overflow:ellipsis; white-space:nowrap; }
-.smart-buy-item small { color:#718ba8; font-size:10px; }
-.smart-buy-values { display:grid; grid-template-columns:repeat(5,minmax(66px,1fr)); gap:1px; overflow:hidden; background:#283a50; border:1px solid #283a50; border-radius:10px; }
-.smart-buy-values > span { display:flex; flex-direction:column; gap:3px; padding:8px; background:#0b1727; text-align:center; }
-.smart-buy-values small { color:#6d86a2; font-size:8px; font-weight:850; text-transform:uppercase; }
-.smart-buy-values strong { font-size:12px; }
-.smart-buy-fallback { color:#c29b55; font-size:9px; }
-.seller-heading { margin-top:20px; }
-.smart-buy-sellers { display:grid; gap:8px; }
-.smart-buy-seller { padding:13px; background:rgba(7,15,26,.65); border:1px solid #25384f; border-radius:13px; }
-.smart-buy-seller.multi { border-color:rgba(78,231,176,.35); box-shadow:inset 3px 0 0 rgba(78,231,176,.55); }
-.smart-buy-seller header { display:grid; grid-template-columns:minmax(190px,1fr) auto auto; align-items:center; gap:16px; }
-.smart-buy-seller header a { display:flex; align-items:center; gap:9px; min-width:0; color:#eaf4ff; text-decoration:none; }
-.smart-buy-seller header a strong { overflow:hidden; text-overflow:ellipsis; }
-.smart-buy-coverage,.smart-buy-cost { display:flex; flex-direction:column; align-items:flex-end; gap:1px; }
-.smart-buy-coverage strong,.smart-buy-cost strong { color:#eef6ff; font-size:18px; }
-.smart-buy-coverage span,.smart-buy-coverage small,.smart-buy-cost small { color:#718ba7; font-size:9px; }
-.smart-buy-offers { display:grid; gap:4px; margin-top:10px; }
-.smart-buy-offer { display:grid; grid-template-columns:minmax(180px,1.3fr) minmax(125px,.8fr) minmax(100px,.55fr) minmax(125px,.7fr); align-items:center; gap:10px; padding:7px 9px; color:#829bb7; background:rgba(13,27,43,.72); border-radius:8px; font-size:10px; }
-.smart-buy-offer strong { color:#dceafa; }
-.smart-buy-offer-name { overflow:hidden; color:#c9d9ea; font-weight:850; text-overflow:ellipsis; white-space:nowrap; }
-.smart-buy-open { display:inline-flex; margin-top:9px; color:#76c7f7; text-decoration:none; font-size:10px; font-weight:850; }
-.smart-buy-open:hover { color:#9cddff; }
-html[data-theme="light"] .smart-buy-heading h2,html[data-theme="light"] .smart-buy-item strong,html[data-theme="light"] .smart-buy-subheading > div > strong,html[data-theme="light"] .smart-buy-seller header a,html[data-theme="light"] .smart-buy-coverage strong,html[data-theme="light"] .smart-buy-cost strong { color:#18303a; }
-html[data-theme="light"] .smart-buy-heading p,html[data-theme="light"] .smart-buy-note,html[data-theme="light"] .smart-buy-subheading p,html[data-theme="light"] .smart-buy-item small { color:#526d78; }
-html[data-theme="light"] .smart-buy-profile-chip,html[data-theme="light"] .smart-buy-wanted-card,html[data-theme="light"] .smart-buy-seller { background:rgba(213,225,228,.92); border-color:#a7bbc2; color:#203843; }
-html[data-theme="light"] .smart-buy-link-row input,html[data-theme="light"] .smart-buy-filters select { color:#213740; background:#e4ecee; border-color:#a8bbc2; }
-html[data-theme="light"] .smart-buy-secondary { color:#335463; background:#d4e1e4; border-color:#a5bac1; }
-html[data-theme="light"] .smart-buy-values { background:#a7bac1; border-color:#a7bac1; }
-html[data-theme="light"] .smart-buy-values > span,html[data-theme="light"] .smart-buy-offer { background:#d8e4e7; color:#526d78; }
-html[data-theme="light"] .smart-buy-values strong,html[data-theme="light"] .smart-buy-offer strong,html[data-theme="light"] .smart-buy-offer-name { color:#203843; }
-@media (max-width:900px) {
-  .smart-buy-heading { flex-direction:column; }
-  .smart-buy-profile-chip { width:100%; }
-  .smart-buy-link-row { grid-template-columns:1fr 1fr; }
-  .smart-buy-link-row label { grid-column:1/-1; }
-  .smart-buy-filters { grid-template-columns:1fr 1fr; }
-  .smart-buy-generated { justify-self:start; align-items:flex-start; }
-  .smart-buy-wishlist-grid { grid-template-columns:1fr; }
-  .smart-buy-seller header { grid-template-columns:1fr auto; }
-  .smart-buy-cost { grid-column:2; }
-  .smart-buy-offer { grid-template-columns:1fr 1fr; }
+.smart-buy-page-shell{width:min(1740px,calc(100% - 32px));flex:1 0 auto}
+.smart-buy-panel{margin:0 0 14px;padding:18px;border-color:#244057;background:rgba(5,14,25,.84)}
+.smart-buy-panel.standalone{margin-bottom:24px}
+.smart-buy-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.smart-buy-heading h1{margin:3px 0 6px;color:#eef6ff;font-size:28px;line-height:1.05}
+.smart-buy-heading p{max-width:840px;margin:0;color:#7f97b2;font-size:12px;line-height:1.55}
+.smart-buy-profile-chip{flex:none;display:flex;align-items:center;gap:9px;min-width:210px;padding:10px 12px;color:#dceafa;text-decoration:none;background:rgba(7,15,26,.78);border:1px solid #2a425c;border-radius:12px}
+.smart-buy-profile-chip:hover{border-color:#4d6b89}
+.smart-buy-profile-chip span{display:flex;flex-direction:column;gap:2px}
+.smart-buy-profile-chip small{color:#7790ad;font-size:10px}
+.smart-buy-control-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:end;margin-top:16px}
+.smart-buy-link-row{display:grid;grid-template-columns:minmax(300px,1fr) auto auto;align-items:end;gap:8px}
+.smart-buy-link-row label,.smart-buy-filter-field,.smart-buy-basis{display:flex;flex-direction:column;gap:6px;color:#7891ae;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.05em}
+.smart-buy-link-row input,.smart-buy-filter-field select{width:100%;min-height:40px;box-sizing:border-box;padding:9px 11px;color:#dce9fb;background:rgba(5,12,22,.94);border:1px solid #2a3d55;border-radius:10px;outline:none}
+.smart-buy-link-row input:focus,.smart-buy-filter-field select:focus{border-color:#4fd1c4;box-shadow:0 0 0 2px rgba(79,209,196,.10)}
+.smart-buy-secondary{min-height:40px;padding:9px 12px;color:#a8bdd2;background:#102035;border:1px solid #2c425b;border-radius:10px;font-weight:850;cursor:pointer}
+.smart-buy-secondary:hover:not(:disabled){color:#edf6ff;border-color:#4a6682}
+.smart-buy-secondary.danger{color:#ff8d92;border-color:rgba(255,116,121,.28);background:rgba(255,116,121,.06)}
+.smart-buy-runbar{display:flex;align-items:flex-end;gap:10px}
+.smart-buy-run{min-height:40px;white-space:nowrap}
+.smart-buy-quota{display:flex;min-width:92px;flex-direction:column;align-items:flex-end;gap:1px;padding-bottom:2px}
+.smart-buy-quota strong{font-size:14px}
+.smart-buy-quota span,.smart-buy-quota small{color:#718ba7;font-size:9px}
+.smart-buy-state{min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:18px;color:#8ca3bd;text-align:center}
+.smart-buy-state.compact{min-height:68px}
+.smart-buy-state small{max-width:720px;color:#7088a4}
+.smart-buy-progress{display:flex;align-items:center;justify-content:center;gap:12px;min-height:92px;margin-top:12px;border-top:1px solid #22384e;color:#91a9c1}
+.smart-buy-progress>div:last-child{display:flex;flex-direction:column;gap:3px}
+.smart-buy-progress small{color:#718aa5}
+.smart-buy-toolbar{display:grid;grid-template-columns:minmax(360px,1.2fr) minmax(190px,.55fr) auto minmax(180px,.55fr);align-items:end;gap:12px;margin:18px 0 10px;padding:14px 0 10px;border-top:1px solid #26384e;border-bottom:1px solid #20344a}
+.smart-buy-segmented{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#091626;border:1px solid #2a3d55;border-radius:10px}
+.smart-buy-segmented button{min-height:34px;border:0;border-radius:7px;background:transparent;color:#7891ae;font-weight:800;cursor:pointer}
+.smart-buy-segmented button.active{color:#e9fbf5;background:rgba(79,209,196,.13);box-shadow:0 0 0 1px rgba(79,209,196,.33) inset}
+.smart-buy-check{display:flex;align-items:center;gap:8px;min-height:40px;color:#91a7bd;font-size:10px;font-weight:800;text-transform:uppercase}
+.smart-buy-check input{width:16px;height:16px;accent-color:#54dfa9}
+.smart-buy-generated{justify-self:end;display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-bottom:4px;color:#718aa5;font-size:9px}
+.smart-buy-generated strong{color:#a9bdd1;font-size:10px}
+.smart-buy-section-title{display:flex;align-items:center;justify-content:space-between;margin:10px 2px 8px}
+.smart-buy-section-title>div{display:flex;align-items:center;gap:9px}
+.smart-buy-section-title strong{font-size:13px}
+.smart-buy-sellers{display:grid;gap:8px}
+.smart-buy-seller{padding:12px;background:rgba(5,13,23,.84);border:1px solid #274058;border-radius:13px}
+.smart-buy-seller.multi{border-color:rgba(78,231,176,.46);box-shadow:inset 3px 0 0 rgba(78,231,176,.70)}
+.smart-buy-seller header{display:grid;grid-template-columns:minmax(240px,1fr) auto minmax(150px,auto);align-items:center;gap:20px;padding:0 2px 7px}
+.smart-buy-seller-identity{display:flex;align-items:center;gap:9px;min-width:0;color:#eaf4ff;text-decoration:none}
+.smart-buy-seller-identity>i{width:9px;height:9px;flex:none;border-radius:50%;background:#66788d;box-shadow:0 0 0 3px rgba(102,120,141,.12)}
+.smart-buy-seller-identity>i.online{background:#52e6ad;box-shadow:0 0 10px rgba(82,230,173,.52)}
+.smart-buy-seller-identity>span{display:flex;min-width:0;flex-direction:column;gap:2px}
+.smart-buy-seller-identity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.smart-buy-seller-identity small{color:#7790ad;font-size:9px}
+.smart-buy-coverage,.smart-buy-cost{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.smart-buy-coverage strong,.smart-buy-cost strong{color:#eef6ff;font-size:19px;line-height:1}
+.smart-buy-coverage span,.smart-buy-coverage small,.smart-buy-cost small{color:#718ba7;font-size:9px}
+.smart-buy-offers{display:grid;gap:6px}
+.smart-buy-offer{display:grid;grid-template-columns:minmax(360px,1.4fr) minmax(260px,.82fr) minmax(260px,.82fr);gap:10px;align-items:stretch;padding:8px 10px;background:rgba(13,27,43,.78);border-radius:9px}
+.smart-buy-offer-main{display:grid;grid-template-columns:minmax(220px,1.3fr) minmax(130px,.7fr) minmax(100px,.45fr);align-items:center;gap:10px;color:#829bb7;font-size:10px}
+.smart-buy-offer-main strong{color:#dceafa}
+.smart-buy-offer-name{overflow:hidden;color:#d8e6f4;font-weight:850;text-decoration:none;text-overflow:ellipsis;white-space:nowrap}
+.smart-buy-offer-name:hover{color:#7cd7ff}
+.smart-buy-comparison{display:grid;grid-template-columns:1fr auto;grid-template-areas:"label label" "pct delta" "foot foot";gap:1px 8px;padding:7px 10px;background:#081524;border:1px solid #29455f;border-radius:10px}
+.smart-buy-comparison small{grid-area:label;color:#7894b0;font-size:8px;font-weight:900;text-transform:uppercase}
+.smart-buy-comparison strong{grid-area:pct;color:#e4effa;font-size:16px;line-height:1.1}
+.smart-buy-comparison b{grid-area:delta;color:#dbe8f5;font-size:11px;align-self:end}
+.smart-buy-comparison span{grid-area:foot;color:#66819d;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.smart-buy-comparison.negative strong,.smart-buy-comparison.negative b{color:#ff7078}
+.smart-buy-comparison.positive strong,.smart-buy-comparison.positive b{color:#54dfa9}
+.smart-buy-message-list{display:grid;gap:6px;margin-top:9px;padding-top:9px;border-top:1px solid #1f3449}
+.smart-buy-message-row{display:grid;grid-template-columns:110px minmax(0,1fr) auto;align-items:center;gap:8px}
+.smart-buy-message-row>span{color:#6f89a6;font-size:9px;font-weight:850;text-transform:uppercase}
+.smart-buy-message-row input{width:100%;min-width:0;min-height:36px;box-sizing:border-box;padding:8px 10px;color:#cfe0ef;background:#071422;border:1px solid #294057;border-radius:9px;font:inherit;font-size:10px;outline:none}
+.smart-buy-message-row input:focus{border-color:#4fd1c4}
+.smart-buy-message-hint{color:#627d9b;font-size:9px}
+.smart-buy-open{display:inline-flex;margin-top:8px;color:#76c7f7;text-decoration:none;font-size:10px;font-weight:850}
+.smart-buy-open:hover{color:#9cddff}
+.portfolio-smart-buy-entry{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:0 0 12px;padding:16px 18px}
+.portfolio-smart-buy-entry>div{display:flex;flex-direction:column;gap:3px}
+.portfolio-smart-buy-entry h3{margin:0;color:#e9f4ff}
+.portfolio-smart-buy-entry p{margin:0;color:#7891ae;font-size:11px}
+.portfolio-smart-buy-entry button{flex:none}
+html[data-theme="light"] .smart-buy-panel,html[data-theme="light"] .smart-buy-seller{background:rgba(218,229,232,.94);border-color:#a4bac2}
+html[data-theme="light"] .smart-buy-heading h1,html[data-theme="light"] .smart-buy-seller-identity,html[data-theme="light"] .smart-buy-coverage strong,html[data-theme="light"] .smart-buy-cost strong,html[data-theme="light"] .portfolio-smart-buy-entry h3{color:#18303a}
+html[data-theme="light"] .smart-buy-offer{background:#d8e4e7}
+html[data-theme="light"] .smart-buy-comparison{background:#e3ecee;border-color:#a7bbc2}
+html[data-theme="light"] .smart-buy-offer-main strong,html[data-theme="light"] .smart-buy-offer-name,html[data-theme="light"] .smart-buy-comparison strong,html[data-theme="light"] .smart-buy-comparison b{color:#203843}
+html[data-theme="light"] .smart-buy-message-row input{color:#203843;background:#e5edef;border-color:#a7bbc2}
+@media(max-width:1150px){
+  .smart-buy-toolbar{grid-template-columns:1fr 1fr}
+  .smart-buy-generated{justify-self:start;align-items:flex-start}
+  .smart-buy-offer{grid-template-columns:1fr 1fr}
+  .smart-buy-offer-main{grid-column:1/-1}
 }
-@media (max-width:560px) {
-  .smart-buy-panel { padding:13px; }
-  .smart-buy-link-row,.smart-buy-filters { grid-template-columns:1fr; }
-  .smart-buy-link-row button { width:100%; }
-  .smart-buy-values { grid-template-columns:repeat(2,1fr); }
-  .smart-buy-values > span:last-child { grid-column:1/-1; }
-  .smart-buy-seller header { grid-template-columns:1fr; }
-  .smart-buy-coverage,.smart-buy-cost { align-items:flex-start; }
-  .smart-buy-cost { grid-column:auto; }
-  .smart-buy-offer { grid-template-columns:1fr; gap:3px; }
+@media(max-width:850px){
+  .smart-buy-heading{flex-direction:column}
+  .smart-buy-profile-chip{width:100%;box-sizing:border-box}
+  .smart-buy-control-grid{grid-template-columns:1fr}
+  .smart-buy-link-row{grid-template-columns:1fr 1fr}
+  .smart-buy-link-row label{grid-column:1/-1}
+  .smart-buy-runbar{justify-content:space-between}
+  .smart-buy-seller header{grid-template-columns:1fr auto}
+  .smart-buy-cost{grid-column:2}
+  .smart-buy-message-row{grid-template-columns:1fr auto}
+  .smart-buy-message-row>span{grid-column:1/-1}
 }
-
-
-.smart-buy-runbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  padding:14px 0 2px;
-}
-.smart-buy-run{min-width:190px}
-.smart-buy-quota{
-  display:grid;
-  grid-template-columns:auto auto;
-  align-items:baseline;
-  gap:2px 8px;
-  text-align:right;
-}
-.smart-buy-quota strong{font-size:1.05rem}
-.smart-buy-quota span,.smart-buy-quota small{opacity:.68;font-size:.78rem}
-.smart-buy-quota small{grid-column:1/-1}
-.smart-buy-seller-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
-.smart-buy-copy{padding:8px 12px}
-.smart-buy-chat-hint{display:block;margin-top:7px;text-align:right;opacity:.55;font-size:.72rem}
-@media(max-width:720px){
+@media(max-width:620px){
+  .smart-buy-page-shell{width:min(100% - 18px,1740px)}
+  .smart-buy-panel{padding:13px}
+  .smart-buy-link-row,.smart-buy-toolbar{grid-template-columns:1fr}
+  .smart-buy-link-row button{width:100%}
   .smart-buy-runbar{align-items:stretch;flex-direction:column}
-  .smart-buy-quota{text-align:left;justify-content:start}
-  .smart-buy-seller-actions{justify-content:flex-start}
-  .smart-buy-chat-hint{text-align:left}
+  .smart-buy-quota{align-items:flex-start}
+  .smart-buy-seller header{grid-template-columns:1fr}
+  .smart-buy-coverage,.smart-buy-cost{grid-column:auto;align-items:flex-start}
+  .smart-buy-offer{grid-template-columns:1fr}
+  .smart-buy-offer-main{grid-template-columns:1fr;gap:4px}
+  .smart-buy-message-row{grid-template-columns:1fr}
+  .portfolio-smart-buy-entry{align-items:stretch;flex-direction:column}
 }

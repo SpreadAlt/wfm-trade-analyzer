@@ -131,6 +131,10 @@ export type SmartBuyWishlistRow = {
   gapPct: number | null
   onlineGapPct?: number | null
   absoluteGapPct: number | null
+  average24hUnitPrice?: number | null
+  average24hVolume?: number | null
+  average24hLatestAt?: string | null
+  average24hPoints?: number
   sellers: number
   onlineSellers: number
   marketFetchedAt: string
@@ -149,6 +153,8 @@ export type SmartBuySellerOffer = {
   fullQuantity: boolean
   estimatedCost: number | null
   premiumPct: number | null
+  vs24hAveragePct?: number | null
+  vs24hAveragePlatinum?: number | null
   updatedAt: string | null
 }
 export type SmartBuySeller = {
