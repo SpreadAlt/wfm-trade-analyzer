@@ -31,7 +31,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   cooldown: 'Повторный запуск через',
   seconds: 'сек.',
   priceBasis: 'Сравнивать цену продавца с',
-  marketMin: 'Текущий минимум',
+  marketMin: 'Мин. текущих ордеров продажи',
   average24h: 'Средняя продаж за 24ч',
   deviation: 'Допустимое удорожание',
   onlineOnly: 'Только онлайн / в игре',
@@ -48,12 +48,11 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   canSell: 'может продать',
   of: 'из',
   price: 'цена',
-  activeMin: 'Активный минимум',
+  activeMin: 'Мин. текущих ордеров продажи',
   avg24: 'Средняя 24ч',
   perUnit: '/шт.',
-  totalDelta: 'разница всего',
-  vsSelectedBasis: 'Переплата к выбранной базе',
-  savingVsSelectedBasis: 'Экономия к выбранной базе',
+  vsSelectedBasis: 'Переплата',
+  savingVsSelectedBasis: 'Экономия',
   avgUnavailable: '24ч средняя недоступна',
   sellerProfile: 'Профиль продавца',
   message: 'Сообщение',
@@ -81,7 +80,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   cooldown: 'Available again in',
   seconds: 'sec.',
   priceBasis: 'Compare seller price with',
-  marketMin: 'Active listing minimum',
+  marketMin: 'Current sell-order minimum',
   average24h: '24h sales average',
   deviation: 'Allowed premium',
   onlineOnly: 'Online / in-game only',
@@ -98,12 +97,11 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   canSell: 'can sell',
   of: 'of',
   price: 'price',
-  activeMin: 'Active listing min',
+  activeMin: 'Current sell-order min',
   avg24: '24h average',
   perUnit: '/unit',
-  totalDelta: 'total difference',
-  vsSelectedBasis: 'Premium vs selected baseline',
-  savingVsSelectedBasis: 'Saving vs selected baseline',
+  vsSelectedBasis: 'Premium',
+  savingVsSelectedBasis: 'Saving',
   avgUnavailable: '24h average unavailable',
   sellerProfile: 'Seller profile',
   message: 'Message',
@@ -603,7 +601,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
                       <small>{text.activeMin}</small>
                       <strong>{percent(market.percent)}</strong>
                       <b>{market.platinum == null ? '—' : `${market.platinum > 0 ? '+' : ''}${numberText(market.platinum, 2)}p${text.perUnit}`}</b>
-                      <span>{market.baseline == null ? '—' : `${text.activeMin}: ${plat(market.baseline)} · ${market.total == null ? '' : `${market.total > 0 ? '+' : ''}${numberText(market.total, 2)}p ${text.totalDelta}`}`}</span>
+                      <span>{market.baseline == null ? '—' : `${text.activeMin}: ${plat(market.baseline)}${market.total == null ? '' : ` · ${market.total > 0 ? '+' : ''}${numberText(market.total, 2)}p`}`}</span>
                     </div>
 
                     <div className={`smart-buy-comparison ${comparisonClass(avg.percent)}`}>
