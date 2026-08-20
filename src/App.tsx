@@ -10,6 +10,8 @@ import { localeNames, translations } from './i18n'
 import type { Locale, Theme, TranslationKey } from './i18n'
 import { paginationText } from './paginationText'
 import { SmartBuyPanel } from './SmartBuy'
+import { AccountPanel, useFrameAccount } from './Account'
+import type { FrameAccountController } from './Account'
 import { uiText } from './uiText'
 import type { UiText } from './uiText'
 import type {
@@ -230,7 +232,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
   <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
-  <div className="footer-version">{t('version')} 0.9.2</div>
+  <div className="footer-version">{t('version')} 0.9.0</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 const PlatformGlyph = ({ platform }: { platform: Platform }) => <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -372,8 +374,9 @@ type PortfolioMarketEntry = {
   purchase: PortfolioPurchase
   row: DisplayMarketRow | null
 }
-const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, mode, visibleRanges, locale, catalog, events, onBack, onCreate, onRetry, onRemove, onOpenItem, onPlatform, onCrossplay, onMode, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
+const PortfolioPage = ({ account, auth, entries, loading, error, platform, crossplay, mode, visibleRanges, locale, catalog, events, onBack, onRetry, onRemove, onOpenItem, onPlatform, onCrossplay, onMode, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
   account: TemporaryAccount | null
+  auth: FrameAccountController
   entries: PortfolioMarketEntry[]
   loading: boolean
   error: string | null
@@ -385,7 +388,6 @@ const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, 
   catalog: Map<string, CatalogItem>
   events: MarketEvent[]
   onBack: () => void
-  onCreate: () => void
   onRetry: () => void
   onRemove: (id: string) => void
   onOpenItem: (purchase: PortfolioPurchase) => void
@@ -409,14 +411,15 @@ const PortfolioPage = ({ account, entries, loading, error, platform, crossplay, 
   const eventFor = (itemId: string) => events.find(event => event.itemId === itemId && (event.status === 'active' || event.status === 'upcoming')) || null
   return <main className="app-shell portfolio-shell">
     <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {text.back}</button></div>
-    <div className="portfolio-heading"><div><span>{text.savedLocally}</span><h1>{text.title}</h1><p>{text.unavailable}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(account)} onClick={() => undefined}/></div></div>
-    {!account ? <section className="panel portfolio-onboarding"><div className="account-orb"><span>FA</span></div><strong>{text.unavailable}</strong><p>{text.explanation}</p><button type="button" className="primary-action" onClick={onCreate}>{text.create}</button></section> : <>
+    <div className="portfolio-heading"><div><span>{auth.account ? auth.account.user.email : text.title}</span><h1>{text.title}</h1><p>{auth.account ? (locale === 'ru' ? 'Данные профиля сохраняются в аккаунте FrameAnalytics.' : 'Profile data is saved to your FrameAnalytics account.') : (locale === 'ru' ? 'Войдите или зарегистрируйтесь, чтобы открыть личный кабинет.' : 'Sign in or register to open your profile.')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={() => undefined}/></div></div>
+    <AccountPanel locale={locale} auth={auth}/>
+    {!auth.account ? null : <>
       <section className="portfolio-summary-grid">
         <article className="panel"><span>{text.total}</span><strong>{fmtPlat(invested)}</strong><small>{account.purchases.length} · {text.purchases.toLowerCase()}</small></article>
         <article className="panel"><span>{text.currentValue}</span><strong>{pricedEntries.length ? fmtPlat(currentValue) : '—'}</strong><small>{pricedEntries.length}/{entries.length}</small></article>
         <article className={`panel ${valueClass(profit)}`} title={text.profitHint}><span>{text.possibleProfit}</span><strong>{pricedEntries.length ? fmtPlatDelta(profit) : '—'}</strong><small>{text.returnPct}: {fmtPercent(returnPct)}</small></article>
       </section>
-      <SmartBuyPanel locale={locale} catalog={catalog}/>
+      <SmartBuyPanel locale={locale} catalog={catalog} auth={auth}/>
       <section className="mode-tabs portfolio-mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => onMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => onMode('sell')}>{t('sell')}</button></section>
       {!account.purchases.length ? <section className="panel portfolio-empty">{text.empty}</section> : <section className="panel table-panel portfolio-table-panel"><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
         <th>{t('item')}</th><th>{text.price}</th><th>{text.quantity}</th><th>{t('current')}</th>
@@ -502,6 +505,7 @@ export default function App() {
     return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system'
   })
   const [temporaryAccount, setTemporaryAccount] = useState<TemporaryAccount | null>(loadTemporaryAccount)
+  const auth = useFrameAccount()
   const [marketEvents, setMarketEvents] = useState<MarketEvent[]>([])
   const popoverRef = useRef<HTMLElement | null>(null)
   const hourlyCheckedAt = useRef<Record<string, number>>({})
@@ -549,6 +553,31 @@ export default function App() {
   }, [visibleRanges, period])
   useEffect(() => { localStorage.setItem('frameanalytics-rank-filter', rankFilter) }, [rankFilter])
   useEffect(() => { saveTemporaryAccount(temporaryAccount) }, [temporaryAccount])
+  useEffect(() => {
+    const userId = auth.account?.user.id
+    if (!userId) return
+    let cancelled = false
+    const run = async () => {
+      try {
+        const marker = `frameanalytics-account-migrated:${userId}`
+        const localPurchases = temporaryAccount?.purchases || []
+        if (localStorage.getItem(marker) !== '1' && localPurchases.length) {
+          await auth.upsertPurchases(localPurchases)
+        }
+        const serverPurchases = await auth.loadPurchases()
+        if (cancelled) return
+        setTemporaryAccount(current => ({
+          ...(current || createTemporaryAccount()),
+          purchases: serverPurchases
+        }))
+        localStorage.setItem(marker, '1')
+      } catch (error) {
+        console.error('FrameAnalytics account purchase sync failed', error)
+      }
+    }
+    void run()
+    return () => { cancelled = true }
+  }, [auth.account?.user.id])
   useEffect(() => {
     const controller = new AbortController()
     fetchCatalog(locale, controller.signal).then(response => setCatalog(new Map(response.items.map(item => [item.id, item])))).catch(() => setCatalog(new Map()))
@@ -850,10 +879,12 @@ export default function App() {
     setRoute(readRoute())
   }
   const addPurchase = (purchase: Omit<PortfolioPurchase, 'id' | 'createdAt'>) => {
+    const savedPurchase: PortfolioPurchase = { ...purchase, id: crypto.randomUUID(), createdAt: new Date().toISOString() }
     setTemporaryAccount(current => {
       const account = current || createTemporaryAccount()
-      return { ...account, purchases: [...account.purchases, { ...purchase, id: crypto.randomUUID(), createdAt: new Date().toISOString() }] }
+      return { ...account, purchases: [...account.purchases, savedPurchase] }
     })
+    if (auth.account) void auth.upsertPurchases([savedPurchase]).catch(error => console.error('Purchase sync failed', error))
   }
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -866,8 +897,8 @@ export default function App() {
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
   return <>
     <div className="background-layer"/><div className="background-shade"/>
-    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(temporaryAccount)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onCreate={() => setTemporaryAccount(createTemporaryAccount())} onRetry={() => setPortfolioReload(value => value + 1)} onRemove={id => setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null)} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
-      <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(temporaryAccount)} onClick={openPortfolio}/></div></header>
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
+      <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={openPortfolio}/></div></header>
       <section className="mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button></section>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>

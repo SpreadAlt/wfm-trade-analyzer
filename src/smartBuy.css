@@ -19,18 +19,6 @@
 .smart-buy-note { margin:8px 0 0; color:#627d9b; font-size:10px; line-height:1.45; }
 .smart-buy-state { min-height:120px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; padding:18px; color:#8ca3bd; text-align:center; }
 .smart-buy-state.compact { min-height:80px; }
-
-.smart-buy-queue-state { gap:11px; }
-.smart-buy-position { display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 12px; background:rgba(13,27,43,.7); border:1px solid #2a3e56; border-radius:10px; }
-.smart-buy-position b { color:#dceafa; font-size:12px; }
-.smart-buy-position small { color:#6f89a7; font-size:9px; }
-.smart-buy-progress-wrap { width:min(520px,100%); display:flex; flex-direction:column; gap:6px; }
-.smart-buy-progress { width:100%; height:7px; overflow:hidden; background:#14243a; border:1px solid #2a3e56; border-radius:999px; }
-.smart-buy-progress > i { display:block; height:100%; background:linear-gradient(90deg,#4ca7e8,#54dfa9); border-radius:inherit; transition:width .25s ease; }
-.smart-buy-progress-wrap > small { color:#7f98b5; font-size:10px; text-align:center; }
-html[data-theme="light"] .smart-buy-position { background:#d8e4e7; border-color:#a7bbc2; }
-html[data-theme="light"] .smart-buy-position b { color:#203843; }
-html[data-theme="light"] .smart-buy-progress { background:#c8d7db; border-color:#a7bbc2; }
 .smart-buy-state small { max-width:720px; color:#7088a4; }
 .smart-buy-filters { display:grid; grid-template-columns:repeat(2,minmax(180px,240px)) auto 1fr; align-items:end; gap:10px; margin:18px 0 10px; padding-top:14px; border-top:1px solid #26384e; }
 .smart-buy-check { min-height:40px; flex-direction:row !important; align-items:center; gap:8px !important; padding:0 4px 4px; }
@@ -102,34 +90,31 @@ html[data-theme="light"] .smart-buy-values strong,html[data-theme="light"] .smar
   .smart-buy-offer { grid-template-columns:1fr; gap:3px; }
 }
 
-/* Smart Buy v0.9.2 — safe copy/paste whispers */
-.smart-buy-values { grid-template-columns:repeat(6,minmax(66px,1fr)); }
-.smart-buy-seller-actions { display:flex; align-items:center; gap:8px; margin-top:9px; }
-.smart-buy-seller-actions .smart-buy-open { margin-top:0; }
-.smart-buy-chat-toggle { min-height:30px; padding:6px 9px; color:#b9d9ee; background:rgba(22,48,71,.82); border:1px solid #35536d; border-radius:8px; font-size:10px; font-weight:850; cursor:pointer; }
-.smart-buy-chat-toggle:hover { color:#f0f8ff; border-color:#5d7d98; }
-.smart-buy-chat-box { display:grid; gap:7px; margin-top:9px; padding:9px; background:rgba(5,12,22,.78); border:1px solid #2a3e56; border-radius:10px; }
-.smart-buy-chat-note { display:flex; flex-direction:column; gap:2px; color:#8da6bf; font-size:9px; line-height:1.45; }
-.smart-buy-chat-note small { color:#69849f; }
-.smart-buy-chat-part { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 9px; align-items:center; padding:8px; background:rgba(13,27,43,.78); border:1px solid rgba(69,99,126,.42); border-radius:9px; }
-.smart-buy-chat-part > div { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.smart-buy-chat-part > div strong { color:#dceafa; font-size:10px; }
-.smart-buy-chat-part > div small { color:#6f89a7; font-size:9px; }
-.smart-buy-chat-part code { min-width:0; overflow-wrap:anywhere; white-space:normal; color:#c9d9e9; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:10px; line-height:1.45; }
-.smart-buy-chat-part button { align-self:stretch; min-width:92px; padding:6px 9px; color:#8fe5bd; background:rgba(54,191,137,.09); border:1px solid rgba(84,223,169,.35); border-radius:8px; font-size:10px; font-weight:900; cursor:pointer; }
-.smart-buy-chat-part button:hover { color:#c3f6df; border-color:rgba(84,223,169,.62); }
-html[data-theme="light"] .smart-buy-chat-toggle { color:#315566; background:#d6e3e6; border-color:#9eb6bf; }
-html[data-theme="light"] .smart-buy-chat-box { background:#e1e9eb; border-color:#a7bbc2; }
-html[data-theme="light"] .smart-buy-chat-part { background:#d5e1e4; border-color:#a7bbc2; }
-html[data-theme="light"] .smart-buy-chat-part code,html[data-theme="light"] .smart-buy-chat-part > div strong { color:#203843; }
-@media (max-width:900px) {
-  .smart-buy-values { grid-template-columns:repeat(3,1fr); }
+
+.smart-buy-runbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:14px 0 2px;
 }
-@media (max-width:560px) {
-  .smart-buy-values { grid-template-columns:repeat(2,1fr); }
-  .smart-buy-values > span:last-child { grid-column:auto; }
-  .smart-buy-seller-actions { align-items:stretch; flex-direction:column; }
-  .smart-buy-chat-toggle,.smart-buy-seller-actions .smart-buy-open { width:100%; justify-content:center; }
-  .smart-buy-chat-part { grid-template-columns:1fr; }
-  .smart-buy-chat-part button { min-height:34px; }
+.smart-buy-run{min-width:190px}
+.smart-buy-quota{
+  display:grid;
+  grid-template-columns:auto auto;
+  align-items:baseline;
+  gap:2px 8px;
+  text-align:right;
+}
+.smart-buy-quota strong{font-size:1.05rem}
+.smart-buy-quota span,.smart-buy-quota small{opacity:.68;font-size:.78rem}
+.smart-buy-quota small{grid-column:1/-1}
+.smart-buy-seller-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.smart-buy-copy{padding:8px 12px}
+.smart-buy-chat-hint{display:block;margin-top:7px;text-align:right;opacity:.55;font-size:.72rem}
+@media(max-width:720px){
+  .smart-buy-runbar{align-items:stretch;flex-direction:column}
+  .smart-buy-quota{text-align:left;justify-content:start}
+  .smart-buy-seller-actions{justify-content:flex-start}
+  .smart-buy-chat-hint{text-align:left}
 }

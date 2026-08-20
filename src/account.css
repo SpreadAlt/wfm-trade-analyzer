@@ -1,0 +1,19 @@
+.account-panel{display:grid;gap:18px;margin-bottom:18px}
+.account-loading{display:flex;align-items:center;gap:12px;min-height:84px}
+.account-auth-copy h2{margin:4px 0 6px}
+.account-auth-copy p,.account-signed p{margin:0;opacity:.72}
+.account-tabs{display:flex;gap:8px}
+.account-tabs button{border:1px solid var(--line);background:var(--surface-2);color:inherit;border-radius:10px;padding:9px 14px;cursor:pointer}
+.account-tabs button.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.account-form{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1fr) auto;gap:12px;align-items:end}
+.account-form label{display:grid;gap:6px}
+.account-form label span{font-size:.78rem;opacity:.7}
+.account-form input{width:100%;box-sizing:border-box}
+.account-error{grid-column:1/-1;color:var(--negative,#e36a6a)}
+.account-signed{grid-template-columns:1fr auto;align-items:center}
+.account-signed p{grid-column:1/-1}
+.account-identity{display:flex;align-items:center;gap:12px}
+.account-identity>div:last-child{display:grid;gap:2px}
+.account-identity small{opacity:.66}
+.account-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--surface-2);border:1px solid var(--line)}
+@media(max-width:760px){.account-form{grid-template-columns:1fr}.account-signed{grid-template-columns:1fr}.account-signed button{justify-self:start}}
