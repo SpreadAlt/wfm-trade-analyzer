@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchSmartBuy } from './api'
-import type { SmartBuyResponse, SmartBuySeller, SmartBuySellerOffer, SmartBuyWishlistRow } from './api'
+import { waitForSmartBuy } from './api'
+import type { SmartBuyJobStatus, SmartBuyResponse, SmartBuySeller, SmartBuySellerOffer, SmartBuyWishlistRow } from './api'
 import type { FrameAccountController } from './Account'
 import { ItemIcon } from './MarketVisuals'
 import type { CatalogItem } from './types'
@@ -65,7 +65,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   linkFirst: 'Сначала привяжите профиль Warframe Market.',
   copy: 'Копировать сообщение',
   copied: 'Скопировано',
-  chatHint: 'Сообщение всегда на английском, до 300 символов. Общая цена указана после списка предметов.'
+  chatHint: 'Сообщение всегда на английском. Длинный список автоматически разбивается на несколько сообщений до 300 символов каждое; итоговая цена указана в конце каждого сообщения.'
 } : {
   eyebrow: 'Warframe Market',
   title: 'Smart Buy',
@@ -119,7 +119,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   linkFirst: 'Link your Warframe Market profile first.',
   copy: 'Copy message',
   copied: 'Copied',
-  chatHint: 'The message is always English, up to 300 characters. The total platinum price comes after the item list.'
+  chatHint: 'The message is always English. Long lists are split automatically into messages of up to 300 characters each; every message ends with its own total platinum price.'
 }
 
 const numberText = (value: number | null | undefined, digits = 1) => value == null || !Number.isFinite(value) ? '—' : value.toFixed(digits).replace(/\.0$/, '')
@@ -162,6 +162,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth }: {
   const linkedProfile = auth.account?.profile.wfmProfile || ''
   const [profileInput, setProfileInput] = useState(linkedProfile)
   const [data, setData] = useState<SmartBuyResponse | null>(null)
+  const [jobStatus, setJobStatus] = useState<SmartBuyJobStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [profileBusy, setProfileBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -239,6 +240,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth }: {
     try {
       await auth.linkWfmProfile(value)
       setData(null)
+      setJobStatus(null)
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value))
     } finally {
@@ -254,6 +256,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth }: {
       await auth.unlinkWfmProfile()
       setProfileInput('')
       setData(null)
+      setJobStatus(null)
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value))
     } finally {
@@ -265,12 +268,19 @@ export const SmartBuyPanel = ({ locale, catalog, auth }: {
     if (!canRun || !linkedProfile) return
     setLoading(true)
     setError(null)
+    setJobStatus(null)
     setClock(Date.now())
     const controller = new AbortController()
     try {
+      // Reserve the registered-account quota first. A rejected permit never starts a WFM job.
       await auth.reserveSmartBuy()
       setClock(Date.now())
-      const result = await fetchSmartBuy(linkedProfile, controller.signal)
+
+      const result = await waitForSmartBuy(
+        linkedProfile,
+        status => setJobStatus(status),
+        controller.signal
+      )
       setData(result)
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value))
@@ -279,39 +289,63 @@ export const SmartBuyPanel = ({ locale, catalog, auth }: {
     }
   }
 
-  const buildChatMessage = (seller: SmartBuySeller, offers: SmartBuySellerOffer[]) => {
+  const buildChatMessages = (seller: SmartBuySeller, offers: SmartBuySellerOffer[]) => {
     const prefix = `/w ${seller.user.ingameName} Hi! I want to buy `
     const suffix = (total: number) => ` for ${compactPlat(total)}p total.`
-    const parts: string[] = []
+    const messages: string[] = []
+    let parts: string[] = []
     let total = 0
 
-    for (const offer of offers) {
-      const qty = Math.max(1, offer.fillableQuantity || 1)
-      const part = `${qty}x [${englishItemName(offer.itemId)}]`
-      const nextTotal = total + Math.max(0, offer.estimatedCost || 0)
-      const candidate = `${prefix}${[...parts, part].join(', ')}${suffix(nextTotal)}`
-      if (candidate.length > CHAT_LIMIT) break
-      parts.push(part)
-      total = nextTotal
+    const offerCost = (offer: SmartBuySellerOffer, qty: number) => {
+      if (offer.estimatedCost != null && Number.isFinite(offer.estimatedCost)) {
+        return Math.max(0, offer.estimatedCost)
+      }
+      return Math.max(0, qty * (Number.isFinite(offer.unitPrice) ? offer.unitPrice : 0))
     }
 
-    if (!parts.length && offers.length) {
-      const offer = offers[0]
+    const fitSinglePart = (offer: SmartBuySellerOffer) => {
       const qty = Math.max(1, offer.fillableQuantity || 1)
-      const totalCost = Math.max(0, offer.estimatedCost || 0)
+      const cost = offerCost(offer, qty)
       const rawName = englishItemName(offer.itemId)
-      const reserved = prefix.length + `${qty}x []${suffix(totalCost)}`.length
-      const maxName = Math.max(8, CHAT_LIMIT - reserved)
-      parts.push(`${qty}x [${rawName.slice(0, maxName)}]`)
-      total = totalCost
+      const fullPart = `${qty}x [${rawName}]`
+      if (`${prefix}${fullPart}${suffix(cost)}`.length <= CHAT_LIMIT) {
+        return { part: fullPart, cost }
+      }
+
+      const reserved = prefix.length + `${qty}x []`.length + suffix(cost).length
+      const maxName = Math.max(1, CHAT_LIMIT - reserved)
+      return { part: `${qty}x [${rawName.slice(0, maxName)}]`, cost }
     }
 
-    return `${prefix}${parts.join(', ')}${suffix(total)}`.slice(0, CHAT_LIMIT)
+    const flush = () => {
+      if (!parts.length) return
+      const message = `${prefix}${parts.join(', ')}${suffix(total)}`
+      messages.push(message.slice(0, CHAT_LIMIT))
+      parts = []
+      total = 0
+    }
+
+    for (const offer of offers) {
+      const fitted = fitSinglePart(offer)
+      const nextTotal = total + fitted.cost
+      const candidate = `${prefix}${[...parts, fitted.part].join(', ')}${suffix(nextTotal)}`
+
+      if (parts.length && candidate.length > CHAT_LIMIT) {
+        flush()
+      }
+
+      parts.push(fitted.part)
+      total += fitted.cost
+    }
+
+    flush()
+    return messages
   }
 
   const copySellerMessage = async (seller: SmartBuySeller, offers: SmartBuySellerOffer[]) => {
-    const message = buildChatMessage(seller, offers)
-    await navigator.clipboard.writeText(message)
+    const messages = buildChatMessages(seller, offers)
+    if (!messages.length) return
+    await navigator.clipboard.writeText(messages.join('\n'))
     const key = seller.user.id || seller.user.slug
     setCopiedSeller(key)
     window.setTimeout(() => setCopiedSeller(current => current === key ? null : current), 1600)
@@ -341,7 +375,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth }: {
       {!linkedProfile ? <div className="smart-buy-state compact"><strong>{text.linkFirst}</strong></div> : null}
     </>}
 
-    {loading ? <div className="smart-buy-state"><div className="spinner"/><strong>{text.loading}</strong></div> : error ? <div className="smart-buy-state error-state"><strong>{text.loadError}</strong><small>{error}</small></div> : data ? <>
+    {loading ? <div className="smart-buy-state"><div className="spinner"/><strong>{text.loading}</strong>{jobStatus ? <small>{jobStatus.progress.stage} · {jobStatus.progress.percent}%</small> : null}</div> : error ? <div className="smart-buy-state error-state"><strong>{text.loadError}</strong><small>{error}</small></div> : data ? <>
       <div className="smart-buy-filters">
         <label><span>{text.myGapFilter}</span><select value={myGap} onChange={event => setMyGap(event.target.value as LimitValue)}><option value="any">{text.any}</option><option value="5">{text.upTo('5')}</option><option value="10">{text.upTo('10')}</option><option value="20">{text.upTo('20')}</option><option value="50">{text.upTo('50')}</option></select></label>
         <label><span>{text.sellerPremiumFilter}</span><select value={sellerPremium} onChange={event => setSellerPremium(event.target.value as LimitValue)}><option value="0">{text.minimumOnly}</option><option value="5">+{text.upTo('5')}</option><option value="10">+{text.upTo('10')}</option><option value="20">+{text.upTo('20')}</option><option value="50">+{text.upTo('50')}</option><option value="any">{text.any}</option></select></label>

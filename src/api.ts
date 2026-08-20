@@ -175,6 +175,14 @@ export type SmartBuyResponse = {
   truncated: boolean
   maxMarketSeries: number
   cache: { profile: boolean; userOrders: boolean; itemHits: number; itemMisses: number; itemTtlSeconds: number }
+  throttle?: {
+    activityKey: string
+    fastIntervalMs: number
+    hourlyBusyIntervalMs: number
+    fastRequests: number
+    hourlyBusyRequests: number
+    failSafeRequests: number
+  }
   wishlist: SmartBuyWishlistRow[]
   sellers: SmartBuySeller[]
 }
@@ -235,6 +243,27 @@ export const fetchSmartBuyResult = (jobId: string, signal?: AbortSignal) => {
   return fetchJson<SmartBuyResponse>(`/api/smart-buy-v2/result?${params}`, signal)
 }
 
+const smartBuyDelay = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'))
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      signal?.removeEventListener('abort', abort)
+      resolve()
+    }, ms)
+
+    const abort = () => {
+      window.clearTimeout(timeout)
+      signal?.removeEventListener('abort', abort)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+
+    signal?.addEventListener('abort', abort, { once: true })
+  })
+
 export const waitForSmartBuy = async (
   profile: string,
   onStatus: (status: SmartBuyJobStatus) => void,
@@ -253,14 +282,7 @@ export const waitForSmartBuy = async (
       throw new Error(status.error || 'Smart Buy job failed')
     }
 
-    await new Promise<void>((resolve, reject) => {
-      const timeout = window.setTimeout(resolve, 1500)
-      const abort = () => {
-        window.clearTimeout(timeout)
-        reject(new DOMException('Aborted', 'AbortError'))
-      }
-      signal?.addEventListener('abort', abort, { once: true })
-    })
+    await smartBuyDelay(1500, signal)
   }
 
   throw new DOMException('Aborted', 'AbortError')
@@ -386,7 +408,3 @@ export const fetchSiteSmartBuyStatus = async (signal?: AbortSignal): Promise<Sit
   return response.json() as Promise<SiteSmartBuyStatus>
 }
 
-export const fetchSmartBuy = (profile: string, signal?: AbortSignal) => {
-  const params = new URLSearchParams({ profile, t: String(Date.now()) })
-  return fetchJson<SmartBuyResponse>(`/api/smart-buy-v1?${params}`, signal)
-}
