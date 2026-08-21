@@ -43,6 +43,7 @@ export type SmartBuyStartResponse = {
   state: 'queued'
   queuedAt: string
   smartBuy: SmartBuyUsage
+  analysis?: 'smart-buy' | 'sell-advisor'
 }
 
 type PurchaseListResponse = {
@@ -85,6 +86,7 @@ export type FrameAccountController = {
   linkWfmProfile: (profile: string) => Promise<void>
   unlinkWfmProfile: () => Promise<void>
   startSmartBuy: () => Promise<SmartBuyStartResponse>
+  startSellAdvisor: () => Promise<SmartBuyStartResponse>
   loadPurchases: () => Promise<PortfolioPurchase[]>
   upsertPurchases: (purchases: PortfolioPurchase[]) => Promise<void>
   deletePurchase: (id: string) => Promise<void>
@@ -185,6 +187,15 @@ export const useFrameAccount = (): FrameAccountController => {
     return result
   }, [action])
 
+  const startSellAdvisor = useCallback(async () => {
+    let result!: SmartBuyStartResponse
+    await action(async () => {
+      result = await requestJson<SmartBuyStartResponse>('/api/sell-advisor/start', { method: 'POST' })
+      setAccount(current => current ? { ...current, smartBuy: result.smartBuy } : current)
+    })
+    return result
+  }, [action])
+
   const loadPurchases = useCallback(async () => {
     const result = await requestJson<PurchaseListResponse>('/api/account/purchases')
     return result.purchases || []
@@ -204,12 +215,12 @@ export const useFrameAccount = (): FrameAccountController => {
 
   return useMemo(() => ({
     loading, busy, error, account, refresh, signUp, signIn, signOut,
-    linkWfmProfile, unlinkWfmProfile, startSmartBuy,
+    linkWfmProfile, unlinkWfmProfile, startSmartBuy, startSellAdvisor,
     loadPurchases, upsertPurchases, deletePurchase,
     clearError: () => setError(null)
   }), [
     loading, busy, error, account, refresh, signUp, signIn, signOut,
-    linkWfmProfile, unlinkWfmProfile, startSmartBuy,
+    linkWfmProfile, unlinkWfmProfile, startSmartBuy, startSellAdvisor,
     loadPurchases, upsertPurchases, deletePurchase
   ])
 }

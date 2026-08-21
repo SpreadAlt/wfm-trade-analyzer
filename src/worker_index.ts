@@ -59,6 +59,7 @@ type SmartBuyJobStart = {
   jobId: string;
   state: "queued";
   queuedAt: string;
+  analysis?: "smart-buy" | "sell-advisor";
 };
 
 const normalizeWfmProfile = (value: unknown) => {
@@ -227,6 +228,17 @@ const reserveSmartBuyRun = async (env: Env, userId: string) => {
 
   const changes = Number(result.meta?.changes ?? 0);
   return changes > 0 ? id : null;
+};
+
+const releaseSmartBuyRun = async (env: Env, userId: string, permitId: string) => {
+  try {
+    await env.frameanalytics_auth
+      .prepare(`DELETE FROM frameanalytics_smart_buy_run WHERE id = ? AND user_id = ?`)
+      .bind(permitId, userId)
+      .run();
+  } catch (error) {
+    console.error("frameanalytics-analysis-permit-release-error", error);
+  }
 };
 
 const readBody = async <T,>(request: Request): Promise<T> => {
@@ -465,6 +477,7 @@ const handleSmartBuyStart = async (
   request: Request,
   env: Env,
   auth: ReturnType<typeof createAuth>,
+  analysis: "smart-buy" | "sell-advisor" = "smart-buy",
 ) => {
   if (request.method !== "POST") {
     return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
@@ -507,9 +520,12 @@ const handleSmartBuyStart = async (
 
   let upstream: Response;
   try {
+    const upstreamPath = analysis === "sell-advisor"
+      ? "/api/sell-advisor-v1/start"
+      : "/api/smart-buy-v2/start";
     const smartBuyUrl = env.SMART_BUY_API
-      ? "https://frameanalytics-api.internal/api/smart-buy-v2/start"
-      : `${SMART_BUY_API_BASE}/api/smart-buy-v2/start`;
+      ? `https://frameanalytics-api.internal${upstreamPath}`
+      : `${SMART_BUY_API_BASE}${upstreamPath}`;
     const smartBuyFetcher = env.SMART_BUY_API ?? { fetch };
 
     upstream = await smartBuyFetcher.fetch(smartBuyUrl, {
@@ -523,10 +539,11 @@ const handleSmartBuyStart = async (
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
+    await releaseSmartBuyRun(env, user.id, permitId);
     return json(
       {
         ok: false,
-        error: `Smart Buy start failed: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Market analysis start failed: ${error instanceof Error ? error.message : String(error)}`,
         permitId,
         smartBuy: await readSmartBuyUsage(env, user.id),
       },
@@ -542,6 +559,7 @@ const handleSmartBuyStart = async (
   }
 
   if (!upstream.ok) {
+    await releaseSmartBuyRun(env, user.id, permitId);
     const message =
       payload && typeof payload === "object" && "error" in payload
         ? String((payload as { error?: unknown }).error || `HTTP ${upstream.status}`)
@@ -550,7 +568,7 @@ const handleSmartBuyStart = async (
     return json(
       {
         ok: false,
-        error: `Smart Buy start failed: ${message}`,
+        error: `Market analysis start failed: ${message}`,
         permitId,
         smartBuy: await readSmartBuyUsage(env, user.id),
       },
@@ -583,10 +601,11 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "beta-smartbuy-guard-2",
+          serviceRevision: "beta-sell-advisor-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
           smartBuyStartProxy: true,
+          sellAdvisorStartProxy: true,
           smartBuyTransport: env.SMART_BUY_API ? "service-binding" : "public-fallback",
         });
       }
@@ -619,6 +638,10 @@ export default {
 
       if (url.pathname === "/api/smart-buy/start") {
         return handleSmartBuyStart(request, env, auth);
+      }
+
+      if (url.pathname === "/api/sell-advisor/start") {
+        return handleSmartBuyStart(request, env, auth, "sell-advisor");
       }
 
       return json({ ok: false, error: "API route not found" }, 404);

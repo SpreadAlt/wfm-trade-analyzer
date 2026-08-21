@@ -208,6 +208,7 @@ export type SmartBuyJobStatus = {
   ok: true
   smartBuyVersion: string
   smartBuyRuntimeRevision: string
+  analysis?: 'smart-buy' | 'sell-advisor'
   jobId: string
   profileSlug: string
   state: 'queued' | 'running' | 'retrying' | 'completed' | 'failed'
@@ -272,6 +273,94 @@ export const waitForSmartBuy = async (
     await smartBuyDelay(1500, signal)
   }
 
+  throw new DOMException('Aborted', 'AbortError')
+}
+
+export type SellAdvisorTarget = {
+  orderPlatinum: number
+  unitPrice: number
+  deltaPlatinum: number | null
+  deltaUnitPrice: number | null
+  deltaPct: number | null
+  action: 'increase' | 'decrease' | 'keep'
+}
+
+export type SellAdvisorWindow = {
+  hours: 24 | 48
+  points: number
+  volume: number
+  firstAt: string | null
+  latestAt: string | null
+  minimum: number | null
+  median: number | null
+  maximum: number | null
+  confidence: 'low' | 'medium' | 'high'
+  recommendations: {
+    fast: SellAdvisorTarget | null
+    balanced: SellAdvisorTarget | null
+    profit: SellAdvisorTarget | null
+  }
+}
+
+export type SellAdvisorRow = {
+  orderId: string | null
+  itemId: string
+  dimensions: SmartBuyDimensions
+  marketKey: string
+  quantity: number
+  perTrade: number
+  currentOrderPlatinum: number | null
+  currentUnitPrice: number | null
+  visible: boolean
+  createdAt: string | null
+  updatedAt: string | null
+  statsState: 'available' | 'stale' | 'missing'
+  statsFetchedAt: string | null
+  statsAgeMinutes: number | null
+  groupId: string | null
+  tier: string | null
+  cadenceMinutes: number | null
+  windows: { '24h': SellAdvisorWindow; '48h': SellAdvisorWindow }
+}
+
+export type SellAdvisorResponse = {
+  ok: true
+  analysis: 'sell-advisor'
+  sellAdvisorVersion: string
+  smartBuyRuntimeRevision: string
+  jobId: string
+  generatedAt: string
+  publicOnly: true
+  modifiesOrders: false
+  windows: [24, 48]
+  profile: SmartBuyUser
+  marketScope: { platform: string; crossplay: boolean }
+  hourlyAvailable: boolean
+  publicOrders: number
+  visibleSellOrders: number
+  analyzedSellOrders: number
+  truncated: boolean
+  maxMarketSeries: number
+  rows: SellAdvisorRow[]
+}
+
+export const fetchSellAdvisorResult = (jobId: string, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ id: jobId, t: String(Date.now()) })
+  return fetchJson<SellAdvisorResponse>(`/api/smart-buy-v2/result?${params}`, signal)
+}
+
+export const waitForSellAdvisor = async (
+  jobId: string,
+  onStatus: (status: SmartBuyJobStatus) => void,
+  signal?: AbortSignal
+): Promise<SellAdvisorResponse> => {
+  while (!signal?.aborted) {
+    const status = await fetchSmartBuyStatus(jobId, signal)
+    onStatus(status)
+    if (status.state === 'completed') return fetchSellAdvisorResult(jobId, signal)
+    if (status.state === 'failed') throw new Error(status.error || 'Sell Advisor job failed')
+    await smartBuyDelay(1500, signal)
+  }
   throw new DOMException('Aborted', 'AbortError')
 }
 
