@@ -215,6 +215,7 @@ const loadRanges = (): TimeRange[] => {
   } catch { return DEFAULT_RANGES }
 }
 const loadRankFilter = (): RankFilter => localStorage.getItem('frameanalytics-rank-filter') === 'all' ? 'all' : 'base'
+const loadBaroOnly = () => localStorage.getItem('frameanalytics-baro-only') === 'true'
 type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
 const readRoute = (): RouteState => {
   const match = location.pathname.match(/^\/items?\/([^/]+)\/?$/)
@@ -524,6 +525,7 @@ export default function App() {
   const [categories, setCategories] = useState<CategoryId[]>(loadCategories)
   const [visibleRanges, setVisibleRanges] = useState<TimeRange[]>(loadRanges)
   const [rankFilter, setRankFilter] = useState<RankFilter>(loadRankFilter)
+  const [baroOnly, setBaroOnly] = useState(loadBaroOnly)
   const [period, setPeriod] = useState<AnalysisPeriod>(() => analysisPeriodForRanges(loadRanges()))
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null)
   const [sort, setSort] = useState<ScannerSort>('updatedDate')
@@ -581,6 +583,19 @@ export default function App() {
   const catalogItem = (id: string) => catalog.get(id)
   const itemName = (item: { id: string; name: string }) => catalogItem(item.id)?.name || item.name
   const hourlySortActive = supportsHourly(platform, crossplay) && (HOURLY_INDEX_SORTS.has(sort) || rankFilter === 'all')
+  const activeBaroIds = useMemo(() => {
+    const now = Date.now()
+    return [...new Set(marketEvents.filter(event => {
+      if (event.eventType !== 'baro' || event.status !== 'active') return false
+      const start = Date.parse(event.startAt || '')
+      const end = Date.parse(event.endAt || '')
+      return (!Number.isFinite(start) || start <= now) && (!Number.isFinite(end) || end > now)
+    }).map(event => event.itemId))].sort()
+  }, [marketEvents, hourlyRefresh])
+  const activeBaroKey = activeBaroIds.join(',')
+  const scannerItemIds = baroOnly
+    ? activeBaroIds.length ? activeBaroIds : ['000000000000000000000000']
+    : undefined
   useEffect(() => { const timer = setTimeout(() => setQuery(queryInput.trim()), 300); return () => clearTimeout(timer) }, [queryInput])
   useEffect(() => { const timer = setInterval(() => setHourlyRefresh(value => value + 1), 5 * 60 * 1000); return () => clearInterval(timer) }, [])
   useEffect(() => {
@@ -617,6 +632,7 @@ export default function App() {
     }
   }, [visibleRanges, period])
   useEffect(() => { localStorage.setItem('frameanalytics-rank-filter', rankFilter) }, [rankFilter])
+  useEffect(() => { localStorage.setItem('frameanalytics-baro-only', String(baroOnly)) }, [baroOnly])
   useEffect(() => { saveTemporaryAccount(temporaryAccount) }, [temporaryAccount])
   useEffect(() => {
     const userId = auth.account?.user.id
@@ -701,14 +717,14 @@ export default function App() {
   }, [auth.account?.user.id, route.kind, temporaryAccount, platform, crossplay, period, mode, locale, portfolioReload])
   useEffect(() => {
     setPage(1)
-  }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, sort, direction, pageSize])
+  }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, baroOnly, activeBaroKey, sort, direction, pageSize])
   useEffect(() => {
     if (!auth.account) { setScannerLoading(false); setScannerData(null); return }
     if (hourlySortActive) { setScannerLoading(false); return }
     const controller = new AbortController()
     setScannerLoading(true); setScannerError(null)
     fetchScanner({
-      platform, period, mode, crossplay, search: query,
+      platform, period, mode, crossplay, ids: scannerItemIds, search: query,
       categories: categories.length === CATEGORY_IDS.length ? undefined : categories,
       minPrice, minPotential, offset: (page - 1) * pageSize, limit: pageSize, sort, direction, language: locale
     }, controller.signal).then(data => { setScannerData(data); setScannerLoading(false) }).catch(error => {
@@ -716,14 +732,14 @@ export default function App() {
       setScannerError(error instanceof Error ? error.message : String(error)); setScannerLoading(false)
     })
     return () => controller.abort()
-  }, [auth.account?.user.id, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive])
+  }, [auth.account?.user.id, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive, baroOnly, activeBaroKey])
   useEffect(() => {
     if (!auth.account) { setHourlyIndexLoading(false); setHourlyIndexData(null); return }
     if (!hourlySortActive) { setHourlyIndexLoading(false); setHourlyIndexError(null); return }
     const controller = new AbortController()
     setHourlyIndexLoading(true); setHourlyIndexError(null)
     fetchHourlyIndex({
-      platform, crossplay, rank: rankFilter, period, mode, search: query,
+      platform, crossplay, rank: rankFilter, period, mode, ids: scannerItemIds, search: query,
       categories: categories.length === CATEGORY_IDS.length ? undefined : categories,
       minPrice, minPotential, offset: (page - 1) * pageSize, limit: pageSize,
       sort, direction,
@@ -736,7 +752,7 @@ export default function App() {
       setHourlyIndexError(error instanceof Error ? error.message : String(error)); setHourlyIndexLoading(false)
     })
     return () => controller.abort()
-  }, [auth.account?.user.id, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh])
+  }, [auth.account?.user.id, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh, baroOnly, activeBaroKey])
   const selectedSummary = useMemo(() => {
     if (route.kind !== 'item') return null
     const dailyRows = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.daily).filter((item): item is ScannerItem => Boolean(item)) : scannerData?.items || []
@@ -1012,6 +1028,7 @@ export default function App() {
         <label><span>{x.rankFilter}</span><select value={rankFilter} onChange={event => setRankFilter(event.target.value as RankFilter)}><option value="base">{x.rankBase}</option><option value="all">{x.rankAll}</option></select></label>
         <div className="filter-field category-filter"><span>{u.categories}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'categories' ? null : 'categories')}>{u.categories}<b>{categories.length}/{CATEGORY_IDS.length}</b><i>⌄</i></button>{openPanel === 'categories' ? <div className="category-panel"><div className="category-actions"><button onClick={() => setCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button onClick={() => setCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={categories.includes(id)} onChange={() => toggleCategory(id)}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
         <div className="filter-field ranges-filter"><span>{x.shownRanges}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'ranges' ? null : 'ranges')}>{x.chooseRanges}<b>{visibleRanges.length}/{TIME_RANGES.length}</b><i>⌄</i></button>{openPanel === 'ranges' ? <div className="category-panel ranges-panel"><div className="category-actions"><button onClick={() => setVisibleRanges([...TIME_RANGES])}>{x.allRanges}</button><button onClick={() => setVisibleRanges(DEFAULT_RANGES)}>{u.defaults}</button></div><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={range}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div> : null}</div>
+        <div className="filter-field baro-filter"><span>{x.specialFilter}</span><button type="button" className={`control-button baro-filter-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} title={activeBaroIds.length ? x.currentBaroHint : x.currentBaroEmpty} onClick={() => setBaroOnly(value => !value)}><span className="baro-filter-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19 6v8.5L12 21l-7-6.5V6l7-3.5Zm0 3.1L8.2 7.5v5.6l3.8 3.5 3.8-3.5V7.5L12 5.6Zm0 2.2 2.1 1.1v3L12 14l-2.1-2.1v-3L12 7.8Z"/></svg><span>{x.currentBaro}</span></span><b>{activeBaroIds.length}</b></button></div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><select value={pageSize} onChange={event => setPageSize(Number(event.target.value) as PageSize)}>{PAGE_SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className="panel table-panel"><div className="table-scroll"><table className="market-table"><thead><tr>

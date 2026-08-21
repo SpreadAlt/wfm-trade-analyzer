@@ -50,7 +50,11 @@ const en = {
   priceFluctuation: 'Price fluctuation',
   priceFluctuationHint: 'How strongly the price varied around its average. A smaller percentage means a more stable market.',
   openOnWfm: 'Open on WFM',
-  wfmItemHint: 'Open this item on Warframe Market'
+  wfmItemHint: 'Open this item on Warframe Market',
+  specialFilter: 'Special filter',
+  currentBaro: 'Current Baro',
+  currentBaroHint: "Show only tradable items in Baro Ki'Teer's active inventory",
+  currentBaroEmpty: "No tradable items from Baro Ki'Teer's active inventory have been matched yet"
 } as const
 
 export type ExtraText = Record<keyof typeof en, string>
@@ -105,7 +109,11 @@ const ru: ExtraText = {
   priceFluctuation: 'Колебания цены',
   priceFluctuationHint: 'Насколько сильно менялась цена относительно среднего. Чем меньше процент, тем стабильнее рынок.',
   openOnWfm: 'Открыть на WFM',
-  wfmItemHint: 'Открыть страницу этого предмета на Warframe Market'
+  wfmItemHint: 'Открыть страницу этого предмета на Warframe Market',
+  specialFilter: 'Особый фильтр',
+  currentBaro: 'Текущий Баро',
+  currentBaroHint: 'Показать только доступные для торговли предметы из текущего ассортимента Баро Ки’Тиира',
+  currentBaroEmpty: 'Торгуемые предметы из текущего ассортимента Баро Ки’Тиира пока не сопоставлены'
 }
 
 export const getExtraText = (locale: Locale): ExtraText => locale === 'ru' ? ru : en
