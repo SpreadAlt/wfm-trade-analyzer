@@ -1,6 +1,6 @@
 import type { CatalogResponse, EventsResponse, HourlyIndexQuery, HourlyIndexResponse, HourlyResponse, ItemResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
 
-export const API_BASE = 'https://frameanalytics-api-test.smurfack403.workers.dev'
+export const API_BASE = ''
 
 const requestJson = async <T,>(
   path: string,
@@ -8,6 +8,7 @@ const requestJson = async <T,>(
 ): Promise<T> => {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -486,25 +487,16 @@ const siteNoncePath = (path: string) => {
 }
 
 export const fetchSiteApiStatus = (signal?: AbortSignal) =>
-  fetchJson<SiteApiStatus>(siteNoncePath('/'), signal)
+  fetchJson<SiteApiStatus>(siteNoncePath('/api/internal/api-status'), signal)
 
 export const fetchSiteHourlyStatus = (signal?: AbortSignal) =>
-  fetchJson<SiteHourlyStatus>(siteNoncePath('/hourly-v1-status'), signal)
+  fetchJson<SiteHourlyStatus>(siteNoncePath('/api/internal/hourly-status'), signal)
 
 export const fetchSiteHourlyFreshness = (signal?: AbortSignal) =>
-  fetchJson<SiteHourlyFreshness>(siteNoncePath('/hourly-v1-freshness?scope=all&limit=25'), signal)
+  fetchJson<SiteHourlyFreshness>(siteNoncePath('/api/internal/hourly-freshness?scope=all&limit=25'), signal)
 
 export const fetchSiteHourlyIndexStatus = (signal?: AbortSignal) =>
-  fetchJson<SiteHourlyIndexStatus>(siteNoncePath('/hourly-index-v1-status'), signal)
+  fetchJson<SiteHourlyIndexStatus>(siteNoncePath('/api/internal/hourly-index-status'), signal)
 
-const SMART_BUY_WORKER_BASE = 'https://frameanalytics-smartbuy-test.smurfack403.workers.dev'
-
-export const fetchSiteSmartBuyStatus = async (signal?: AbortSignal): Promise<SiteSmartBuyStatus> => {
-  const response = await fetch(`${SMART_BUY_WORKER_BASE}/?t=${Date.now()}`, {
-    method: 'GET',
-    signal,
-    headers: { Accept: 'application/json' }
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response.json() as Promise<SiteSmartBuyStatus>
-}
+export const fetchSiteSmartBuyStatus = (signal?: AbortSignal) =>
+  fetchJson<SiteSmartBuyStatus>(siteNoncePath('/api/internal/smart-buy-status'), signal)

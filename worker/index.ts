@@ -25,8 +25,11 @@ type Env = {
   frameanalytics_auth: D1DatabaseLike;
   ASSETS: FetcherLike;
   SMART_BUY_API?: FetcherLike;
+  SMART_BUY_CONSUMER?: FetcherLike;
   BETTER_AUTH_SECRET: string;
   SMART_BUY_START_SECRET: string;
+  BETA_ADMIN_KEY?: string;
+  ADMIN_KEY?: string;
 };
 
 type SessionUser = {
@@ -49,8 +52,24 @@ const json = (value: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
 
 const nowMs = () => Date.now();
 
-const SMART_BUY_API_BASE = "https://frameanalytics-api-test.smurfack403.workers.dev";
 const SMART_BUY_START_HEADER = "X-FrameAnalytics-SmartBuy-Token";
+const ANALYTICS_READ_PATHS = new Set([
+  "/api/catalog-v3",
+  "/api/scanner-v3",
+  "/api/item-v3",
+  "/api/metrics-v3",
+  "/api/hourly-v1",
+  "/api/hourly-index-v1",
+  "/api/events-v1",
+  "/api/smart-buy-v2/status",
+  "/api/smart-buy-v2/result",
+]);
+const ANALYTICS_STATUS_PATHS: Record<string, string> = {
+  "/api/internal/api-status": "/",
+  "/api/internal/hourly-status": "/hourly-v1-status",
+  "/api/internal/hourly-freshness": "/hourly-v1-freshness",
+  "/api/internal/hourly-index-status": "/hourly-index-v1-status",
+};
 
 type SmartBuyJobStart = {
   ok: true;
@@ -135,6 +154,24 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_frameanalytics_smart_buy_run_user_time
           ON frameanalytics_smart_buy_run(user_id, created_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_beta_invite (
+          code_hash TEXT PRIMARY KEY NOT NULL,
+          code_prefix TEXT NOT NULL,
+          label TEXT,
+          max_uses INTEGER NOT NULL DEFAULT 1,
+          uses INTEGER NOT NULL DEFAULT 0,
+          expires_at INTEGER,
+          disabled INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_beta_invite_created
+          ON frameanalytics_beta_invite(created_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_beta_access (
+          user_id TEXT PRIMARY KEY NOT NULL,
+          code_hash TEXT,
+          joined_at INTEGER NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+        )`,
       ];
 
       for (const statement of schemaStatements) {
@@ -152,6 +189,196 @@ const requireSession = async (auth: ReturnType<typeof createAuth>, request: Requ
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return null;
   return session.user as SessionUser;
+};
+
+const normalizeInviteCode = (value: unknown) =>
+  String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 64);
+
+const sha256 = async (value: string) => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
+const betaAdminAuthorized = async (request: Request, env: Env) => {
+  const expected = String(env.BETA_ADMIN_KEY || env.ADMIN_KEY || "").trim();
+  const authorization = String(request.headers.get("Authorization") || "");
+  const provided = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : String(request.headers.get("X-Admin-Key") || "").trim();
+  if (!expected || !provided) return false;
+  return (await sha256(expected)) === (await sha256(provided));
+};
+
+const createInviteCode = () => {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const body = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+  return `FA-${body.slice(0, 4)}-${body.slice(4, 8)}-${body.slice(8, 12)}`;
+};
+
+const reserveBetaInvite = async (env: Env, inviteCode: unknown) => {
+  const normalized = normalizeInviteCode(inviteCode);
+  if (normalized.length < 10) return null;
+  const codeHash = await sha256(normalized);
+  const result = await env.frameanalytics_auth
+    .prepare(`
+      UPDATE frameanalytics_beta_invite
+      SET uses = uses + 1
+      WHERE code_hash = ?
+        AND disabled = 0
+        AND uses < max_uses
+        AND (expires_at IS NULL OR expires_at > ?)
+    `)
+    .bind(codeHash, nowMs())
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0 ? codeHash : null;
+};
+
+const releaseBetaInvite = async (env: Env, codeHash: string) => {
+  try {
+    await env.frameanalytics_auth
+      .prepare(`UPDATE frameanalytics_beta_invite SET uses = MAX(0, uses - 1) WHERE code_hash = ?`)
+      .bind(codeHash)
+      .run();
+  } catch (error) {
+    console.error("frameanalytics-beta-invite-release-error", error);
+  }
+};
+
+const handleBetaInvites = async (request: Request, env: Env) => {
+  if (!(await betaAdminAuthorized(request, env))) {
+    return json({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  if (request.method === "GET") {
+    const rows = await env.frameanalytics_auth.prepare(`
+      SELECT
+        code_hash AS codeHash,
+        code_prefix AS codePrefix,
+        label,
+        max_uses AS maxUses,
+        uses,
+        expires_at AS expiresAt,
+        disabled,
+        created_at AS createdAt
+      FROM frameanalytics_beta_invite
+      ORDER BY created_at DESC
+      LIMIT 250
+    `).all();
+    return json({ ok: true, closedBeta: true, invites: rows.results ?? [] });
+  }
+
+  if (request.method === "POST") {
+    const body = await readBody<{ label?: unknown; maxUses?: unknown; expiresInDays?: unknown }>(request);
+    const label = String(body.label ?? "").trim().slice(0, 100) || null;
+    const maxUses = Math.max(1, Math.min(100, Math.floor(Number(body.maxUses) || 1)));
+    const expiresInDays = Math.max(1, Math.min(365, Math.floor(Number(body.expiresInDays) || 30)));
+    const code = createInviteCode();
+    const normalized = normalizeInviteCode(code);
+    const codeHash = await sha256(normalized);
+    const createdAt = nowMs();
+    const expiresAt = createdAt + expiresInDays * 24 * 60 * 60 * 1000;
+    await env.frameanalytics_auth.prepare(`
+      INSERT INTO frameanalytics_beta_invite (
+        code_hash, code_prefix, label, max_uses, uses, expires_at, disabled, created_at
+      ) VALUES (?, ?, ?, ?, 0, ?, 0, ?)
+    `).bind(codeHash, code.slice(0, 7), label, maxUses, expiresAt, createdAt).run();
+    return json({
+      ok: true,
+      closedBeta: true,
+      invite: { code, codeHash, label, maxUses, uses: 0, expiresAt, createdAt },
+      warning: "The raw invite code is returned only once"
+    }, 201);
+  }
+
+  if (request.method === "DELETE") {
+    const codeHash = String(new URL(request.url).searchParams.get("hash") || "").trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(codeHash)) return json({ ok: false, error: "Invalid invite hash" }, 400);
+    const result = await env.frameanalytics_auth
+      .prepare(`UPDATE frameanalytics_beta_invite SET disabled = 1 WHERE code_hash = ?`)
+      .bind(codeHash)
+      .run();
+    return json({ ok: true, disabled: Number(result.meta?.changes ?? 0) > 0, codeHash });
+  }
+
+  return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, POST, DELETE" });
+};
+
+const handleBetaSignUp = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+  }
+  const body = await readBody<{ name?: unknown; email?: unknown; password?: unknown; inviteCode?: unknown }>(request);
+  const codeHash = await reserveBetaInvite(env, body.inviteCode);
+  if (!codeHash) return json({ ok: false, error: "Invite code is invalid, expired, disabled, or already used" }, 403);
+
+  try {
+    const headers = new Headers(request.headers);
+    headers.set("Content-Type", "application/json");
+    headers.delete("Content-Length");
+    const authRequest = new Request(`${new URL(request.url).origin}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: body.name, email: body.email, password: body.password })
+    });
+    const authResponse = await auth.handler(authRequest);
+    if (!authResponse.ok) {
+      await releaseBetaInvite(env, codeHash);
+      return authResponse;
+    }
+    try {
+      const payload = await authResponse.clone().json() as { user?: { id?: unknown } };
+      const userId = String(payload?.user?.id || "").trim();
+      if (userId) {
+        await env.frameanalytics_auth.prepare(`
+          INSERT OR REPLACE INTO frameanalytics_beta_access (user_id, code_hash, joined_at)
+          VALUES (?, ?, ?)
+        `).bind(userId, codeHash, nowMs()).run();
+      }
+    } catch (error) {
+      console.error("frameanalytics-beta-access-audit-error", error);
+    }
+    return authResponse;
+  } catch (error) {
+    await releaseBetaInvite(env, codeHash);
+    throw error;
+  }
+};
+
+const handleAnalyticsProxy = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  if (request.method !== "GET") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+  }
+  const user = await requireSession(auth, request);
+  if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
+
+  const sourceUrl = new URL(request.url);
+  if (sourceUrl.pathname === "/api/internal/smart-buy-status") {
+    if (!env.SMART_BUY_CONSUMER) return json({ ok: false, error: "SMART_BUY_CONSUMER binding is missing" }, 503);
+    const targetUrl = new URL("https://frameanalytics-smartbuy.internal/");
+    targetUrl.search = sourceUrl.search;
+    return env.SMART_BUY_CONSUMER.fetch(new Request(targetUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" }
+    }));
+  }
+
+  if (!env.SMART_BUY_API) return json({ ok: false, error: "SMART_BUY_API binding is missing" }, 503);
+  const targetPath = ANALYTICS_STATUS_PATHS[sourceUrl.pathname] || sourceUrl.pathname;
+  const targetUrl = new URL(`https://frameanalytics-api.internal${targetPath}`);
+  targetUrl.search = sourceUrl.search;
+  const headers = new Headers({ Accept: "application/json" });
+  const language = request.headers.get("Language");
+  if (language) headers.set("Language", language);
+  return env.SMART_BUY_API.fetch(new Request(targetUrl, { method: "GET", headers }));
 };
 
 const readSmartBuyUsage = async (env: Env, userId: string) => {
@@ -503,6 +730,9 @@ const handleSmartBuyStart = async (
   if (!env.SMART_BUY_START_SECRET) {
     return json({ ok: false, error: "Smart Buy service is not configured" }, 503);
   }
+  if (!env.SMART_BUY_API) {
+    return json({ ok: false, error: "SMART_BUY_API binding is missing" }, 503);
+  }
 
   // Reserve first. A permitted launch counts immediately.
   const permitId = await reserveSmartBuyRun(env, user.id);
@@ -523,12 +753,9 @@ const handleSmartBuyStart = async (
     const upstreamPath = analysis === "sell-advisor"
       ? "/api/sell-advisor-v1/start"
       : "/api/smart-buy-v2/start";
-    const smartBuyUrl = env.SMART_BUY_API
-      ? `https://frameanalytics-api.internal${upstreamPath}`
-      : `${SMART_BUY_API_BASE}${upstreamPath}`;
-    const smartBuyFetcher = env.SMART_BUY_API ?? { fetch };
+    const smartBuyUrl = `https://frameanalytics-api.internal${upstreamPath}`;
 
-    upstream = await smartBuyFetcher.fetch(smartBuyUrl, {
+    upstream = await env.SMART_BUY_API.fetch(smartBuyUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -601,12 +828,14 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "beta-sell-advisor-1",
+          serviceRevision: "closed-beta-invites-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
+          closedBeta: true,
+          registration: "invite-only",
           smartBuyStartProxy: true,
           sellAdvisorStartProxy: true,
-          smartBuyTransport: env.SMART_BUY_API ? "service-binding" : "public-fallback",
+          smartBuyTransport: env.SMART_BUY_API ? "service-binding" : "unavailable",
         });
       }
 
@@ -619,6 +848,23 @@ export default {
 
       const auth = createAuth(env, request);
       await ensureSchema(auth, env);
+
+      if (url.pathname === "/api/beta/status") {
+        if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+        return json({ ok: true, closedBeta: true, registration: "invite-only", existingAccountsAllowed: true });
+      }
+
+      if (url.pathname === "/api/beta/invites") {
+        return handleBetaInvites(request, env);
+      }
+
+      if (url.pathname === "/api/beta/sign-up") {
+        return handleBetaSignUp(request, env, auth);
+      }
+
+      if (/^\/api\/auth\/sign-up\/email\/?$/.test(url.pathname)) {
+        return json({ ok: false, error: "Closed beta: an invite code is required" }, 403);
+      }
 
       if (url.pathname.startsWith("/api/auth/")) {
         return auth.handler(request);
@@ -642,6 +888,14 @@ export default {
 
       if (url.pathname === "/api/sell-advisor/start") {
         return handleSmartBuyStart(request, env, auth, "sell-advisor");
+      }
+
+      if (
+        ANALYTICS_READ_PATHS.has(url.pathname) ||
+        Object.prototype.hasOwnProperty.call(ANALYTICS_STATUS_PATHS, url.pathname) ||
+        url.pathname === "/api/internal/smart-buy-status"
+      ) {
+        return handleAnalyticsProxy(request, env, auth);
       }
 
       return json({ ok: false, error: "API route not found" }, 404);

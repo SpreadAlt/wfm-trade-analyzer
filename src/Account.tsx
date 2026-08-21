@@ -66,7 +66,7 @@ const requestJson = async <T,>(path: string, init: RequestInit = {}): Promise<T>
   try { payload = await response.json() } catch { /* ignore non-json body */ }
 
   if (!response.ok) {
-    const error = new Error(payload?.error || `HTTP ${response.status}`) as Error & { status?: number; payload?: any }
+    const error = new Error(payload?.error || payload?.message || `HTTP ${response.status}`) as Error & { status?: number; payload?: any }
     error.status = response.status
     error.payload = payload
     throw error
@@ -80,7 +80,7 @@ export type FrameAccountController = {
   error: string | null
   account: FrameAccountSnapshot | null
   refresh: () => Promise<FrameAccountSnapshot | null>
-  signUp: (name: string, email: string, password: string) => Promise<void>
+  signUp: (name: string, email: string, password: string, inviteCode: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   linkWfmProfile: (profile: string) => Promise<void>
@@ -134,11 +134,11 @@ export const useFrameAccount = (): FrameAccountController => {
     }
   }, [])
 
-  const signUp = useCallback(async (name: string, email: string, password: string) => {
+  const signUp = useCallback(async (name: string, email: string, password: string, inviteCode: string) => {
     await action(async () => {
-      await requestJson('/api/auth/sign-up/email', {
+      await requestJson('/api/beta/sign-up', {
         method: 'POST',
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name, email, password, inviteCode })
       })
       await refresh()
     })
@@ -234,10 +234,12 @@ const copy = (locale: Locale) => locale === 'ru' ? {
   name: 'Имя',
   email: 'Email',
   password: 'Пароль',
+  inviteCode: 'Код приглашения',
+  invitePlaceholder: 'FA-XXXX-XXXX-XXXX',
   create: 'Создать аккаунт',
   enter: 'Войти',
   logout: 'Выйти',
-  needAccount: 'Войдите или зарегистрируйтесь, чтобы использовать профиль, покупки и Smart Buy.',
+  needAccount: 'FrameAnalytics работает в режиме закрытой беты. Войдите или зарегистрируйтесь по приглашению.',
   loading: 'Проверяем сессию…'
 } : {
   title: 'FrameAnalytics account',
@@ -248,10 +250,12 @@ const copy = (locale: Locale) => locale === 'ru' ? {
   name: 'Name',
   email: 'Email',
   password: 'Password',
+  inviteCode: 'Invite code',
+  invitePlaceholder: 'FA-XXXX-XXXX-XXXX',
   create: 'Create account',
   enter: 'Sign in',
   logout: 'Sign out',
-  needAccount: 'Sign in or register to use your profile, purchases and Smart Buy.',
+  needAccount: 'FrameAnalytics is in closed beta. Sign in or register with an invitation.',
   loading: 'Checking session…'
 }
 
@@ -261,6 +265,7 @@ export const AccountPanel = ({ locale, auth }: { locale: Locale; auth: FrameAcco
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
 
   if (auth.loading) {
     return <section className="panel account-panel account-loading"><div className="spinner"/><strong>{t.loading}</strong></section>
@@ -287,11 +292,13 @@ export const AccountPanel = ({ locale, auth }: { locale: Locale; auth: FrameAcco
     try {
       if (mode === 'signup') {
         if (!name.trim()) return
-        await auth.signUp(name.trim(), email.trim(), password)
+        if (!inviteCode.trim()) return
+        await auth.signUp(name.trim(), email.trim(), password, inviteCode.trim())
       } else {
         await auth.signIn(email.trim(), password)
       }
       setPassword('')
+      setInviteCode('')
     } catch { /* error is rendered from controller */ }
   }
 
@@ -303,6 +310,7 @@ export const AccountPanel = ({ locale, auth }: { locale: Locale; auth: FrameAcco
     </div>
     <form className="account-form" onSubmit={submit}>
       {mode === 'signup' ? <label><span>{t.name}</span><input autoComplete="name" value={name} onChange={event => setName(event.target.value)} required/></label> : null}
+      {mode === 'signup' ? <label><span>{t.inviteCode}</span><input autoComplete="one-time-code" maxLength={32} placeholder={t.invitePlaceholder} value={inviteCode} onChange={event => setInviteCode(event.target.value.toUpperCase())} required/></label> : null}
       <label><span>{t.email}</span><input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>
       <label><span>{t.password}</span><input type="password" minLength={8} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} required/></label>
       <button type="submit" className="primary-action" disabled={auth.busy}>{mode === 'signup' ? t.create : t.enter}</button>

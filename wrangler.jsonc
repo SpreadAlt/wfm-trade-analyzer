@@ -25,6 +25,10 @@
     {
       "binding": "SMART_BUY_API",
       "service": "frameanalytics-api-test"
+    },
+    {
+      "binding": "SMART_BUY_CONSUMER",
+      "service": "frameanalytics-smartbuy-test"
     }
   ]
 }

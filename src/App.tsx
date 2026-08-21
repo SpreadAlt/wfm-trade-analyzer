@@ -242,6 +242,21 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; 
   <div className="footer-version">{t('version')} 0.9.0</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
+const ClosedBetaGate = ({ locale, auth }: { locale: Locale; auth: FrameAccountController }) => {
+  const ru = locale === 'ru'
+  return <main className="app-shell closed-beta-shell">
+    <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><span>{ru ? 'Закрытая бета' : 'Closed beta'}</span></header>
+    <section className="closed-beta-layout">
+      <div className="closed-beta-copy">
+        <span className="eyebrow">FrameAnalytics.trade</span>
+        <h1>{ru ? 'Доступ по приглашению' : 'Invitation-only access'}</h1>
+        <p>{ru ? 'Мы завершаем внутреннюю проверку аналитики, почасовых данных и торговых инструментов. Существующие участники могут войти, новым тестировщикам нужен invite-код.' : 'We are completing internal validation of analytics, hourly data, and trading tools. Existing members can sign in; new testers need an invite code.'}</p>
+        <div className="closed-beta-points"><span>✓ {ru ? 'Существующие аккаунты продолжают работать' : 'Existing accounts keep access'}</span><span>✓ {ru ? 'Регистрация только по приглашениям' : 'Registration requires an invitation'}</span><span>✓ {ru ? 'Ордера WFM не изменяются автоматически' : 'WFM orders are never changed automatically'}</span></div>
+      </div>
+      <div className="closed-beta-auth"><AccountPanel locale={locale} auth={auth}/></div>
+    </section>
+  </main>
+}
 const PlatformGlyph = ({ platform }: { platform: Platform }) => <svg viewBox="0 0 24 24" aria-hidden="true">
   {platform === 'pc' ? <><rect x="3.5" y="4.5" width="17" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/></>
     : platform === 'ps4' ? <><path d="M7.5 8.2h9a4.4 4.4 0 0 1 4.2 5.6l-1 3.4a1.8 1.8 0 0 1-3  .8l-2-2H9.3l-2 2a1.8 1.8 0 0 1-3-.8l-1-3.4a4.4 4.4 0 0 1 4.2-5.6Z"/><path d="M7.5 11v4M5.5 13h4M16.5 11.5h.01M18.5 14h.01"/></>
@@ -629,17 +644,19 @@ export default function App() {
     return () => { cancelled = true }
   }, [auth.account?.user.id])
   useEffect(() => {
+    if (!auth.account) { setCatalog(new Map()); return }
     const controller = new AbortController()
     fetchCatalog(locale, controller.signal).then(response => setCatalog(new Map(response.items.map(item => [item.id, item])))).catch(() => setCatalog(new Map()))
     return () => controller.abort()
-  }, [locale])
+  }, [locale, auth.account?.user.id])
   useEffect(() => {
+    if (!auth.account) { setMarketEvents([]); return }
     const controller = new AbortController()
     fetchEvents(controller.signal).then(response => setMarketEvents(response.events)).catch(() => setMarketEvents([]))
     return () => controller.abort()
-  }, [hourlyRefresh])
+  }, [hourlyRefresh, auth.account?.user.id])
   useEffect(() => {
-    if (route.kind !== 'portfolio' || !temporaryAccount?.purchases.length) {
+    if (!auth.account || route.kind !== 'portfolio' || !temporaryAccount?.purchases.length) {
       setPortfolioMarketRows([])
       setPortfolioLoading(false)
       setPortfolioError(null)
@@ -681,11 +698,12 @@ export default function App() {
       setPortfolioLoading(false)
     })
     return () => controller.abort()
-  }, [route.kind, temporaryAccount, platform, crossplay, period, mode, locale, portfolioReload])
+  }, [auth.account?.user.id, route.kind, temporaryAccount, platform, crossplay, period, mode, locale, portfolioReload])
   useEffect(() => {
     setPage(1)
   }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, sort, direction, pageSize])
   useEffect(() => {
+    if (!auth.account) { setScannerLoading(false); setScannerData(null); return }
     if (hourlySortActive) { setScannerLoading(false); return }
     const controller = new AbortController()
     setScannerLoading(true); setScannerError(null)
@@ -698,8 +716,9 @@ export default function App() {
       setScannerError(error instanceof Error ? error.message : String(error)); setScannerLoading(false)
     })
     return () => controller.abort()
-  }, [platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive])
+  }, [auth.account?.user.id, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive])
   useEffect(() => {
+    if (!auth.account) { setHourlyIndexLoading(false); setHourlyIndexData(null); return }
     if (!hourlySortActive) { setHourlyIndexLoading(false); setHourlyIndexError(null); return }
     const controller = new AbortController()
     setHourlyIndexLoading(true); setHourlyIndexError(null)
@@ -717,13 +736,14 @@ export default function App() {
       setHourlyIndexError(error instanceof Error ? error.message : String(error)); setHourlyIndexLoading(false)
     })
     return () => controller.abort()
-  }, [hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh])
+  }, [auth.account?.user.id, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh])
   const selectedSummary = useMemo(() => {
     if (route.kind !== 'item') return null
     const dailyRows = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.daily).filter((item): item is ScannerItem => Boolean(item)) : scannerData?.items || []
     return dailyRows.find(item => item.id === route.id && (route.variant ? item.variantKey === route.variant : true)) || null
   }, [route, scannerData, hourlyIndexData, hourlySortActive])
   useEffect(() => {
+    if (!auth.account) { setDetail(null); setDetailMetrics(null); setDetailHourly(null); setDetailLoading(false); setDetailError(null); return }
     if (route.kind !== 'item' || !route.id) { setDetail(null); setDetailMetrics(null); setDetailHourly(null); setDetailError(null); return }
     const controller = new AbortController()
     setDetailLoading(true); setDetailError(null)
@@ -735,7 +755,7 @@ export default function App() {
       .then(([itemResponse, metricsResponse, hourlyResponse]) => { setDetail(itemResponse.item); setDetailMetrics(metricsResponse.item); setDetailHourly(hourlyResponse); setDetailLoading(false) })
       .catch(error => { if (error instanceof DOMException && error.name === 'AbortError') return; setDetailError(error instanceof Error ? error.message : String(error)); setDetailLoading(false) })
     return () => controller.abort()
-  }, [route.kind, route.id, platform, crossplay, detailReload])
+  }, [auth.account?.user.id, route.kind, route.id, platform, crossplay, detailReload])
   useEffect(() => {
     if (hourlySortActive || !scannerData?.items.length || !supportsHourly(platform, crossplay)) { setHourlyLoading(false); setHourlyPartial(false); return }
     const ids = [...new Set(scannerData.items.map(item => item.id))]
@@ -973,6 +993,13 @@ export default function App() {
             : '/'
     history.replaceState(history.state, '', `${path}?${params}`)
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
+  if (auth.loading || !auth.account) {
+    return <>
+      <div className="background-layer"/><div className="background-shade"/>
+      <ClosedBetaGate locale={locale} auth={auth}/>
+      <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
+    </>
+  }
   return <>
     <div className="background-layer"/><div className="background-shade"/>
     {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">

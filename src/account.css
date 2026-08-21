@@ -325,6 +325,98 @@
   border:1px solid var(--line);
 }
 
+/* Closed beta access gate */
+.closed-beta-shell{
+  flex:1 0 auto;
+  width:min(1280px,calc(100% - 32px));
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding-block:24px 42px;
+}
+
+.closed-beta-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  margin-bottom:22px;
+}
+
+.closed-beta-topbar>span{
+  padding:8px 12px;
+  border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line));
+  border-radius:999px;
+  color:var(--accent);
+  background:color-mix(in srgb,var(--surface-2) 86%,transparent);
+  font-size:.73rem;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.closed-beta-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1.08fr) minmax(390px,.92fr);
+  gap:clamp(22px,4vw,58px);
+  align-items:center;
+  padding:clamp(24px,5vw,66px);
+  border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line));
+  border-radius:26px;
+  background:
+    radial-gradient(circle at 4% 5%,color-mix(in srgb,var(--accent) 15%,transparent),transparent 34%),
+    color-mix(in srgb,var(--surface-2) 88%,transparent);
+  box-shadow:0 28px 90px rgba(0,0,0,.27);
+  backdrop-filter:blur(12px);
+}
+
+.closed-beta-copy h1{
+  max-width:12ch;
+  margin:9px 0 15px;
+  font-size:clamp(2.3rem,5vw,5rem);
+  line-height:.96;
+  letter-spacing:-.055em;
+}
+
+.closed-beta-copy>p{
+  max-width:62ch;
+  margin:0;
+  color:var(--muted);
+  font-size:clamp(.98rem,1.4vw,1.12rem);
+  line-height:1.68;
+}
+
+.closed-beta-points{
+  display:grid;
+  gap:9px;
+  margin-top:24px;
+  color:color-mix(in srgb,var(--text) 78%,var(--muted));
+  font-size:.9rem;
+}
+
+.closed-beta-points span::first-letter{
+  color:var(--accent);
+}
+
+.closed-beta-auth .account-panel{
+  margin:0;
+  padding:clamp(20px,3vw,30px);
+  border-radius:20px;
+  background:color-mix(in srgb,var(--surface-2) 94%,transparent);
+  box-shadow:0 18px 50px rgba(0,0,0,.2);
+}
+
+html[data-theme="light"] .closed-beta-layout{
+  background:
+    radial-gradient(circle at 4% 5%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 35%),
+    rgba(213,225,227,.92);
+  box-shadow:0 24px 70px rgba(37,67,76,.15);
+}
+
+html[data-theme="light"] .closed-beta-auth .account-panel{
+  background:rgba(229,237,238,.97);
+}
+
 /* Keep the footer visually anchored on short pages without overlaying content. */
 @media(min-width:761px){
   .portfolio-shell-guest .portfolio-heading{
@@ -365,6 +457,21 @@
 
   .account-signed button{
     justify-self:start;
+  }
+
+  .closed-beta-shell{
+    width:min(100% - 16px,1280px);
+    padding-top:12px;
+  }
+
+  .closed-beta-layout{
+    grid-template-columns:1fr;
+    padding:22px 16px;
+    border-radius:20px;
+  }
+
+  .closed-beta-copy h1{
+    max-width:none;
   }
 }
 
