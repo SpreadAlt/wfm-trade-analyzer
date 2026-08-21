@@ -379,7 +379,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
 
   const buildChatMessages = (seller: SmartBuySeller, offers: SmartBuySellerOffer[]): ChatMessage[] => {
     const prefix = `/w ${seller.user.ingameName} Hi! I want to buy `
-    const attribution = ' (warframe.market via frameanalytics)'
+    const attribution = ' (warframe.market via frameanalytics.trade)'
     const suffix = (total: number) => ` for ${compactPlat(total)}p total.${attribution}`
     const messages: ChatMessage[] = []
 
@@ -422,7 +422,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
         }
 
         const cost = Math.max(0, offer.unitPrice * qty)
-        let part = `${qty}x [${name}]`
+        let part = `${qty}x "${name}"`
         let candidate = `${prefix}${[...parts, part].join(', ')}${suffix(total + cost)}`
 
         if (candidate.length > CHAT_LIMIT && parts.length) {
@@ -431,9 +431,9 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
         }
 
         if (candidate.length > CHAT_LIMIT) {
-          const reserved = prefix.length + `${qty}x []`.length + suffix(cost).length
+          const reserved = prefix.length + `${qty}x ""`.length + suffix(cost).length
           const maxName = Math.max(1, CHAT_LIMIT - reserved)
-          part = `${qty}x [${name.slice(0, maxName)}]`
+          part = `${qty}x "${name.slice(0, maxName)}"`
           candidate = `${prefix}${part}${suffix(cost)}`
         }
 
