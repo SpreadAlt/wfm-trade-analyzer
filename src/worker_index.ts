@@ -26,6 +26,7 @@ type Env = {
   ASSETS: FetcherLike;
   SMART_BUY_API?: FetcherLike;
   SMART_BUY_CONSUMER?: FetcherLike;
+  HOURLY_ADMIN?: FetcherLike;
   BETTER_AUTH_SECRET: string;
   SMART_BUY_START_SECRET: string;
   BETA_ADMIN_KEY?: string;
@@ -379,6 +380,29 @@ const handleAnalyticsProxy = async (
   const language = request.headers.get("Language");
   if (language) headers.set("Language", language);
   return env.SMART_BUY_API.fetch(new Request(targetUrl, { method: "GET", headers }));
+};
+
+const handleManualMarketItem = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+  const user = await requireSession(auth, request);
+  if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
+  if (!env.HOURLY_ADMIN) return json({ ok: false, error: "HOURLY_ADMIN binding is missing" }, 503);
+  const authorization = request.headers.get("Authorization");
+  if (!authorization) return json({ ok: false, error: "ADMIN_KEY is required" }, 401);
+  const body = await request.text();
+  return env.HOURLY_ADMIN.fetch(new Request("https://frameanalytics-hourly.internal/admin/manual-market-item-v1", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: authorization,
+    },
+    body,
+  }));
 };
 
 const readSmartBuyUsage = async (env: Env, userId: string) => {
@@ -828,7 +852,7 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "closed-beta-invites-1",
+          serviceRevision: "admin-manual-items-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
           closedBeta: true,
@@ -888,6 +912,10 @@ export default {
 
       if (url.pathname === "/api/sell-advisor/start") {
         return handleSmartBuyStart(request, env, auth, "sell-advisor");
+      }
+
+      if (url.pathname === "/api/admin/manual-market-item-v1") {
+        return handleManualMarketItem(request, env, auth);
       }
 
       if (

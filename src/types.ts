@@ -3,6 +3,7 @@ export type Platform = 'pc' | 'ps4' | 'xbox' | 'switch'
 export type AnalysisPeriod = 7 | 30 | 90 | 180
 export type TimeRange = '1h' | '4h' | '12h' | '24h' | '7d' | '30d' | '90d' | '180d'
 export type HourlyRange = '1h' | '4h' | '12h' | '24h'
+export type SalesRange = TimeRange
 export type MarketMode = 'scalar' | 'variant' | 'variants' | 'none'
 export type Dimensions = Record<string, string | number | null>
 
@@ -50,6 +51,10 @@ export type ScannerItem = {
   change24h: number | null
   change7d: number | null
   changePeriod: number | null
+  sales7d: number | null
+  sales30d: number | null
+  sales90d: number | null
+  sales180d: number | null
   sales24h: number | null
   averageVolume7d: number | null
   channelPosition: number | null
@@ -68,7 +73,7 @@ export type ScannerItem = {
   sellDecision: string
 }
 
-export type ScannerSort = 'name' | 'decision' | 'score' | 'potential' | 'potentialPct' | 'currentPrice' | 'change1h' | 'change4h' | 'change12h' | 'change24h' | 'change7d' | 'changePeriod' | 'sales24h' | 'averageVolume7d' | 'coveragePct' | 'volatility' | 'updatedDate'
+export type ScannerSort = 'name' | 'decision' | 'score' | 'potential' | 'potentialPct' | 'currentPrice' | 'change1h' | 'change4h' | 'change12h' | 'change24h' | 'change7d' | 'changePeriod' | 'sales1h' | 'sales4h' | 'sales12h' | 'sales24h' | 'sales7d' | 'sales30d' | 'sales90d' | 'sales180d' | 'averageVolume7d' | 'coveragePct' | 'volatility' | 'updatedDate'
 export type SortDirection = 'asc' | 'desc'
 
 export type ScannerQuery = {
@@ -214,6 +219,7 @@ export type HourlySeries = {
   currentPrice: number | null
   latestAt: string | null
   changes: Record<HourlyRange, HourlyChange>
+  sales?: Partial<Record<SalesRange, number | null>>
   history: HourlyHistoryPoint[]
   dailyLatestDate: string | null
   dailyHistory: HistoryPoint[]
@@ -260,6 +266,14 @@ export type HourlyIndexRow = {
   change12hPlatinum: number | null
   change24h: number | null
   change24hPlatinum: number | null
+  sales1h: number | null
+  sales4h: number | null
+  sales12h: number | null
+  sales24h: number | null
+  sales7d: number | null
+  sales30d: number | null
+  sales90d: number | null
+  sales180d: number | null
   daily: ScannerItem | null
 }
 
@@ -329,4 +343,28 @@ export type EventsResponse = {
   current: MarketEvent[]
   matchedItems: number
   unmatchedCount: number
+}
+
+export type ManualMarketItemResponse = {
+  ok: true
+  stage: 'manual-market-item-v1-added' | string
+  alreadyPresent: boolean
+  item: {
+    id: string
+    slug: string
+    name: string
+    gameRef: string | null
+    category: string
+    subcategory: string
+    maxRank: number | null
+  }
+  plan: {
+    planId: string
+    groupId: string
+    tier: string
+    itemCount: number
+    catalogTotal: number
+  }
+  enqueued: boolean
+  note?: string
 }

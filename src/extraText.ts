@@ -54,7 +54,14 @@ const en = {
   specialFilter: 'Special filter',
   currentBaro: 'Current Baro',
   currentBaroHint: "Show only tradable items in Baro Ki'Teer's active inventory",
-  currentBaroEmpty: "No tradable items from Baro Ki'Teer's active inventory have been matched yet"
+  currentBaroEmpty: "No tradable items from Baro Ki'Teer's active inventory have been matched yet",
+  tableColumns: 'Table columns',
+  chooseTableColumns: 'Choose table columns',
+  salesColumns: 'Sales intervals',
+  potentialColumn: 'Potential',
+  scoreColumn: 'Score',
+  forecastColumn: 'Forecast',
+  sales: 'Sales'
 } as const
 
 export type ExtraText = Record<keyof typeof en, string>
@@ -113,7 +120,14 @@ const ru: ExtraText = {
   specialFilter: 'Особый фильтр',
   currentBaro: 'Текущий Баро',
   currentBaroHint: 'Показать только доступные для торговли предметы из текущего ассортимента Баро Ки’Тиира',
-  currentBaroEmpty: 'Торгуемые предметы из текущего ассортимента Баро Ки’Тиира пока не сопоставлены'
+  currentBaroEmpty: 'Торгуемые предметы из текущего ассортимента Баро Ки’Тиира пока не сопоставлены',
+  tableColumns: 'Столбцы таблицы',
+  chooseTableColumns: 'Выбрать столбцы таблицы',
+  salesColumns: 'Промежутки продаж',
+  potentialColumn: 'Потенциал',
+  scoreColumn: 'Оценка',
+  forecastColumn: 'Прогноз',
+  sales: 'Продажи'
 }
 
 export const getExtraText = (locale: Locale): ExtraText => locale === 'ru' ? ru : en

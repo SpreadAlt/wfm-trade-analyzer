@@ -1,4 +1,4 @@
-import type { CatalogResponse, EventsResponse, HourlyIndexQuery, HourlyIndexResponse, HourlyResponse, ItemResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
+import type { CatalogResponse, EventsResponse, HourlyIndexQuery, HourlyIndexResponse, HourlyResponse, ItemResponse, ManualMarketItemResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
 
 export const API_BASE = ''
 
@@ -94,6 +94,13 @@ export const fetchHourlyIndex = (query: HourlyIndexQuery, signal?: AbortSignal) 
   return fetchJson<HourlyIndexResponse>(`/api/hourly-index-v1?${params}`, signal)
 }
 export const fetchEvents = (signal?: AbortSignal) => fetchJson<EventsResponse>('/api/events-v1', signal)
+
+export const addManualMarketItem = (url: string, adminKey: string) =>
+  requestJson<ManualMarketItemResponse>('/api/admin/manual-market-item-v1', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${adminKey.trim()}` },
+    body: JSON.stringify({ url: url.trim() })
+  })
 
 export type SmartBuyUser = {
   id: string | null

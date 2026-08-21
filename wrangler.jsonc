@@ -29,6 +29,10 @@
     {
       "binding": "SMART_BUY_CONSUMER",
       "service": "frameanalytics-smartbuy-test"
+    },
+    {
+      "binding": "HOURLY_ADMIN",
+      "service": "frameanalytics-hourly-test"
     }
   ]
 }
