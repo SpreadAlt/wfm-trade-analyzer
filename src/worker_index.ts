@@ -24,6 +24,7 @@ type FetcherLike = {
 type Env = {
   frameanalytics_auth: D1DatabaseLike;
   ASSETS: FetcherLike;
+  SMART_BUY_API?: FetcherLike;
   BETTER_AUTH_SECRET: string;
   SMART_BUY_START_SECRET: string;
 };
@@ -506,7 +507,12 @@ const handleSmartBuyStart = async (
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${SMART_BUY_API_BASE}/api/smart-buy-v2/start`, {
+    const smartBuyUrl = env.SMART_BUY_API
+      ? "https://frameanalytics-api.internal/api/smart-buy-v2/start"
+      : `${SMART_BUY_API_BASE}/api/smart-buy-v2/start`;
+    const smartBuyFetcher = env.SMART_BUY_API ?? { fetch };
+
+    upstream = await smartBuyFetcher.fetch(smartBuyUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -572,22 +578,31 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    const auth = createAuth(env, request);
-
     try {
-      await ensureSchema(auth, env);
-
-      if (url.pathname.startsWith("/api/auth/")) {
-        return auth.handler(request);
-      }
-
       if (url.pathname === "/api/health") {
         return json({
           ok: true,
           service: "frameanalytics-account",
+          serviceRevision: "beta-smartbuy-guard-2",
           auth: "better-auth",
           database: "frameanalytics-auth",
+          smartBuyStartProxy: true,
+          smartBuyTransport: env.SMART_BUY_API ? "service-binding" : "public-fallback",
         });
+      }
+
+      if (url.pathname === "/api/smart-buy/permit") {
+        return json(
+          { ok: false, error: "Smart Buy permit endpoint is retired; use /api/smart-buy/start" },
+          410,
+        );
+      }
+
+      const auth = createAuth(env, request);
+      await ensureSchema(auth, env);
+
+      if (url.pathname.startsWith("/api/auth/")) {
+        return auth.handler(request);
       }
 
       if (url.pathname === "/api/account") {
@@ -604,13 +619,6 @@ export default {
 
       if (url.pathname === "/api/smart-buy/start") {
         return handleSmartBuyStart(request, env, auth);
-      }
-
-      if (url.pathname === "/api/smart-buy/permit") {
-        return json(
-          { ok: false, error: "Smart Buy permit endpoint is retired; use /api/smart-buy/start" },
-          410,
-        );
       }
 
       return json({ ok: false, error: "API route not found" }, 404);

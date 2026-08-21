@@ -90,7 +90,6 @@ export const fetchHourlyIndex = (query: HourlyIndexQuery, signal?: AbortSignal) 
   if (query.minPrice && query.minPrice > 0) params.set('minPrice', String(query.minPrice))
   if (query.minPotential && query.minPotential > 0) params.set('minPotential', String(query.minPotential))
   if (query.language) params.set('lang', query.language)
-  params.set('t', String(Date.now()))
   return fetchJson<HourlyIndexResponse>(`/api/hourly-index-v1?${params}`, signal)
 }
 export const fetchEvents = (signal?: AbortSignal) => fetchJson<EventsResponse>('/api/events-v1', signal)
@@ -364,6 +363,31 @@ export type SiteSmartBuyStatus = {
   smartBuyAsyncVersion?: string
   smartBuyAsyncRuntimeRevision?: string
   role?: string
+  requestIntervalsMs?: {
+    fast?: number
+    hourlyBusy?: number
+  }
+  itemOrdersCacheSeconds?: number
+  maxMarketSeries?: number
+  upstream?: {
+    publicRateLimitRequestsPerSecond?: number
+    configuredRequestsPerSecond?: number
+    requestIntervalMs?: number
+  }
+  limits?: {
+    maxMarketSeriesPerRequest?: number
+    maxFrontendMarketSeries?: number
+  }
+  cache?: {
+    entries?: number
+    bytes?: number
+    profileEntries?: number
+    userOrderEntries?: number
+    itemOrderEntries?: number
+    profileTtlSeconds?: number
+    userOrdersTtlSeconds?: number
+    itemOrdersTtlSeconds?: number
+  }
   [key: string]: any
 }
 
@@ -395,4 +419,3 @@ export const fetchSiteSmartBuyStatus = async (signal?: AbortSignal): Promise<Sit
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   return response.json() as Promise<SiteSmartBuyStatus>
 }
-

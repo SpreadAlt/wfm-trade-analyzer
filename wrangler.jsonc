@@ -20,5 +20,11 @@
       "database_name": "frameanalytics-auth",
       "database_id": "0b6a775b-61fc-4e91-a18b-6829132c74c1"
     }
+  ],
+  "services": [
+    {
+      "binding": "SMART_BUY_API",
+      "service": "frameanalytics-api-test"
+    }
   ]
 }

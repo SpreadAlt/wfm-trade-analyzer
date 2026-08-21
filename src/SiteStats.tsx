@@ -164,6 +164,11 @@ export const SiteStatsPage = ({ locale }: { locale: Locale }) => {
   const freshnessTotal = snapshot?.freshness.totals.groups || 0
   const freshnessHealthy = snapshot ? snapshot.freshness.healthy && (snapshot.hourly.queue?.backlogCount || 0) <= (snapshot.hourly.runtimeThrottle?.maxBacklog || 10) : false
   const cacheSummary = useMemo(() => snapshot?.smartBuy.cache, [snapshot])
+  const smartBuyRequestInterval = snapshot?.smartBuy.requestIntervalsMs?.fast ?? snapshot?.smartBuy.upstream?.requestIntervalMs
+  const smartBuyConfiguredRate = snapshot?.smartBuy.upstream?.configuredRequestsPerSecond ?? (smartBuyRequestInterval ? 1000 / smartBuyRequestInterval : null)
+  const smartBuyMaxSeries = snapshot?.smartBuy.maxMarketSeries ?? snapshot?.smartBuy.limits?.maxMarketSeriesPerRequest
+  const smartBuyMaxSessionSeries = snapshot?.smartBuy.limits?.maxFrontendMarketSeries ?? smartBuyMaxSeries
+  const smartBuyItemTtl = cacheSummary?.itemOrdersTtlSeconds ?? snapshot?.smartBuy.itemOrdersCacheSeconds
 
   return <main className="app-shell site-stats-shell">
     <div className="site-stats-topbar">
@@ -181,7 +186,7 @@ export const SiteStatsPage = ({ locale }: { locale: Locale }) => {
         <article className="panel site-stat-card"><span>{text.hourly}</span><strong>{snapshot.hourly.enabled ? text.healthy : text.warning}</strong><dl><div><dt>{text.runtime}</dt><dd>{snapshot.hourly.runtimeRevision}</dd></div><div><dt>{text.groups}</dt><dd>{snapshot.hourly.groups ? `${snapshot.hourly.groups.stored}/${snapshot.hourly.groups.target}` : '—'}</dd></div><div><dt>{text.backlog}</dt><dd>{fmt(snapshot.hourly.queue?.backlogCount)}</dd></div><div><dt>{text.lastFetch}</dt><dd>{fmtDate(snapshot.hourly.lastFetchedAt)}</dd></div><div><dt>{text.activeScopes}</dt><dd>{snapshot.hourly.activeScopes?.join(', ') || '—'}</dd></div></dl></article>
         <article className="panel site-stat-card"><span>{text.freshness}</span><strong>{snapshot.freshness.healthy ? text.healthy : text.warning}</strong><div className="freshness-strip"><i className="fresh" style={{ width: `${pct(snapshot.freshness.totals.fresh, freshnessTotal)}%` }}/><i className="due" style={{ width: `${pct(snapshot.freshness.totals.due, freshnessTotal)}%` }}/><i className="stale" style={{ width: `${pct(snapshot.freshness.totals.stale + snapshot.freshness.totals.missing, freshnessTotal)}%` }}/></div><dl><div><dt>{text.fresh}</dt><dd>{snapshot.freshness.totals.fresh}</dd></div><div><dt>{text.due}</dt><dd>{snapshot.freshness.totals.due}</dd></div><div><dt>{text.stale}</dt><dd>{snapshot.freshness.totals.stale}</dd></div><div><dt>{text.missing}</dt><dd>{snapshot.freshness.totals.missing}</dd></div></dl></article>
         <article className="panel site-stat-card"><span>{text.index}</span><strong>{snapshot.index.globalManifestReady ? text.healthy : text.warning}</strong><dl><div><dt>{text.runtime}</dt><dd>{snapshot.index.hourlyIndexRuntimeRevision}</dd></div><div><dt>{text.indexRefresh}</dt><dd>{fmt(snapshot.index.automation?.refreshMinutes)} {text.minutes}</dd></div><div><dt>{text.shards}</dt><dd>{snapshot.index.shards ? `${snapshot.index.shards.stored}/${snapshot.index.shards.target}` : '—'}</dd></div><div><dt>{text.generated}</dt><dd>{fmtDate(snapshot.index.automation?.latestPublicGeneratedAt)}</dd></div></dl></article>
-        <article className="panel site-stat-card"><span>{text.smartBuy}</span><strong>v{snapshot.smartBuy.smartBuyRuntimeRevision}</strong><dl><div><dt>{text.wfmLimit}</dt><dd>{fmt(snapshot.smartBuy.upstream.publicRateLimitRequestsPerSecond, 2)} {text.perSecond}</dd></div><div><dt>{text.smartBuyRate}</dt><dd>{fmt(snapshot.smartBuy.upstream.configuredRequestsPerSecond, 2)} {text.perSecond}</dd></div><div><dt>{text.maxSeries}</dt><dd>{snapshot.smartBuy.limits.maxMarketSeriesPerRequest}</dd></div><div><dt>{text.cacheEntries}</dt><dd>{snapshot.smartBuy.cache.entries}</dd></div></dl></article>
+        <article className="panel site-stat-card"><span>{text.smartBuy}</span><strong>v{snapshot.smartBuy.smartBuyRuntimeRevision}</strong><dl><div><dt>{text.wfmLimit}</dt><dd>{fmt(snapshot.smartBuy.upstream?.publicRateLimitRequestsPerSecond, 2)} {text.perSecond}</dd></div><div><dt>{text.smartBuyRate}</dt><dd>{fmt(smartBuyConfiguredRate, 2)} {text.perSecond}</dd></div><div><dt>{text.maxSeries}</dt><dd>{fmt(smartBuyMaxSeries)}</dd></div><div><dt>{text.cacheEntries}</dt><dd>{fmt(cacheSummary?.entries)}</dd></div></dl></article>
       </section>
 
       <section className="panel site-stats-limits">
@@ -195,8 +200,8 @@ export const SiteStatsPage = ({ locale }: { locale: Locale }) => {
           <div><span>{text.hourlyQueueLimit}</span><strong>{fmt(snapshot.hourly.runtimeLimits?.maxQueueOperationsDay)}</strong></div>
           <div><span>{text.combinedQueue}</span><strong>{fmt(queueUse)}</strong></div>
           <div><span>{text.queueBudget}</span><strong>{fmt(queueLimit)}</strong></div>
-          <div><span>{text.requestSpacing}</span><strong>{fmt(snapshot.smartBuy.upstream.requestIntervalMs)} ms</strong></div>
-          <div><span>{text.maxSessionSeries}</span><strong>{fmt(snapshot.smartBuy.limits.maxFrontendMarketSeries)}</strong></div>
+          <div><span>{text.requestSpacing}</span><strong>{fmt(smartBuyRequestInterval)} ms</strong></div>
+          <div><span>{text.maxSessionSeries}</span><strong>{fmt(smartBuyMaxSessionSeries)}</strong></div>
           <div><span>{text.cooldown}</span><strong>{snapshot.freshness.cooldown?.active ? fmtDate(snapshot.freshness.cooldown.until) : '—'}</strong></div>
         </div>
       </section>
@@ -207,7 +212,7 @@ export const SiteStatsPage = ({ locale }: { locale: Locale }) => {
           <div><span>{text.cacheEntries}</span><strong>{fmt(cacheSummary?.entries)}</strong><small>{fmt(cacheSummary?.profileEntries)} profile · {fmt(cacheSummary?.userOrderEntries)} user orders · {fmt(cacheSummary?.itemOrderEntries)} item orders</small></div>
           <div><span>{text.profileTtl}</span><strong>{fmt(cacheSummary?.profileTtlSeconds)} {text.seconds}</strong></div>
           <div><span>{text.ordersTtl}</span><strong>{fmt(cacheSummary?.userOrdersTtlSeconds)} {text.seconds}</strong></div>
-          <div><span>{text.itemsTtl}</span><strong>{fmt(cacheSummary?.itemOrdersTtlSeconds)} {text.seconds}</strong></div>
+          <div><span>{text.itemsTtl}</span><strong>{fmt(smartBuyItemTtl)} {text.seconds}</strong></div>
         </div>
       </section>
 

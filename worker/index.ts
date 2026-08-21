@@ -24,7 +24,9 @@ type FetcherLike = {
 type Env = {
   frameanalytics_auth: D1DatabaseLike;
   ASSETS: FetcherLike;
+  SMART_BUY_API?: FetcherLike;
   BETTER_AUTH_SECRET: string;
+  SMART_BUY_START_SECRET: string;
 };
 
 type SessionUser = {
@@ -47,15 +49,31 @@ const json = (value: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
 
 const nowMs = () => Date.now();
 
+const SMART_BUY_API_BASE = "https://frameanalytics-api-test.smurfack403.workers.dev";
+const SMART_BUY_START_HEADER = "X-FrameAnalytics-SmartBuy-Token";
+
+type SmartBuyJobStart = {
+  ok: true;
+  smartBuyVersion: string;
+  smartBuyRuntimeRevision: string;
+  jobId: string;
+  state: "queued";
+  queuedAt: string;
+};
+
 const normalizeWfmProfile = (value: unknown) => {
   const text = String(value ?? "").trim();
   if (!text) return null;
 
   try {
     const url = new URL(text.includes("://") ? text : `https://warframe.market/profile/${text}`);
-    const match = url.pathname.match(/^\/profile\/([^/?#]+)\/?$/i);
-    if (!match) return null;
-    return decodeURIComponent(match[1]).trim() || null;
+    const host = url.hostname.toLowerCase();
+    if (host !== "warframe.market" && !host.endsWith(".warframe.market")) return null;
+
+    const parts = url.pathname.split("/").filter(Boolean);
+    const profileIndex = parts.findIndex((part) => part.toLowerCase() === "profile");
+    const slug = profileIndex >= 0 ? decodeURIComponent(parts[profileIndex + 1] || "").trim() : "";
+    return /^[A-Za-z0-9_.-]{2,64}$/.test(slug) ? slug : null;
   } catch {
     const slug = text.replace(/^@/, "").trim();
     return /^[A-Za-z0-9_.-]{2,64}$/.test(slug) ? slug : null;
@@ -443,7 +461,7 @@ const handlePurchases = async (
   return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, POST, DELETE" });
 };
 
-const handleSmartBuyPermit = async (
+const handleSmartBuyStart = async (
   request: Request,
   env: Env,
   auth: ReturnType<typeof createAuth>,
@@ -455,6 +473,25 @@ const handleSmartBuyPermit = async (
   const user = await requireSession(auth, request);
   if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
 
+  const profile = await env.frameanalytics_auth
+    .prepare(`
+      SELECT wfm_profile
+      FROM frameanalytics_profile
+      WHERE user_id = ?
+    `)
+    .bind(user.id)
+    .first<{ wfm_profile: string | null }>();
+
+  const profileSlug = normalizeWfmProfile(profile?.wfm_profile);
+  if (!profileSlug) {
+    return json({ ok: false, error: "Link a Warframe Market profile first" }, 409);
+  }
+
+  if (!env.SMART_BUY_START_SECRET) {
+    return json({ ok: false, error: "Smart Buy service is not configured" }, 503);
+  }
+
+  // Reserve first. A permitted launch counts immediately.
   const permitId = await reserveSmartBuyRun(env, user.id);
   if (!permitId) {
     const usage = await readSmartBuyUsage(env, user.id);
@@ -468,11 +505,69 @@ const handleSmartBuyPermit = async (
     );
   }
 
-  return json({
-    ok: true,
-    permitId,
-    smartBuy: await readSmartBuyUsage(env, user.id),
-  });
+  let upstream: Response;
+  try {
+    const smartBuyUrl = env.SMART_BUY_API
+      ? "https://frameanalytics-api.internal/api/smart-buy-v2/start"
+      : `${SMART_BUY_API_BASE}/api/smart-buy-v2/start`;
+    const smartBuyFetcher = env.SMART_BUY_API ?? { fetch };
+
+    upstream = await smartBuyFetcher.fetch(smartBuyUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
+      },
+      body: JSON.stringify({ profile: profileSlug }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    return json(
+      {
+        ok: false,
+        error: `Smart Buy start failed: ${error instanceof Error ? error.message : String(error)}`,
+        permitId,
+        smartBuy: await readSmartBuyUsage(env, user.id),
+      },
+      502,
+    );
+  }
+
+  let payload: unknown = null;
+  try {
+    payload = await upstream.json();
+  } catch {
+    // Keep a stable error shape if the producer returns a non-JSON response.
+  }
+
+  if (!upstream.ok) {
+    const message =
+      payload && typeof payload === "object" && "error" in payload
+        ? String((payload as { error?: unknown }).error || `HTTP ${upstream.status}`)
+        : `HTTP ${upstream.status}`;
+
+    return json(
+      {
+        ok: false,
+        error: `Smart Buy start failed: ${message}`,
+        permitId,
+        smartBuy: await readSmartBuyUsage(env, user.id),
+      },
+      upstream.status >= 400 && upstream.status <= 599 ? upstream.status : 502,
+    );
+  }
+
+  const started = payload as SmartBuyJobStart;
+  return json(
+    {
+      ...started,
+      permitId,
+      profileSlug,
+      smartBuy: await readSmartBuyUsage(env, user.id),
+    },
+    202,
+  );
 };
 
 export default {
@@ -483,22 +578,31 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    const auth = createAuth(env, request);
-
     try {
-      await ensureSchema(auth, env);
-
-      if (url.pathname.startsWith("/api/auth/")) {
-        return auth.handler(request);
-      }
-
       if (url.pathname === "/api/health") {
         return json({
           ok: true,
           service: "frameanalytics-account",
+          serviceRevision: "beta-smartbuy-guard-2",
           auth: "better-auth",
           database: "frameanalytics-auth",
+          smartBuyStartProxy: true,
+          smartBuyTransport: env.SMART_BUY_API ? "service-binding" : "public-fallback",
         });
+      }
+
+      if (url.pathname === "/api/smart-buy/permit") {
+        return json(
+          { ok: false, error: "Smart Buy permit endpoint is retired; use /api/smart-buy/start" },
+          410,
+        );
+      }
+
+      const auth = createAuth(env, request);
+      await ensureSchema(auth, env);
+
+      if (url.pathname.startsWith("/api/auth/")) {
+        return auth.handler(request);
       }
 
       if (url.pathname === "/api/account") {
@@ -513,8 +617,8 @@ export default {
         return handlePurchases(request, env, auth);
       }
 
-      if (url.pathname === "/api/smart-buy/permit") {
-        return handleSmartBuyPermit(request, env, auth);
+      if (url.pathname === "/api/smart-buy/start") {
+        return handleSmartBuyStart(request, env, auth);
       }
 
       return json({ ok: false, error: "API route not found" }, 404);
