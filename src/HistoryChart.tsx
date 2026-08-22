@@ -45,7 +45,11 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
     const latest = parsePointDate(latestDate)
     if (!Number.isFinite(latest)) return Number.NEGATIVE_INFINITY
     const amount = Number(range.slice(0, -1))
-    const duration = range.endsWith('h') ? amount * 60 * 60 * 1000 : Math.max(0, amount - 1) * 24 * 60 * 60 * 1000
+    // Changes are calculated against the point exactly N hours/days before
+    // the latest point. Keep that reference point visible on the chart too.
+    const duration = range.endsWith('h')
+      ? amount * 60 * 60 * 1000
+      : amount * 24 * 60 * 60 * 1000
     return latest - duration
   }, [latestDate, range])
   const visible = useMemo(() => history.filter(point => parsePointDate(point.date) >= cutoff), [history, cutoff])
