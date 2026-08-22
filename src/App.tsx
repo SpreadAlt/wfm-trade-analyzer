@@ -124,7 +124,11 @@ const hourlySeriesFromIndex = (row: HourlyIndexRow): HourlySeries => ({
     '1h': { percent: row.change1h, platinum: row.change1hPlatinum, referenceAt: null },
     '4h': { percent: row.change4h, platinum: row.change4hPlatinum, referenceAt: null },
     '12h': { percent: row.change12h, platinum: row.change12hPlatinum, referenceAt: null },
-    '24h': { percent: row.change24h, platinum: row.change24hPlatinum, referenceAt: null }
+    '24h': { percent: row.change24h, platinum: row.change24hPlatinum, referenceAt: null },
+    '7d': { percent: row.change7d, platinum: row.change7dPlatinum, referenceAt: null },
+    '30d': { percent: row.change30d, platinum: row.change30dPlatinum, referenceAt: null },
+    '90d': { percent: row.change90d, platinum: row.change90dPlatinum, referenceAt: null },
+    '180d': { percent: row.change180d, platinum: row.change180dPlatinum, referenceAt: null }
   },
   sales: {
     '1h': row.sales1h, '4h': row.sales4h, '12h': row.sales12h, '24h': row.sales24h,
@@ -139,7 +143,8 @@ const scannerFallbackFromIndex = (row: HourlyIndexRow, period: AnalysisPeriod): 
   slug: row.slug, category: row.category, subcategory: row.subcategory, defaultEnabled: row.defaultEnabled,
   marketMode: 'none', marketKey: row.marketKey, variantKey: row.marketKey.startsWith('subtype=') ? row.marketKey : null,
   dimensions: row.dimensions, selectedModRank: row.selectedModRank, period, hasHistory: false, hasCurrentDay: false,
-  currentPrice: row.currentPrice, change1h: row.change1h, change24h: row.change24h, change7d: null, changePeriod: null,
+  currentPrice: row.currentPrice, change1h: row.change1h, change24h: row.change24h, change7d: row.change7d,
+  changePeriod: row[`change${period}d` as 'change7d' | 'change30d' | 'change90d' | 'change180d'],
   sales24h: null, sales7d: row.sales7d, sales30d: row.sales30d, sales90d: row.sales90d, sales180d: row.sales180d,
   averageVolume7d: null, channelPosition: null, coveragePct: null, volatility: null,
   updatedDate: row.fetchedAt, buy: emptySignal(), sell: emptySignal(), buyPotential: null, buyPotentialPct: null,
@@ -214,6 +219,14 @@ const hourlyIndexRowFromScanner = (item: ScannerItem): HourlyIndexRow => ({
   change12hPlatinum: null,
   change24h: item.change24h,
   change24hPlatinum: platinumChange(item.currentPrice, item.change24h),
+  change7d: item.change7d,
+  change7dPlatinum: platinumChange(item.currentPrice, item.change7d),
+  change30d: item.period === 30 ? item.changePeriod : null,
+  change30dPlatinum: item.period === 30 ? platinumChange(item.currentPrice, item.changePeriod) : null,
+  change90d: item.period === 90 ? item.changePeriod : null,
+  change90dPlatinum: item.period === 90 ? platinumChange(item.currentPrice, item.changePeriod) : null,
+  change180d: item.period === 180 ? item.changePeriod : null,
+  change180dPlatinum: item.period === 180 ? platinumChange(item.currentPrice, item.changePeriod) : null,
   sales1h: null,
   sales4h: null,
   sales12h: null,
@@ -1004,6 +1017,8 @@ export default function App() {
   const rowRangeValue = (row: DisplayMarketRow, range: TimeRange) => {
     const item = row.item
     if (HOURLY_RANGES.has(range)) return row.hourly?.changes[range as HourlyRange]?.percent ?? (range === '24h' && row.canonical ? item.change24h : null)
+    const liveDaily = row.hourly?.changes[range]?.percent
+    if (liveDaily != null) return liveDaily
     if (!row.canonical) return null
     if (range === '7d') return item.change7d
     if (range === periodRange(item.period)) return item.changePeriod
@@ -1011,10 +1026,8 @@ export default function App() {
   }
   const rowRangePlatinum = (row: DisplayMarketRow, range: TimeRange) => {
     const item = row.item
-    if (HOURLY_RANGES.has(range)) {
-      const direct = row.hourly?.changes[range as HourlyRange]?.platinum
-      if (direct != null) return direct
-    }
+    const direct = row.hourly?.changes[range]?.platinum
+    if (direct != null) return direct
     const percent = rowRangeValue(row, range)
     const metricPeriod = range === '7d' || range === '30d' || range === '90d' || range === '180d'
       ? row.canonical ? getMetricSeries(item)?.periods[range.replace('d', '') as '7' | '30' | '90' | '180'] : null

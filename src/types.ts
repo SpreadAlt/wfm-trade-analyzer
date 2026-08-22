@@ -218,7 +218,7 @@ export type HourlySeries = {
   dimensions: Dimensions
   currentPrice: number | null
   latestAt: string | null
-  changes: Record<HourlyRange, HourlyChange>
+  changes: Partial<Record<TimeRange, HourlyChange>> & Record<HourlyRange, HourlyChange>
   sales?: Partial<Record<SalesRange, number | null>>
   history: HourlyHistoryPoint[]
   dailyLatestDate: string | null
@@ -266,6 +266,14 @@ export type HourlyIndexRow = {
   change12hPlatinum: number | null
   change24h: number | null
   change24hPlatinum: number | null
+  change7d: number | null
+  change7dPlatinum: number | null
+  change30d: number | null
+  change30dPlatinum: number | null
+  change90d: number | null
+  change90dPlatinum: number | null
+  change180d: number | null
+  change180dPlatinum: number | null
   sales1h: number | null
   sales4h: number | null
   sales12h: number | null
