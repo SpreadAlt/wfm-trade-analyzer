@@ -703,6 +703,7 @@ const handleAxiScanner = async (
   if (action === "start") {
     if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
     if (!env.SMART_BUY_START_SECRET) return json({ ok: false, error: "Axi scanner service is not configured" }, 503);
+    const body = (await request.text()).trim() || "{}";
     const upstream = await env.SMART_BUY_API.fetch("https://frameanalytics-api.internal/api/axi-scanner-v1/start", {
       method: "POST",
       headers: {
@@ -710,7 +711,7 @@ const handleAxiScanner = async (
         "Content-Type": "application/json",
         [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
       },
-      body: "{}",
+      body,
       signal: AbortSignal.timeout(15_000),
     });
     const payload = await upstream.json().catch(() => null) as SmartBuyJobStart | { error?: unknown } | null;
@@ -1075,7 +1076,7 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "developer-axi-scanner-2",
+          serviceRevision: "developer-axi-scanner-3",
           auth: "better-auth",
           database: "frameanalytics-auth",
           closedBeta: true,

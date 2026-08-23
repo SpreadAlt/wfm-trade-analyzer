@@ -6,7 +6,7 @@ import { accountRequestJson } from './Account'
 import './developer.css'
 import './axiScanner.css'
 
-type AxiStart = { ok: true; jobId: string; state: string; reused?: boolean; queuedAt: string; expiresAt: string }
+type AxiStart = { ok: true; jobId: string; state: string; reused?: boolean; queuedAt: string; expiresAt: string; durationMinutes?: number }
 type AxiStop = { ok: true; jobId: string; state: 'cancelled'; stoppedAt: string }
 type AxiJobStatus = { ok: true; jobId: string; state: string; expiresAt: string; progress?: { stage?: string; processed?: number; total?: number; percent?: number; cycle?: number; completedCycles?: number }; error?: string | null }
 type AxiRow = {
@@ -43,6 +43,8 @@ type AxiResult = {
 }
 
 const JOB_KEY = 'frameanalytics-axi-scanner-job'
+const DURATION_KEY = 'frameanalytics-axi-scanner-duration'
+const DURATION_OPTIONS = [15, 30, 60, 120, 240, 480, 1440] as const
 const fmt = (value: number | null | undefined, digits = 1) => value == null || !Number.isFinite(value) ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: digits })
 const plat = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? '—' : `${fmt(value)}p`
 const time = (value: string | null | undefined, locale: Locale) => {
@@ -57,6 +59,10 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
   const [result, setResult] = useState<AxiResult | null>(null)
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [durationMinutes, setDurationMinutes] = useState<number>(() => {
+    const stored = Number(localStorage.getItem(DURATION_KEY))
+    return DURATION_OPTIONS.includes(stored as typeof DURATION_OPTIONS[number]) ? stored : 60
+  })
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted')
   const [error, setError] = useState<string | null>(null)
 
@@ -78,11 +84,11 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
     const poll = async () => {
       try {
         const next = await refresh(jobId)
-        if (!stopped && !['completed', 'failed', 'cancelled'].includes(next.state)) timer = window.setTimeout(poll, 4000)
+        if (!stopped && !['completed', 'failed', 'cancelled'].includes(next.state)) timer = window.setTimeout(poll, 10000)
       } catch (value) {
         if (!stopped) {
           setError(value instanceof Error ? value.message : String(value))
-          timer = window.setTimeout(poll, 8000)
+          timer = window.setTimeout(poll, 15000)
         }
       }
     }
@@ -98,7 +104,8 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
         const permission = await Notification.requestPermission()
         setNotificationsEnabled(permission === 'granted')
       }
-      const next = await accountRequestJson<AxiStart>('/api/axi-scanner/start', { method: 'POST', body: '{}' })
+      localStorage.setItem(DURATION_KEY, String(durationMinutes))
+      const next = await accountRequestJson<AxiStart>('/api/axi-scanner/start', { method: 'POST', body: JSON.stringify({ durationMinutes }) })
       sessionStorage.setItem(JOB_KEY, next.jobId)
       setJobId(next.jobId)
       await refresh(next.jobId)
@@ -142,6 +149,13 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
         : status?.state === 'cancelled' ? (ru ? 'Остановлено' : 'Stopped')
           : status?.state === 'failed' ? (ru ? 'Ошибка' : 'Failed')
             : (ru ? 'Не запущен' : 'Not started')
+  const durationLabel = (minutes: number) => minutes < 60
+    ? `${minutes} ${ru ? 'мин' : 'min'}`
+    : minutes === 60
+      ? (ru ? '1 час' : '1 hour')
+      : minutes < 1440
+        ? `${minutes / 60} ${ru ? 'ч' : 'h'}`
+        : (ru ? '24 часа' : '24 hours')
 
   useEffect(() => {
     if (!jobId || !notificationsEnabled || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
@@ -169,10 +183,11 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
   return <main className="app-shell axi-shell">
     <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {ru ? 'К профилю' : 'Back to profile'}</button></div>
     <section className="panel axi-heading">
-      <div><span className="eyebrow">Axi · Rare rewards</span><h1>{ru ? 'Сканер реликвий Акси' : 'Axi relic scanner'}</h1><p>{ru ? 'Сравнивает самый дешёвый sell-order целой реликвии со средней ценой закрытых продаж золотой награды за 24 часа. Один общий запуск работает по кругу один час.' : 'Compares the cheapest intact-relic sell order with the rare reward’s average closed-sale price over 24 hours. One shared run loops for one hour.'}</p></div>
+      <div><span className="eyebrow">Axi · Rare rewards</span><h1>{ru ? 'Сканер реликвий Акси' : 'Axi relic scanner'}</h1><p>{ru ? 'Сравнивает самый дешёвый sell-order реликвии со средней ценой закрытых продаж золотой награды за 24 часа.' : 'Compares the cheapest relic sell order with the rare reward’s average closed-sale price over 24 hours.'}</p></div>
       <div className="axi-heading-actions">
+        <label className="axi-duration"><span>{ru ? 'Время сканирования' : 'Scan duration'}</span><select value={durationMinutes} disabled={running || starting} onChange={event => setDurationMinutes(Number(event.target.value))}>{DURATION_OPTIONS.map(minutes => <option value={minutes} key={minutes}>{durationLabel(minutes)}</option>)}</select></label>
         <button type="button" className={`secondary-action axi-notification ${notificationsEnabled ? 'active' : ''}`} onClick={() => void enableNotifications()} title={ru ? 'Уведомлять при соотношении больше 10×' : 'Notify when the ratio exceeds 10×'} aria-pressed={notificationsEnabled}>🔔 <span>{notificationsEnabled ? (ru ? 'Уведомления включены' : 'Notifications on') : (ru ? 'Уведомления ×10' : '10× alerts')}</span></button>
-        {running ? <button type="button" className="secondary-action axi-stop" disabled={stopping} onClick={() => void stop()}>{stopping ? (ru ? 'Остановка…' : 'Stopping…') : (ru ? 'Остановить' : 'Stop')}</button> : <button type="button" className="primary-action axi-start" disabled={starting} onClick={() => void start()}>{starting ? (ru ? 'Запуск…' : 'Starting…') : (ru ? 'Запустить на 1 час' : 'Run for 1 hour')}</button>}
+        {running ? <button type="button" className="secondary-action axi-stop" disabled={stopping} onClick={() => void stop()}>{stopping ? (ru ? 'Остановка…' : 'Stopping…') : (ru ? 'Остановить' : 'Stop')}</button> : <button type="button" className="primary-action axi-start" disabled={starting} onClick={() => void start()}>{starting ? (ru ? 'Запуск…' : 'Starting…') : `${ru ? 'Запустить на' : 'Run for'} ${durationLabel(durationMinutes)}`}</button>}
       </div>
     </section>
     {error ? <div className="account-message error">{error}</div> : null}
@@ -182,10 +197,7 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
       <article className="panel"><span>{ru ? 'Проход' : 'Cycle'}</span><strong>{result?.cycle || status?.progress?.cycle || '—'}</strong><small>{ru ? `Завершено: ${result?.completedCycles ?? status?.progress?.completedCycles ?? 0}` : `Completed: ${result?.completedCycles ?? status?.progress?.completedCycles ?? 0}`}</small></article>
       <article className="panel"><span>{ru ? 'Осталось' : 'Remaining'}</span><strong>{remainingMinutes == null ? '—' : `${remainingMinutes} ${ru ? 'мин' : 'min'}`}</strong><small>{time(result?.generatedAt, locale)}</small></article>
     </section>
-    <section className="panel axi-method">
-      <strong>{ru ? 'Как читать соотношение' : 'How to read the ratio'}</strong><span>{ru ? 'Средняя цена продаж награды за 24ч ÷ самый дешёвый лот целой реликвии. Возможная прибыль показывает разницу цен при получении золотой награды и не учитывает вероятность её выпадения.' : 'The reward’s 24h average sale price ÷ the cheapest intact relic listing. Possible profit is the price difference after obtaining the rare reward and does not account for its drop chance.'}</span>
-    </section>
-    <section className="panel table-panel axi-table-panel"><div className="table-scroll"><table className="axi-table"><thead><tr><th>{ru ? 'Реликвия' : 'Relic'}</th><th>{ru ? 'Золотая награда' : 'Rare reward'}</th><th>{ru ? 'Продажи 30д' : '30d sales'}</th><th>{ru ? 'Реликвия · мин. лот' : 'Relic · lowest listing'}</th><th>{ru ? 'Награда · средняя 24ч' : 'Reward · 24h average'}</th><th>{ru ? 'Соотношение' : 'Ratio'}</th><th>{ru ? 'Возможная прибыль' : 'Possible profit'}</th><th>{ru ? 'Обновлено' : 'Updated'}</th></tr></thead><tbody>
+    <section className="panel table-panel axi-table-panel"><div className="table-scroll"><table className="axi-table"><thead><tr><th>{ru ? 'Реликвия' : 'Relic'}</th><th>{ru ? 'Золотая награда' : 'Rare reward'}</th><th>{ru ? 'Продажи 30д' : '30d sales'}</th><th title={ru ? 'Только ордера игроков online или ingame' : 'Only orders from online or ingame players'}>{ru ? 'Реликвия · онлайн мин.' : 'Relic · online minimum'}</th><th>{ru ? 'Награда · средняя 24ч' : 'Reward · 24h average'}</th><th>{ru ? 'Соотношение' : 'Ratio'}</th><th>{ru ? 'Возможная прибыль' : 'Possible profit'}</th><th>{ru ? 'Обновлено' : 'Updated'}</th></tr></thead><tbody>
       {!jobId ? <tr><td colSpan={8} className="state-cell">{ru ? 'Запустите сканирование. После первого прохода реликвии без продаж за 30 дней будут исключены.' : 'Start a scan. After the first pass, relics with no sales in 30 days are excluded.'}</td></tr> : !rows.length ? <tr><td colSpan={8} className="state-cell"><div className="spinner"/>{ru ? 'Подготавливаем пары и проверяем ликвидность…' : 'Preparing pairs and checking liquidity…'}</td></tr> : rows.map(row => {
         const relicItem = catalog.get(row.relic.id)
         const rewardItem = catalog.get(row.reward.id)
