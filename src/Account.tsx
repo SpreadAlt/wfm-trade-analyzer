@@ -31,6 +31,11 @@ export type FrameAccountSnapshot = {
     updatedAt: string | null
   }
   smartBuy: SmartBuyUsage
+  access: {
+    role: 'developer' | 'user'
+    developer: boolean
+    axiScanner: boolean
+  }
 }
 
 export type SmartBuyStartResponse = {
@@ -51,7 +56,7 @@ type PurchaseListResponse = {
   purchases: PortfolioPurchase[]
 }
 
-const requestJson = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
+export const accountRequestJson = async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(path, {
     ...init,
     credentials: 'include',
@@ -101,7 +106,7 @@ export const useFrameAccount = (): FrameAccountController => {
 
   const refresh = useCallback(async () => {
     try {
-      const next = await requestJson<FrameAccountSnapshot>('/api/account')
+      const next = await accountRequestJson<FrameAccountSnapshot>('/api/account')
       setAccount(next)
       setError(null)
       return next
@@ -136,7 +141,7 @@ export const useFrameAccount = (): FrameAccountController => {
 
   const signUp = useCallback(async (name: string, email: string, password: string, inviteCode: string) => {
     await action(async () => {
-      await requestJson('/api/beta/sign-up', {
+      await accountRequestJson('/api/beta/sign-up', {
         method: 'POST',
         body: JSON.stringify({ name, email, password, inviteCode })
       })
@@ -146,7 +151,7 @@ export const useFrameAccount = (): FrameAccountController => {
 
   const signIn = useCallback(async (email: string, password: string) => {
     await action(async () => {
-      await requestJson('/api/auth/sign-in/email', {
+      await accountRequestJson('/api/auth/sign-in/email', {
         method: 'POST',
         body: JSON.stringify({ email, password })
       })
@@ -156,14 +161,14 @@ export const useFrameAccount = (): FrameAccountController => {
 
   const signOut = useCallback(async () => {
     await action(async () => {
-      await requestJson('/api/auth/sign-out', { method: 'POST' })
+      await accountRequestJson('/api/auth/sign-out', { method: 'POST' })
       setAccount(null)
     })
   }, [action])
 
   const linkWfmProfile = useCallback(async (profile: string) => {
     await action(async () => {
-      await requestJson('/api/account/wfm-profile', {
+      await accountRequestJson('/api/account/wfm-profile', {
         method: 'PATCH',
         body: JSON.stringify({ profile })
       })
@@ -173,7 +178,7 @@ export const useFrameAccount = (): FrameAccountController => {
 
   const unlinkWfmProfile = useCallback(async () => {
     await action(async () => {
-      await requestJson('/api/account/wfm-profile', { method: 'DELETE' })
+      await accountRequestJson('/api/account/wfm-profile', { method: 'DELETE' })
       await refresh()
     })
   }, [action, refresh])
@@ -181,7 +186,7 @@ export const useFrameAccount = (): FrameAccountController => {
   const startSmartBuy = useCallback(async () => {
     let result!: SmartBuyStartResponse
     await action(async () => {
-      result = await requestJson<SmartBuyStartResponse>('/api/smart-buy/start', { method: 'POST' })
+      result = await accountRequestJson<SmartBuyStartResponse>('/api/smart-buy/start', { method: 'POST' })
       setAccount(current => current ? { ...current, smartBuy: result.smartBuy } : current)
     })
     return result
@@ -190,27 +195,27 @@ export const useFrameAccount = (): FrameAccountController => {
   const startSellAdvisor = useCallback(async () => {
     let result!: SmartBuyStartResponse
     await action(async () => {
-      result = await requestJson<SmartBuyStartResponse>('/api/sell-advisor/start', { method: 'POST' })
+      result = await accountRequestJson<SmartBuyStartResponse>('/api/sell-advisor/start', { method: 'POST' })
       setAccount(current => current ? { ...current, smartBuy: result.smartBuy } : current)
     })
     return result
   }, [action])
 
   const loadPurchases = useCallback(async () => {
-    const result = await requestJson<PurchaseListResponse>('/api/account/purchases')
+    const result = await accountRequestJson<PurchaseListResponse>('/api/account/purchases')
     return result.purchases || []
   }, [])
 
   const upsertPurchases = useCallback(async (purchases: PortfolioPurchase[]) => {
     if (!purchases.length) return
-    await requestJson('/api/account/purchases', {
+    await accountRequestJson('/api/account/purchases', {
       method: 'POST',
       body: JSON.stringify({ purchases })
     })
   }, [])
 
   const deletePurchase = useCallback(async (id: string) => {
-    await requestJson(`/api/account/purchases?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await accountRequestJson(`/api/account/purchases?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
   }, [])
 
   return useMemo(() => ({

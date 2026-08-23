@@ -29,6 +29,7 @@ type Env = {
   HOURLY_ADMIN?: FetcherLike;
   BETTER_AUTH_SECRET: string;
   SMART_BUY_START_SECRET: string;
+  DEVELOPER_EMAIL?: string;
   BETA_ADMIN_KEY?: string;
   ADMIN_KEY?: string;
 };
@@ -79,7 +80,11 @@ type SmartBuyJobStart = {
   jobId: string;
   state: "queued";
   queuedAt: string;
-  analysis?: "smart-buy" | "sell-advisor";
+  analysis?: "smart-buy" | "sell-advisor" | "axi-scanner";
+  reused?: boolean;
+  expiresAt?: string | null;
+  axiScannerVersion?: string;
+  axiScannerRuntimeRevision?: string;
 };
 
 const normalizeWfmProfile = (value: unknown) => {
@@ -173,6 +178,25 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
           joined_at INTEGER NOT NULL,
           FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
         )`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_access (
+          user_id TEXT PRIMARY KEY NOT NULL,
+          role TEXT NOT NULL DEFAULT 'user',
+          axi_scanner INTEGER NOT NULL DEFAULT 0,
+          updated_at INTEGER NOT NULL,
+          updated_by TEXT,
+          FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_access_axi
+          ON frameanalytics_access(axi_scanner, updated_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_axi_run (
+          job_id TEXT PRIMARY KEY NOT NULL,
+          requested_by TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER,
+          FOREIGN KEY (requested_by) REFERENCES user(id) ON DELETE CASCADE
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_axi_run_created
+          ON frameanalytics_axi_run(created_at DESC)`,
       ];
 
       for (const statement of schemaStatements) {
@@ -190,6 +214,52 @@ const requireSession = async (auth: ReturnType<typeof createAuth>, request: Requ
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return null;
   return session.user as SessionUser;
+};
+
+type AccountAccess = {
+  role: "developer" | "user";
+  developer: boolean;
+  axiScanner: boolean;
+};
+
+const developerEmail = (env: Env) => String(env.DEVELOPER_EMAIL || "").trim().toLowerCase();
+
+const readAccountAccess = async (env: Env, user: SessionUser): Promise<AccountAccess> => {
+  const owner = Boolean(developerEmail(env) && user.email.trim().toLowerCase() === developerEmail(env));
+  if (owner) {
+    await env.frameanalytics_auth.prepare(`
+      INSERT INTO frameanalytics_access (user_id, role, axi_scanner, updated_at, updated_by)
+      VALUES (?, 'developer', 1, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        role = 'developer',
+        axi_scanner = 1,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+    `).bind(user.id, nowMs(), user.id).run();
+    return { role: "developer", developer: true, axiScanner: true };
+  }
+  const row = await env.frameanalytics_auth.prepare(`
+    SELECT role, axi_scanner AS axiScanner
+    FROM frameanalytics_access
+    WHERE user_id = ?
+  `).bind(user.id).first<{ role: string; axiScanner: number }>();
+  return {
+    role: "user",
+    developer: false,
+    axiScanner: Number(row?.axiScanner ?? 0) === 1,
+  };
+};
+
+const requireDeveloper = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  const user = await requireSession(auth, request);
+  if (!user) return { user: null, access: null, response: json({ ok: false, error: "Unauthorized" }, 401) };
+  const access = await readAccountAccess(env, user);
+  if (!access.developer) return { user, access, response: json({ ok: false, error: "Developer access required" }, 403) };
+  return { user, access, response: null };
 };
 
 const normalizeInviteCode = (value: unknown) =>
@@ -518,6 +588,7 @@ const handleAccount = async (
     .first<{ wfm_profile: string | null; created_at: number; updated_at: number }>();
 
   const usage = await readSmartBuyUsage(env, user.id);
+  const access = await readAccountAccess(env, user);
 
   return json({
     ok: true,
@@ -527,7 +598,140 @@ const handleAccount = async (
       updatedAt: profile?.updated_at ? new Date(profile.updated_at).toISOString() : null,
     },
     smartBuy: usage,
+    access,
   });
+};
+
+const handleDeveloperAccounts = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  const guard = await requireDeveloper(request, env, auth);
+  if (guard.response || !guard.user) return guard.response!;
+  const ownerEmail = developerEmail(env);
+
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const search = String(url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 100);
+    const limit = Math.max(1, Math.min(250, Math.floor(Number(url.searchParams.get("limit")) || 100)));
+    const pattern = `%${search}%`;
+    const rows = await env.frameanalytics_auth.prepare(`
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.emailVerified AS emailVerified,
+        u.createdAt AS createdAt,
+        COALESCE(a.axi_scanner, 0) AS axiScanner,
+        COALESCE(p.purchaseCount, 0) AS purchaseCount
+      FROM user u
+      LEFT JOIN frameanalytics_access a ON a.user_id = u.id
+      LEFT JOIN (
+        SELECT user_id, COUNT(*) AS purchaseCount
+        FROM frameanalytics_purchase
+        GROUP BY user_id
+      ) p ON p.user_id = u.id
+      WHERE (? = '' OR LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)
+      ORDER BY CASE WHEN LOWER(u.email) = ? THEN 0 ELSE 1 END, u.createdAt DESC
+      LIMIT ?
+    `).bind(search, pattern, pattern, ownerEmail, limit).all<{
+      id: string;
+      name: string;
+      email: string;
+      emailVerified: number;
+      createdAt: string;
+      axiScanner: number;
+      purchaseCount: number;
+    }>();
+    return json({
+      ok: true,
+      accounts: (rows.results ?? []).map((row) => ({
+        ...row,
+        emailVerified: Boolean(row.emailVerified),
+        developer: row.email.trim().toLowerCase() === ownerEmail,
+        axiScanner: row.email.trim().toLowerCase() === ownerEmail || Number(row.axiScanner) === 1,
+        purchaseCount: Number(row.purchaseCount) || 0,
+      })),
+    });
+  }
+
+  if (request.method === "PATCH") {
+    const body = await readBody<{ userId?: unknown; axiScanner?: unknown }>(request);
+    const userId = String(body.userId || "").trim();
+    if (!userId) return json({ ok: false, error: "userId is required" }, 400);
+    const target = await env.frameanalytics_auth.prepare(`SELECT id, email FROM user WHERE id = ?`).bind(userId).first<{ id: string; email: string }>();
+    if (!target) return json({ ok: false, error: "Account not found" }, 404);
+    const targetIsOwner = target.email.trim().toLowerCase() === ownerEmail;
+    const axiScanner = targetIsOwner ? true : body.axiScanner === true;
+    await env.frameanalytics_auth.prepare(`
+      INSERT INTO frameanalytics_access (user_id, role, axi_scanner, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        role = excluded.role,
+        axi_scanner = excluded.axi_scanner,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+    `).bind(userId, targetIsOwner ? "developer" : "user", axiScanner ? 1 : 0, nowMs(), guard.user.id).run();
+    return json({ ok: true, userId, developer: targetIsOwner, axiScanner });
+  }
+
+  return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, PATCH" });
+};
+
+const requireAxiScannerAccess = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  const user = await requireSession(auth, request);
+  if (!user) return { user: null, access: null, response: json({ ok: false, error: "Unauthorized" }, 401) };
+  const access = await readAccountAccess(env, user);
+  if (!access.axiScanner) return { user, access, response: json({ ok: false, error: "Axi scanner access is not enabled" }, 403) };
+  return { user, access, response: null };
+};
+
+const handleAxiScanner = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+  action: "start" | "status" | "result",
+) => {
+  const guard = await requireAxiScannerAccess(request, env, auth);
+  if (guard.response || !guard.user) return guard.response!;
+  if (!env.SMART_BUY_API) return json({ ok: false, error: "SMART_BUY_API binding is missing" }, 503);
+  if (action === "start") {
+    if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+    if (!env.SMART_BUY_START_SECRET) return json({ ok: false, error: "Axi scanner service is not configured" }, 503);
+    const upstream = await env.SMART_BUY_API.fetch("https://frameanalytics-api.internal/api/axi-scanner-v1/start", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
+      },
+      body: "{}",
+      signal: AbortSignal.timeout(15_000),
+    });
+    const payload = await upstream.json().catch(() => null) as SmartBuyJobStart | { error?: unknown } | null;
+    if (!upstream.ok || !payload || !("jobId" in payload)) {
+      return json({ ok: false, error: String(payload && "error" in payload ? payload.error : `Axi scanner start failed: HTTP ${upstream.status}`) }, upstream.status || 502);
+    }
+    const expiresAt = Date.parse(String(payload.expiresAt || ""));
+    await env.frameanalytics_auth.prepare(`
+      INSERT OR IGNORE INTO frameanalytics_axi_run (job_id, requested_by, created_at, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).bind(payload.jobId, guard.user.id, nowMs(), Number.isFinite(expiresAt) ? expiresAt : null).run();
+    return json(payload, 202);
+  }
+
+  if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+  const url = new URL(request.url);
+  const jobId = String(url.searchParams.get("id") || url.searchParams.get("jobId") || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ ok: false, error: "Invalid Axi scanner job id" }, 400);
+  const target = new URL(`https://frameanalytics-api.internal/api/axi-scanner-v1/${action}`);
+  target.searchParams.set("id", jobId);
+  return env.SMART_BUY_API.fetch(new Request(target, { method: "GET", headers: { Accept: "application/json" } }));
 };
 
 const handleWfmProfile = async (
@@ -852,13 +1056,15 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "admin-manual-items-1",
+          serviceRevision: "developer-axi-scanner-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
           closedBeta: true,
           registration: "invite-only",
           smartBuyStartProxy: true,
           sellAdvisorStartProxy: true,
+          developerAccess: "email-owner+D1-permissions",
+          axiScannerStartProxy: true,
           smartBuyTransport: env.SMART_BUY_API ? "service-binding" : "unavailable",
         });
       }
@@ -896,6 +1102,22 @@ export default {
 
       if (url.pathname === "/api/account") {
         return handleAccount(request, env, auth);
+      }
+
+      if (url.pathname === "/api/developer/accounts") {
+        return handleDeveloperAccounts(request, env, auth);
+      }
+
+      if (url.pathname === "/api/axi-scanner/start") {
+        return handleAxiScanner(request, env, auth, "start");
+      }
+
+      if (url.pathname === "/api/axi-scanner/status") {
+        return handleAxiScanner(request, env, auth, "status");
+      }
+
+      if (url.pathname === "/api/axi-scanner/result") {
+        return handleAxiScanner(request, env, auth, "result");
       }
 
       if (url.pathname === "/api/account/wfm-profile") {

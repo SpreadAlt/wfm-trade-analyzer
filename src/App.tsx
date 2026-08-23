@@ -12,6 +12,8 @@ import { paginationText } from './paginationText'
 import { SmartBuyPanel } from './SmartBuy'
 import { SellAdvisorPanel } from './SellAdvisor'
 import { AdminItemsPage } from './AdminItems'
+import { DeveloperDashboard } from './DeveloperDashboard'
+import { AxiScannerPage } from './AxiScanner'
 import { AccountPanel, useFrameAccount } from './Account'
 import type { FrameAccountController } from './Account'
 import { uiText } from './uiText'
@@ -298,7 +300,7 @@ const loadOptionalColumns = (): OptionalColumn[] => {
     return parsed.filter((value): value is OptionalColumn => OPTIONAL_COLUMNS.includes(value))
   } catch { return DEFAULT_OPTIONAL_COLUMNS }
 }
-type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
+type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
 const readRoute = (): RouteState => {
   const match = location.pathname.match(/^\/items?\/([^/]+)\/?$/)
   const params = new URLSearchParams(location.search)
@@ -312,6 +314,12 @@ const readRoute = (): RouteState => {
   }
   if (/^\/admin\/items\/?$/.test(location.pathname)) {
     return { kind: 'adminitems', slug: null, id: null, variant: null, rank: null }
+  }
+  if (/^\/developer\/?$/.test(location.pathname)) {
+    return { kind: 'developer', slug: null, id: null, variant: null, rank: null }
+  }
+  if (/^\/axi-scanner\/?$/.test(location.pathname)) {
+    return { kind: 'axiscanner', slug: null, id: null, variant: null, rank: null }
   }
   if (/^\/(?:profile|portfolio)\/?$/.test(location.pathname)) {
     return { kind: 'portfolio', slug: null, id: null, variant: null, rank: null }
@@ -508,7 +516,7 @@ type PortfolioMarketEntry = {
   purchase: PortfolioPurchase
   row: DisplayMarketRow | null
 }
-const PortfolioPage = ({ account, auth, entries, loading, error, platform, crossplay, mode, visibleRanges, locale, catalog, events, onBack, onRetry, onOpenSmartBuy, onOpenSellAdvisor, onRemove, onOpenItem, onPlatform, onCrossplay, onMode, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
+const PortfolioPage = ({ account, auth, entries, loading, error, platform, crossplay, mode, visibleRanges, locale, catalog, events, onBack, onRetry, onOpenSmartBuy, onOpenSellAdvisor, onOpenDeveloper, onOpenAxiScanner, onRemove, onOpenItem, onPlatform, onCrossplay, onMode, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
   account: TemporaryAccount | null
   auth: FrameAccountController
   entries: PortfolioMarketEntry[]
@@ -525,6 +533,8 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
   onRetry: () => void
   onOpenSmartBuy: () => void
   onOpenSellAdvisor: () => void
+  onOpenDeveloper: () => void
+  onOpenAxiScanner: () => void
   onRemove: (id: string) => void
   onOpenItem: (purchase: PortfolioPurchase) => void
   onPlatform: (value: Platform) => void
@@ -571,6 +581,22 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
         </div>
         <button type="button" className="primary-action" onClick={onOpenSellAdvisor}>{locale === 'ru' ? 'Открыть советник' : 'Open Sell Advisor'}</button>
       </section>
+      {auth.account.access?.axiScanner ? <section className="panel portfolio-smart-buy-entry portfolio-axi-entry">
+        <div>
+          <span className="eyebrow">Axi · Rare rewards</span>
+          <h3>{locale === 'ru' ? 'Сканер реликвий Акси' : 'Axi relic scanner'}</h3>
+          <p>{locale === 'ru' ? 'Сравнение цены целой реликвии с её золотой наградой. Общий сканер работает по кругу один час.' : 'Compare intact relic prices with their rare rewards. The shared scanner loops for one hour.'}</p>
+        </div>
+        <button type="button" className="primary-action" onClick={onOpenAxiScanner}>{locale === 'ru' ? 'Открыть Axi-сканер' : 'Open Axi scanner'}</button>
+      </section> : null}
+      {auth.account.access?.developer ? <section className="panel portfolio-smart-buy-entry portfolio-developer-entry">
+        <div>
+          <span className="eyebrow">FrameAnalytics</span>
+          <h3>{locale === 'ru' ? 'Кабинет разработчика' : 'Developer dashboard'}</h3>
+          <p>{locale === 'ru' ? 'Управление аккаунтами и разрешениями закрытых функций.' : 'Manage accounts and permissions for private features.'}</p>
+        </div>
+        <button type="button" className="primary-action" onClick={onOpenDeveloper}>{locale === 'ru' ? 'Управление доступом' : 'Manage access'}</button>
+      </section> : null}
       <section className="mode-tabs portfolio-mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => onMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => onMode('sell')}>{t('sell')}</button></section>
       {!account?.purchases.length ? <section className="panel portfolio-empty">{text.empty}</section> : <section className="panel table-panel portfolio-table-panel"><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
         <th>{t('item')}</th><th>{text.price}</th><th>{text.quantity}</th><th>{t('current')}</th>
@@ -1107,6 +1133,28 @@ export default function App() {
     else { history.replaceState(null, '', '/profile'); setRoute(readRoute()) }
     scrollTo({ top: 0 })
   }
+  const openDeveloper = () => {
+    if (!auth.account?.access?.developer) return
+    history.pushState({ frameanalyticsDeveloperFrom: location.pathname }, '', '/developer')
+    setRoute(readRoute())
+    scrollTo({ top: 0 })
+  }
+  const closeDeveloper = () => {
+    if (history.state?.frameanalyticsDeveloperFrom) history.back()
+    else { history.replaceState(null, '', '/profile'); setRoute(readRoute()) }
+    scrollTo({ top: 0 })
+  }
+  const openAxiScanner = () => {
+    if (!auth.account?.access?.axiScanner) return
+    history.pushState({ frameanalyticsAxiFrom: location.pathname }, '', '/axi-scanner')
+    setRoute(readRoute())
+    scrollTo({ top: 0 })
+  }
+  const closeAxiScanner = () => {
+    if (history.state?.frameanalyticsAxiFrom) history.back()
+    else { history.replaceState(null, '', '/profile'); setRoute(readRoute()) }
+    scrollTo({ top: 0 })
+  }
   const closeAdminItems = () => {
     history.replaceState(null, '', '/')
     setRoute(readRoute())
@@ -1137,6 +1185,13 @@ export default function App() {
     if (auth.account) void auth.upsertPurchases([savedPurchase]).catch(error => console.error('Purchase sync failed', error))
   }
   useEffect(() => {
+    const blockedDeveloper = route.kind === 'developer' && !auth.account?.access?.developer
+    const blockedAxi = route.kind === 'axiscanner' && !auth.account?.access?.axiScanner
+    if (!blockedDeveloper && !blockedAxi) return
+    history.replaceState(null, '', '/profile')
+    setRoute(readRoute())
+  }, [route.kind, auth.account?.access?.developer, auth.account?.access?.axiScanner])
+  useEffect(() => {
     const params = new URLSearchParams(location.search)
     params.set('platform', platform); params.set('period', String(period)); params.set('crossplay', String(crossplay))
     if (route.kind === 'item' && route.id) params.set('id', route.id)
@@ -1152,6 +1207,10 @@ export default function App() {
             ? '/sell-advisor'
             : route.kind === 'adminitems'
               ? '/admin/items'
+            : route.kind === 'developer'
+              ? '/developer'
+            : route.kind === 'axiscanner'
+              ? '/axi-scanner'
             : '/'
     history.replaceState(history.state, '', `${path}?${params}`)
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
@@ -1164,7 +1223,7 @@ export default function App() {
   }
   return <>
     <div className="background-layer"/><div className="background-shade"/>
-    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
       <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={openPortfolio}/></div></header>
       <section className="mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => setMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => setMode('sell')}>{t('sell')}</button></section>
       <section className="panel filters filters-v3" ref={popoverRef}>
