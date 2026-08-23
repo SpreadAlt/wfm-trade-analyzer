@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Locale } from './i18n'
 import type { CatalogItem, Dimensions, MarketEvent, ScannerSignal } from './types'
 
@@ -31,11 +31,14 @@ export const formatDimensions = (dimensions: Dimensions | null | undefined, loca
 }
 
 export const ItemIcon = ({ item, name, large = false }: { item?: CatalogItem; name: string; large?: boolean }) => {
-  const [failed, setFailed] = useState(false)
-  const source = item?.thumb || item?.icon
+  const sources = useMemo(() => [...new Set([item?.thumb, item?.icon].filter((value): value is string => Boolean(value)))], [item?.thumb, item?.icon])
+  const sourceKey = sources.join('|')
+  const [sourceIndex, setSourceIndex] = useState(0)
+  useEffect(() => setSourceIndex(0), [sourceKey])
+  const source = sources[sourceIndex]
   const initials = name.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase()
   return <span className={large ? 'item-icon item-icon-large' : 'item-icon'} aria-hidden="true">
-    {source && !failed ? <img src={source} alt="" loading="lazy" onError={() => setFailed(true)}/> : <b>{initials || '?'}</b>}
+    {source ? <img src={source} alt="" loading="lazy" onError={() => setSourceIndex(index => index + 1)}/> : <b>{initials || '?'}</b>}
   </span>
 }
 

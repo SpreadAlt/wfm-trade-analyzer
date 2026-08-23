@@ -63,7 +63,7 @@ export const fetchMetrics = (platform: Platform, id: string, signal?: AbortSigna
   return fetchJson<MetricsResponse>(`/api/metrics-v3?${params}`, signal)
 }
 export const fetchCatalog = (language: string, signal?: AbortSignal) => {
-  const params = new URLSearchParams({ lang: language })
+  const params = new URLSearchParams({ lang: language, v: 'resilient-1' })
   return fetchJson<CatalogResponse>(`/api/catalog-v3?${params}`, signal)
 }
 

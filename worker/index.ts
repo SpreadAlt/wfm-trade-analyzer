@@ -695,7 +695,7 @@ const handleAxiScanner = async (
   request: Request,
   env: Env,
   auth: ReturnType<typeof createAuth>,
-  action: "start" | "status" | "result",
+  action: "start" | "status" | "result" | "stop",
 ) => {
   const guard = await requireAxiScannerAccess(request, env, auth);
   if (guard.response || !guard.user) return guard.response!;
@@ -723,6 +723,25 @@ const handleAxiScanner = async (
       VALUES (?, ?, ?, ?)
     `).bind(payload.jobId, guard.user.id, nowMs(), Number.isFinite(expiresAt) ? expiresAt : null).run();
     return json(payload, 202);
+  }
+
+  if (action === "stop") {
+    if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+    if (!env.SMART_BUY_START_SECRET) return json({ ok: false, error: "Axi scanner service is not configured" }, 503);
+    const url = new URL(request.url);
+    const jobId = String(url.searchParams.get("id") || url.searchParams.get("jobId") || "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ ok: false, error: "Invalid Axi scanner job id" }, 400);
+    const target = new URL("https://frameanalytics-api.internal/api/axi-scanner-v1/stop");
+    target.searchParams.set("id", jobId);
+    return env.SMART_BUY_API.fetch(new Request(target, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
+      },
+      body: "{}",
+    }));
   }
 
   if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
@@ -1056,7 +1075,7 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "developer-axi-scanner-1",
+          serviceRevision: "developer-axi-scanner-2",
           auth: "better-auth",
           database: "frameanalytics-auth",
           closedBeta: true,
@@ -1118,6 +1137,10 @@ export default {
 
       if (url.pathname === "/api/axi-scanner/result") {
         return handleAxiScanner(request, env, auth, "result");
+      }
+
+      if (url.pathname === "/api/axi-scanner/stop") {
+        return handleAxiScanner(request, env, auth, "stop");
       }
 
       if (url.pathname === "/api/account/wfm-profile") {

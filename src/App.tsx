@@ -777,7 +777,13 @@ export default function App() {
   useEffect(() => {
     if (!auth.account) { setCatalog(new Map()); return }
     const controller = new AbortController()
-    fetchCatalog(locale, controller.signal).then(response => setCatalog(new Map(response.items.map(item => [item.id, item])))).catch(() => setCatalog(new Map()))
+    fetchCatalog(locale, controller.signal).then(response => {
+      const next = new Map(response.items.map(item => [item.id, item]))
+      const mediaCoverage = response.catalogTotal > 0 ? response.matchedMarketItems / response.catalogTotal : 0
+      setCatalog(current => mediaCoverage >= 0.5 || current.size === 0 ? next : current)
+    }).catch(() => {
+      // Keep the last complete localized catalog during a temporary WFM/API failure.
+    })
     return () => controller.abort()
   }, [locale, auth.account?.user.id, catalogRefresh])
   useEffect(() => {
