@@ -188,6 +188,15 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_frameanalytics_access_axi
           ON frameanalytics_access(axi_scanner, updated_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_account_state (
+          user_id TEXT PRIMARY KEY NOT NULL,
+          disabled INTEGER NOT NULL DEFAULT 0,
+          updated_at INTEGER NOT NULL,
+          updated_by TEXT,
+          FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_account_state_disabled
+          ON frameanalytics_account_state(disabled, updated_at DESC)`,
         `CREATE TABLE IF NOT EXISTS frameanalytics_axi_run (
           job_id TEXT PRIMARY KEY NOT NULL,
           requested_by TEXT NOT NULL,
@@ -210,10 +219,20 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
   return schemaReady;
 };
 
-const requireSession = async (auth: ReturnType<typeof createAuth>, request: Request) => {
+const requireSession = async (auth: ReturnType<typeof createAuth>, request: Request, env: Env) => {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return null;
-  return session.user as SessionUser;
+  const user = session.user as SessionUser;
+  const owner = Boolean(developerEmail(env) && user.email.trim().toLowerCase() === developerEmail(env));
+  if (!owner) {
+    const state = await env.frameanalytics_auth.prepare(`
+      SELECT disabled
+      FROM frameanalytics_account_state
+      WHERE user_id = ?
+    `).bind(user.id).first<{ disabled: number }>();
+    if (Number(state?.disabled ?? 0) === 1) return null;
+  }
+  return user;
 };
 
 type AccountAccess = {
@@ -255,7 +274,7 @@ const requireDeveloper = async (
   env: Env,
   auth: ReturnType<typeof createAuth>,
 ) => {
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return { user: null, access: null, response: json({ ok: false, error: "Unauthorized" }, 401) };
   const access = await readAccountAccess(env, user);
   if (!access.developer) return { user, access, response: json({ ok: false, error: "Developer access required" }, 403) };
@@ -316,11 +335,7 @@ const releaseBetaInvite = async (env: Env, codeHash: string) => {
   }
 };
 
-const handleBetaInvites = async (request: Request, env: Env) => {
-  if (!(await betaAdminAuthorized(request, env))) {
-    return json({ ok: false, error: "Unauthorized" }, 401);
-  }
-
+const handleBetaInviteOperations = async (request: Request, env: Env) => {
   if (request.method === "GET") {
     const rows = await env.frameanalytics_auth.prepare(`
       SELECT
@@ -357,7 +372,17 @@ const handleBetaInvites = async (request: Request, env: Env) => {
     return json({
       ok: true,
       closedBeta: true,
-      invite: { code, codeHash, label, maxUses, uses: 0, expiresAt, createdAt },
+      invite: {
+        code,
+        codeHash,
+        codePrefix: code.slice(0, 7),
+        label,
+        maxUses,
+        uses: 0,
+        expiresAt,
+        disabled: false,
+        createdAt,
+      },
       warning: "The raw invite code is returned only once"
     }, 201);
   }
@@ -372,7 +397,36 @@ const handleBetaInvites = async (request: Request, env: Env) => {
     return json({ ok: true, disabled: Number(result.meta?.changes ?? 0) > 0, codeHash });
   }
 
-  return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, POST, DELETE" });
+  if (request.method === "PATCH") {
+    const body = await readBody<{ codeHash?: unknown; disabled?: unknown }>(request);
+    const codeHash = String(body.codeHash || "").trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(codeHash)) return json({ ok: false, error: "Invalid invite hash" }, 400);
+    const disabled = body.disabled === true;
+    const result = await env.frameanalytics_auth
+      .prepare(`UPDATE frameanalytics_beta_invite SET disabled = ? WHERE code_hash = ?`)
+      .bind(disabled ? 1 : 0, codeHash)
+      .run();
+    return json({ ok: true, updated: Number(result.meta?.changes ?? 0) > 0, disabled, codeHash });
+  }
+
+  return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, POST, PATCH, DELETE" });
+};
+
+const handleBetaInvites = async (request: Request, env: Env) => {
+  if (!(await betaAdminAuthorized(request, env))) {
+    return json({ ok: false, error: "Unauthorized" }, 401);
+  }
+  return handleBetaInviteOperations(request, env);
+};
+
+const handleDeveloperBetaInvites = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  const guard = await requireDeveloper(request, env, auth);
+  if (guard.response || !guard.user) return guard.response!;
+  return handleBetaInviteOperations(request, env);
 };
 
 const handleBetaSignUp = async (
@@ -428,7 +482,7 @@ const handleAnalyticsProxy = async (
   if (request.method !== "GET") {
     return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
   }
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
 
   const sourceUrl = new URL(request.url);
@@ -458,7 +512,7 @@ const handleManualMarketItem = async (
   auth: ReturnType<typeof createAuth>,
 ) => {
   if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
   if (!env.HOURLY_ADMIN) return json({ ok: false, error: "HOURLY_ADMIN binding is missing" }, 503);
   const authorization = request.headers.get("Authorization");
@@ -575,7 +629,7 @@ const handleAccount = async (
   env: Env,
   auth: ReturnType<typeof createAuth>,
 ) => {
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
 
   const profile = await env.frameanalytics_auth
@@ -624,25 +678,44 @@ const handleDeveloperAccounts = async (
         u.emailVerified AS emailVerified,
         u.createdAt AS createdAt,
         COALESCE(a.axi_scanner, 0) AS axiScanner,
-        COALESCE(p.purchaseCount, 0) AS purchaseCount
+        COALESCE(s.disabled, 0) AS disabled,
+        COALESCE(p.purchaseCount, 0) AS purchaseCount,
+        COALESCE(sess.sessionCount, 0) AS sessionCount,
+        beta.joined_at AS betaJoinedAt,
+        invite.code_prefix AS inviteCodePrefix,
+        invite.label AS inviteLabel
       FROM user u
       LEFT JOIN frameanalytics_access a ON a.user_id = u.id
+      LEFT JOIN frameanalytics_account_state s ON s.user_id = u.id
+      LEFT JOIN frameanalytics_beta_access beta ON beta.user_id = u.id
+      LEFT JOIN frameanalytics_beta_invite invite ON invite.code_hash = beta.code_hash
       LEFT JOIN (
         SELECT user_id, COUNT(*) AS purchaseCount
         FROM frameanalytics_purchase
         GROUP BY user_id
       ) p ON p.user_id = u.id
+      LEFT JOIN (
+        SELECT userId AS user_id, COUNT(*) AS sessionCount
+        FROM "session"
+        WHERE expiresAt > ?
+        GROUP BY userId
+      ) sess ON sess.user_id = u.id
       WHERE (? = '' OR LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)
       ORDER BY CASE WHEN LOWER(u.email) = ? THEN 0 ELSE 1 END, u.createdAt DESC
       LIMIT ?
-    `).bind(search, pattern, pattern, ownerEmail, limit).all<{
+    `).bind(nowMs(), search, pattern, pattern, ownerEmail, limit).all<{
       id: string;
       name: string;
       email: string;
       emailVerified: number;
       createdAt: string;
       axiScanner: number;
+      disabled: number;
       purchaseCount: number;
+      sessionCount: number;
+      betaJoinedAt: number | null;
+      inviteCodePrefix: string | null;
+      inviteLabel: string | null;
     }>();
     return json({
       ok: true,
@@ -651,19 +724,40 @@ const handleDeveloperAccounts = async (
         emailVerified: Boolean(row.emailVerified),
         developer: row.email.trim().toLowerCase() === ownerEmail,
         axiScanner: row.email.trim().toLowerCase() === ownerEmail || Number(row.axiScanner) === 1,
+        disabled: row.email.trim().toLowerCase() === ownerEmail ? false : Number(row.disabled) === 1,
         purchaseCount: Number(row.purchaseCount) || 0,
+        sessionCount: Number(row.sessionCount) || 0,
       })),
     });
   }
 
   if (request.method === "PATCH") {
-    const body = await readBody<{ userId?: unknown; axiScanner?: unknown }>(request);
+    const body = await readBody<{ userId?: unknown; axiScanner?: unknown; disabled?: unknown }>(request);
     const userId = String(body.userId || "").trim();
     if (!userId) return json({ ok: false, error: "userId is required" }, 400);
     const target = await env.frameanalytics_auth.prepare(`SELECT id, email FROM user WHERE id = ?`).bind(userId).first<{ id: string; email: string }>();
     if (!target) return json({ ok: false, error: "Account not found" }, 404);
     const targetIsOwner = target.email.trim().toLowerCase() === ownerEmail;
-    const axiScanner = targetIsOwner ? true : body.axiScanner === true;
+    const currentAccess = await env.frameanalytics_auth.prepare(`
+      SELECT axi_scanner AS axiScanner
+      FROM frameanalytics_access
+      WHERE user_id = ?
+    `).bind(userId).first<{ axiScanner: number }>();
+    const currentState = await env.frameanalytics_auth.prepare(`
+      SELECT disabled
+      FROM frameanalytics_account_state
+      WHERE user_id = ?
+    `).bind(userId).first<{ disabled: number }>();
+    const axiScanner = targetIsOwner
+      ? true
+      : typeof body.axiScanner === "boolean"
+        ? body.axiScanner
+        : Number(currentAccess?.axiScanner ?? 0) === 1;
+    const disabled = targetIsOwner
+      ? false
+      : typeof body.disabled === "boolean"
+        ? body.disabled
+        : Number(currentState?.disabled ?? 0) === 1;
     await env.frameanalytics_auth.prepare(`
       INSERT INTO frameanalytics_access (user_id, role, axi_scanner, updated_at, updated_by)
       VALUES (?, ?, ?, ?, ?)
@@ -673,10 +767,64 @@ const handleDeveloperAccounts = async (
         updated_at = excluded.updated_at,
         updated_by = excluded.updated_by
     `).bind(userId, targetIsOwner ? "developer" : "user", axiScanner ? 1 : 0, nowMs(), guard.user.id).run();
-    return json({ ok: true, userId, developer: targetIsOwner, axiScanner });
+    await env.frameanalytics_auth.prepare(`
+      INSERT INTO frameanalytics_account_state (user_id, disabled, updated_at, updated_by)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        disabled = excluded.disabled,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+    `).bind(userId, disabled ? 1 : 0, nowMs(), guard.user.id).run();
+    if (disabled) {
+      await env.frameanalytics_auth.prepare(`DELETE FROM "session" WHERE userId = ?`).bind(userId).run();
+    }
+    return json({ ok: true, userId, developer: targetIsOwner, axiScanner, disabled });
   }
 
-  return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, PATCH" });
+  if (request.method === "POST") {
+    const body = await readBody<{ userId?: unknown; action?: unknown }>(request);
+    const userId = String(body.userId || "").trim();
+    const action = String(body.action || "").trim();
+    if (!userId) return json({ ok: false, error: "userId is required" }, 400);
+    if (action !== "revoke-sessions") return json({ ok: false, error: "Unsupported account action" }, 400);
+    const target = await env.frameanalytics_auth.prepare(`SELECT id, email FROM user WHERE id = ?`).bind(userId).first<{ id: string; email: string }>();
+    if (!target) return json({ ok: false, error: "Account not found" }, 404);
+    if (target.email.trim().toLowerCase() === ownerEmail) {
+      return json({ ok: false, error: "Owner sessions cannot be revoked here" }, 409);
+    }
+    const result = await env.frameanalytics_auth.prepare(`DELETE FROM "session" WHERE userId = ?`).bind(userId).run();
+    return json({ ok: true, userId, revokedSessions: Number(result.meta?.changes ?? 0) });
+  }
+
+  return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, PATCH, POST" });
+};
+
+const handleDeveloperResaleScanner = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  const guard = await requireDeveloper(request, env, auth);
+  if (guard.response || !guard.user) return guard.response!;
+  if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+  if (!env.SMART_BUY_CONSUMER) return json({ ok: false, error: "SMART_BUY_CONSUMER binding is missing" }, 503);
+  if (!env.SMART_BUY_START_SECRET) return json({ ok: false, error: "Private scanner service is not configured" }, 503);
+  const upstream = await env.SMART_BUY_CONSUMER.fetch("https://frameanalytics-smartbuy.internal/resale-scanner-v1/result", {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  const payload = await upstream.text();
+  return new Response(payload, {
+    status: upstream.status,
+    headers: {
+      "Content-Type": upstream.headers.get("Content-Type") || "application/json; charset=utf-8",
+      "Cache-Control": "private, no-store",
+    },
+  });
 };
 
 const requireAxiScannerAccess = async (
@@ -684,7 +832,7 @@ const requireAxiScannerAccess = async (
   env: Env,
   auth: ReturnType<typeof createAuth>,
 ) => {
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return { user: null, access: null, response: json({ ok: false, error: "Unauthorized" }, 401) };
   const access = await readAccountAccess(env, user);
   if (!access.axiScanner) return { user, access, response: json({ ok: false, error: "Axi scanner access is not enabled" }, 403) };
@@ -759,7 +907,7 @@ const handleWfmProfile = async (
   env: Env,
   auth: ReturnType<typeof createAuth>,
 ) => {
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
 
   if (request.method === "DELETE") {
@@ -836,7 +984,7 @@ const handlePurchases = async (
   env: Env,
   auth: ReturnType<typeof createAuth>,
 ) => {
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
 
   if (request.method === "GET") {
@@ -958,7 +1106,7 @@ const handleSmartBuyStart = async (
     return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
   }
 
-  const user = await requireSession(auth, request);
+  const user = await requireSession(auth, request, env);
   if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
 
   const profile = await env.frameanalytics_auth
@@ -1076,7 +1224,7 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "developer-axi-scanner-3",
+          serviceRevision: "developer-beta-accounts-4",
           auth: "better-auth",
           database: "frameanalytics-auth",
           closedBeta: true,
@@ -1126,6 +1274,14 @@ export default {
 
       if (url.pathname === "/api/developer/accounts") {
         return handleDeveloperAccounts(request, env, auth);
+      }
+
+      if (url.pathname === "/api/developer/beta-invites") {
+        return handleDeveloperBetaInvites(request, env, auth);
+      }
+
+      if (url.pathname === "/api/developer/resale-scanner-v1") {
+        return handleDeveloperResaleScanner(request, env, auth);
       }
 
       if (url.pathname === "/api/axi-scanner/start") {

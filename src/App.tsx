@@ -14,7 +14,7 @@ import { SellAdvisorPanel } from './SellAdvisor'
 import { AdminItemsPage } from './AdminItems'
 import { DeveloperDashboard } from './DeveloperDashboard'
 import { AxiScannerPage } from './AxiScanner'
-import { AccountPanel, useFrameAccount } from './Account'
+import { accountRequestJson, AccountPanel, useFrameAccount } from './Account'
 import type { FrameAccountController } from './Account'
 import { uiText } from './uiText'
 import type { UiText } from './uiText'
@@ -29,6 +29,10 @@ type PageSize = 25 | 50 | 100 | 200
 type RankFilter = 'base' | 'all'
 type SalesColumn = `sales${SalesRange}`
 type OptionalColumn = SalesColumn | 'potential' | 'score' | 'forecast'
+type DeveloperResaleAlert = { name: string; theoreticalProfit: number; minimumOnlineSell: number; averagePrice24h: number; wfmUrl: string | null }
+type DeveloperResaleAlertResponse = { generatedAt: string | null; alerts: DeveloperResaleAlert[] }
+const RESALE_NOTIFY_KEY = 'frameanalytics.resale-v1.notifications'
+const RESALE_NOTIFIED_SCAN_KEY = 'frameanalytics.resale-v1.notified-scan'
 type DisplayMarketRow = {
   rowId: string
   item: ScannerItem
@@ -710,6 +714,40 @@ export default function App() {
   const scannerItemIds = baroOnly
     ? activeBaroIds.length ? activeBaroIds : ['000000000000000000000000']
     : undefined
+  useEffect(() => {
+    if (!auth.account?.access?.developer) return
+    let cancelled = false
+    const check = async () => {
+      if (localStorage.getItem(RESALE_NOTIFY_KEY) !== '1') return
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+      try {
+        const result = await accountRequestJson<DeveloperResaleAlertResponse>('/api/developer/resale-scanner-v1')
+        if (cancelled || !result.generatedAt || !result.alerts?.length) return
+        if (localStorage.getItem(RESALE_NOTIFIED_SCAN_KEY) === result.generatedAt) return
+        const top = result.alerts[0]
+        const extra = result.alerts.length > 1 ? ` +${result.alerts.length - 1}` : ''
+        const format = (value: number) => `${new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 2 }).format(value)}p`
+        const notification = new Notification(locale === 'ru' ? `Перепродажа: +${format(top.theoreticalProfit)}${extra}` : `Resale: +${format(top.theoreticalProfit)}${extra}`, {
+          body: `${top.name}: ${format(top.minimumOnlineSell)} → ${format(top.averagePrice24h)}`,
+          icon: '/assets/favicon.png',
+          tag: `frameanalytics-resale-${result.generatedAt}`,
+        })
+        notification.onclick = () => {
+          window.focus()
+          if (top.wfmUrl) window.open(top.wfmUrl, '_blank', 'noopener,noreferrer')
+        }
+        localStorage.setItem(RESALE_NOTIFIED_SCAN_KEY, result.generatedAt)
+      } catch {
+        // Private background polling should stay silent; the dashboard shows errors explicitly.
+      }
+    }
+    void check()
+    const timer = window.setInterval(() => { void check() }, 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [auth.account?.access?.developer, locale])
   useEffect(() => { const timer = setTimeout(() => setQuery(queryInput.trim()), 300); return () => clearTimeout(timer) }, [queryInput])
   useEffect(() => { const timer = setInterval(() => setHourlyRefresh(value => value + 1), 5 * 60 * 1000); return () => clearInterval(timer) }, [])
   useEffect(() => {
