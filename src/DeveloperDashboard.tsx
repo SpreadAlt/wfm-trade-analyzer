@@ -68,7 +68,16 @@ type ResaleScannerResponse = {
   alerts: ResaleOpportunity[]
 }
 
-const RESALE_NOTIFY_KEY = 'frameanalytics.resale-v1.notifications'
+type WfmTelemetry = {
+  ok: true
+  gatewayRevision: string
+  generatedAt: string
+  configured: { intervalMs: number; targetRps: number; warningDay: number; limitDay: number }
+  current: { rps10s: number; rps60s: number; requests10s: number; requests60s: number; pending: number; running: boolean }
+  daily: { day: string; requests: number; warningAt: number; limit: number; remaining: number; warning: boolean; blocked: boolean; clients: Record<string, number>; statuses: Record<string, number> }
+  upstream: { lastRequestAt: string | null; lastStatus: number | null; cooldownActive: boolean; cooldownUntil: string | null; consecutiveThrottles: number }
+  totalRequests: number
+}
 
 const platinum = (value: number) => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)}p`
 
@@ -96,11 +105,8 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   const [resale, setResale] = useState<ResaleScannerResponse | null>(null)
   const [resaleLoading, setResaleLoading] = useState(true)
   const [resaleError, setResaleError] = useState<string | null>(null)
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => (
-    typeof Notification !== 'undefined'
-    && Notification.permission === 'granted'
-    && localStorage.getItem(RESALE_NOTIFY_KEY) === '1'
-  ))
+  const [telemetry, setTelemetry] = useState<WfmTelemetry | null>(null)
+  const [telemetryError, setTelemetryError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -153,22 +159,21 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     return () => window.clearInterval(timer)
   }, [loadResale])
 
-  const toggleNotifications = async () => {
-    if (typeof Notification === 'undefined') {
-      setResaleError(ru ? 'Этот браузер не поддерживает уведомления.' : 'This browser does not support notifications.')
-      return
+  const loadTelemetry = useCallback(async () => {
+    try {
+      const result = await accountRequestJson<WfmTelemetry>('/api/developer/wfm-telemetry')
+      setTelemetry(result)
+      setTelemetryError(null)
+    } catch (value) {
+      setTelemetryError(value instanceof Error ? value.message : String(value))
     }
-    if (notificationsEnabled) {
-      localStorage.removeItem(RESALE_NOTIFY_KEY)
-      setNotificationsEnabled(false)
-      return
-    }
-    const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission
-    const enabled = permission === 'granted'
-    setNotificationsEnabled(enabled)
-    if (enabled) localStorage.setItem(RESALE_NOTIFY_KEY, '1')
-    else setResaleError(ru ? 'Уведомления заблокированы в настройках браузера.' : 'Notifications are blocked in browser settings.')
-  }
+  }, [])
+
+  useEffect(() => {
+    void loadTelemetry()
+    const timer = window.setInterval(() => { void loadTelemetry() }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [loadTelemetry])
 
   const setAxiAccess = async (account: ManagedAccount, enabled: boolean) => {
     setSaving(account.id)
@@ -281,6 +286,25 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <div><span className="eyebrow">FrameAnalytics</span><h1>{ru ? 'Кабинет разработчика' : 'Developer dashboard'}</h1><p>{ru ? 'Управление закрытыми функциями аккаунтов. Права проверяются Worker-ом при каждом запросе.' : 'Manage account access to private features. Every request is authorized by the Worker.'}</p></div>
       <div className="developer-private-badge">{ru ? 'Только владелец' : 'Owner only'}</div>
     </section>
+    <section className="panel developer-telemetry-panel">
+      <header className="developer-section-heading">
+        <div><span className="eyebrow">Warframe Market gateway</span><h2>{ru ? 'Текущая скорость запросов' : 'Current request rate'}</h2><p>{ru ? 'Общая скорость API, Hourly, Smart Buy, Axi и сканера перепродажи. Данные обновляются каждые 10 секунд.' : 'Combined rate for API, Hourly, Smart Buy, Axi and resale scanner. Refreshes every 10 seconds.'}</p></div>
+        <span className={`developer-state ${telemetry?.upstream.cooldownActive || telemetry?.daily.blocked ? 'danger' : 'active'}`}>{telemetry?.daily.blocked ? (ru ? 'Лимит достигнут' : 'Budget reached') : telemetry?.upstream.cooldownActive ? (ru ? 'Пауза WFM' : 'WFM cooldown') : (ru ? 'Норма' : 'Healthy')}</span>
+      </header>
+      {telemetryError ? <div className="account-message error">{telemetryError}</div> : null}
+      <div className="developer-telemetry-summary">
+        <div><span>{ru ? 'Скорость 10с' : '10s rate'}</span><strong>{telemetry ? `${telemetry.current.rps10s.toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.current.requests10s} / 10s` : '—'}</small></div>
+        <div><span>{ru ? 'Скорость 60с' : '60s rate'}</span><strong>{telemetry ? `${telemetry.current.rps60s.toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.current.requests60s} / 60s` : '—'}</small></div>
+        <div><span>{ru ? 'Очередь шлюза' : 'Gateway queue'}</span><strong>{telemetry ? telemetry.current.pending : '—'}</strong><small>{telemetry?.current.running ? (ru ? 'запрос выполняется' : 'request running') : (ru ? 'свободен' : 'idle')}</small></div>
+        <div><span>{ru ? 'Сегодня' : 'Today'}</span><strong>{telemetry ? new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US').format(telemetry.daily.requests) : '—'}</strong><small>{telemetry ? `${new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US').format(telemetry.daily.remaining)} ${ru ? 'осталось' : 'remaining'}` : '—'}</small></div>
+        <div><span>{ru ? 'Целевой максимум' : 'Target ceiling'}</span><strong>{telemetry ? `${telemetry.configured.targetRps.toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.configured.intervalMs} ms` : '—'}</small></div>
+        <div><span>{ru ? 'Ответ WFM' : 'WFM response'}</span><strong>{telemetry?.upstream.lastStatus ?? '—'}</strong><small>{telemetry?.upstream.lastRequestAt ? dateTime(telemetry.upstream.lastRequestAt, locale) : '—'}</small></div>
+      </div>
+      <div className="developer-telemetry-breakdown">
+        <div><span>{ru ? 'По процессам' : 'By process'}</span><p>{telemetry && Object.keys(telemetry.daily.clients).length ? Object.entries(telemetry.daily.clients).sort((a, b) => b[1] - a[1]).map(([name, count]) => `${name}: ${count}`).join(' · ') : '—'}</p></div>
+        <div><span>{ru ? 'По статусам' : 'By status'}</span><p>{telemetry && Object.keys(telemetry.daily.statuses).length ? Object.entries(telemetry.daily.statuses).sort((a, b) => b[1] - a[1]).map(([status, count]) => `${status}: ${count}`).join(' · ') : '—'}</p></div>
+      </div>
+    </section>
     <section className="panel developer-invites-panel">
       <header className="developer-section-heading">
         <div><span className="eyebrow">Closed beta</span><h2>{ru ? 'Приглашения на бета-тест' : 'Beta invitations'}</h2><p>{ru ? 'Код показывается только один раз сразу после создания. В базе хранится только его хеш.' : 'The code is shown only once after creation. Only its hash is stored.'}</p></div>
@@ -314,7 +338,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <header className="developer-resale-heading">
         <div><span className="eyebrow">Hourly resale</span><h2>{ru ? 'Перепродажа с прибылью от 20p' : 'Resale opportunities from 20p'}</h2><p>{ru ? 'Только немоды: от 30 закрытых продаж за 24 часа, средняя цена от 45p и sell-orders игроков online/ingame.' : 'Non-mods only: at least 30 closed sales in 24h, average price from 45p, and online/ingame sell-orders.'}</p></div>
         <div className="developer-resale-actions">
-          <button type="button" className={`secondary-action ${notificationsEnabled ? 'active' : ''}`} onClick={() => void toggleNotifications()}>🔔 {notificationsEnabled ? (ru ? 'Уведомления включены' : 'Notifications on') : (ru ? 'Включить уведомления' : 'Enable notifications')}</button>
+          <a className="secondary-action developer-tray-download" href="/downloads/frameanalytics-notifier.zip" download>▣ {ru ? 'Скачать уведомления в трей' : 'Download tray notifier'}</a>
           <button type="button" className="secondary-action" disabled={resaleLoading} onClick={() => void loadResale()}>{ru ? 'Обновить' : 'Refresh'}</button>
         </div>
       </header>

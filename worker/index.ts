@@ -27,8 +27,11 @@ type Env = {
   SMART_BUY_API?: FetcherLike;
   SMART_BUY_CONSUMER?: FetcherLike;
   HOURLY_ADMIN?: FetcherLike;
+  WFM_GATEWAY?: FetcherLike;
   BETTER_AUTH_SECRET: string;
   SMART_BUY_START_SECRET: string;
+  WFM_GATEWAY_TOKEN?: string;
+  DESKTOP_NOTIFY_TOKEN?: string;
   DEVELOPER_EMAIL?: string;
   BETA_ADMIN_KEY?: string;
   ADMIN_KEY?: string;
@@ -55,6 +58,7 @@ const json = (value: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
 const nowMs = () => Date.now();
 
 const SMART_BUY_START_HEADER = "X-FrameAnalytics-SmartBuy-Token";
+const WFM_GATEWAY_HEADER = "X-FrameAnalytics-Gateway-Token";
 const ANALYTICS_READ_PATHS = new Set([
   "/api/catalog-v3",
   "/api/scanner-v3",
@@ -295,6 +299,16 @@ const betaAdminAuthorized = async (request: Request, env: Env) => {
   const provided = authorization.toLowerCase().startsWith("bearer ")
     ? authorization.slice(7).trim()
     : String(request.headers.get("X-Admin-Key") || "").trim();
+  if (!expected || !provided) return false;
+  return (await sha256(expected)) === (await sha256(provided));
+};
+
+const desktopNotifyAuthorized = async (request: Request, env: Env) => {
+  const expected = String(env.DESKTOP_NOTIFY_TOKEN || "").trim();
+  const authorization = String(request.headers.get("Authorization") || "");
+  const provided = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
   if (!expected || !provided) return false;
   return (await sha256(expected)) === (await sha256(provided));
 };
@@ -827,6 +841,135 @@ const handleDeveloperResaleScanner = async (
   });
 };
 
+const handleDeveloperWfmTelemetry = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  const guard = await requireDeveloper(request, env, auth);
+  if (guard.response || !guard.user) return guard.response!;
+  if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+  if (!env.WFM_GATEWAY) return json({ ok: false, error: "WFM_GATEWAY binding is missing" }, 503);
+  if (!env.WFM_GATEWAY_TOKEN) return json({ ok: false, error: "WFM_GATEWAY_TOKEN is missing" }, 503);
+  const upstream = await env.WFM_GATEWAY.fetch("https://frameanalytics-wfm-gateway.internal/metrics", {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      [WFM_GATEWAY_HEADER]: env.WFM_GATEWAY_TOKEN,
+    },
+  });
+  return new Response(await upstream.text(), {
+    status: upstream.status,
+    headers: {
+      "Content-Type": upstream.headers.get("Content-Type") || "application/json; charset=utf-8",
+      "Cache-Control": "private, no-store",
+    },
+  });
+};
+
+type DesktopNotification = {
+  id: string;
+  kind: "resale" | "axi";
+  title: string;
+  body: string;
+  url: string;
+  createdAt: string | null;
+  data: Record<string, unknown>;
+};
+
+const handleDesktopNotificationFeed = async (request: Request, env: Env) => {
+  if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+  if (!await desktopNotifyAuthorized(request, env)) return json({ ok: false, error: "Unauthorized" }, 401);
+  const notifications: DesktopNotification[] = [];
+  const diagnostics: string[] = [];
+
+  if (env.SMART_BUY_CONSUMER && env.SMART_BUY_START_SECRET) {
+    try {
+      const upstream = await env.SMART_BUY_CONSUMER.fetch("https://frameanalytics-smartbuy.internal/resale-scanner-v1/result", {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
+        },
+      });
+      const result = await upstream.json() as { generatedAt?: unknown; alerts?: unknown[] };
+      if (upstream.ok) {
+        const generatedAt = String(result.generatedAt || "") || null;
+        for (const raw of Array.isArray(result.alerts) ? result.alerts : []) {
+          const row = raw as Record<string, unknown>;
+          const rowId = String(row.rowId || row.itemId || "").trim();
+          if (!rowId) continue;
+          const name = String(row.name || "Предмет");
+          const minimum = Number(row.minimumOnlineSell);
+          const profit = Number(row.theoreticalProfit);
+          const fetchedAt = String(row.ordersFetchedAt || generatedAt || "");
+          notifications.push({
+            id: `resale:${rowId}:${fetchedAt.slice(0, 13)}`,
+            kind: "resale",
+            title: `Перепродажа: +${Number.isFinite(profit) ? profit : "?"}p`,
+            body: `${name}: онлайн-ордер ${Number.isFinite(minimum) ? minimum : "?"}p`,
+            url: String(row.wfmUrl || "https://frameanalytics.trade/profile"),
+            createdAt: fetchedAt || generatedAt,
+            data: row,
+          });
+        }
+      } else diagnostics.push(`resale HTTP ${upstream.status}`);
+    } catch (error) {
+      diagnostics.push(`resale: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (env.SMART_BUY_API && developerEmail(env)) {
+    try {
+      const runs = await env.frameanalytics_auth.prepare(`
+        SELECT r.job_id AS jobId
+        FROM frameanalytics_axi_run r
+        JOIN user u ON u.id = r.requested_by
+        WHERE lower(u.email) = ?
+        ORDER BY r.created_at DESC
+        LIMIT 3
+      `).bind(developerEmail(env)).all<{ jobId: string }>();
+      for (const run of runs.results || []) {
+        const target = new URL("https://frameanalytics-api.internal/api/axi-scanner-v1/result");
+        target.searchParams.set("id", run.jobId);
+        const upstream = await env.SMART_BUY_API.fetch(target.toString(), { method: "GET", headers: { Accept: "application/json" } });
+        if (!upstream.ok) continue;
+        const result = await upstream.json() as { rows?: unknown[]; updatedAt?: unknown; completedAt?: unknown };
+        for (const raw of Array.isArray(result.rows) ? result.rows : []) {
+          const row = raw as Record<string, any>;
+          const ratio = Number(row.ratio);
+          if (!Number.isFinite(ratio) || ratio < 10) continue;
+          const relationId = String(row.relationId || `${row.relic?.id || "relic"}:${row.reward?.id || "reward"}`);
+          const relicName = String(row.relic?.name || row.relic?.slug || "Axi relic");
+          const rewardName = String(row.reward?.name || row.reward?.slug || "золотая награда");
+          const createdAt = String(row.fetchedAt || result.updatedAt || result.completedAt || "") || null;
+          notifications.push({
+            id: `axi:${run.jobId}:${relationId}`,
+            kind: "axi",
+            title: `Axi: соотношение ${ratio.toFixed(2)}×`,
+            body: `${relicName} → ${rewardName}`,
+            url: "https://frameanalytics.trade/profile",
+            createdAt,
+            data: row,
+          });
+        }
+      }
+    } catch (error) {
+      diagnostics.push(`axi: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  notifications.sort((left, right) => Date.parse(right.createdAt || "") - Date.parse(left.createdAt || ""));
+  return json({
+    ok: true,
+    serviceRevision: "developer-wfm-safety-tray-1",
+    generatedAt: new Date().toISOString(),
+    pollAfterSeconds: 60,
+    notifications: notifications.slice(0, 100),
+    diagnostics,
+  });
+};
+
 const requireAxiScannerAccess = async (
   request: Request,
   env: Env,
@@ -1224,7 +1367,7 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "developer-beta-accounts-4",
+          serviceRevision: "developer-wfm-safety-tray-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
           closedBeta: true,
@@ -1234,6 +1377,8 @@ export default {
           developerAccess: "email-owner+D1-permissions",
           axiScannerStartProxy: true,
           smartBuyTransport: env.SMART_BUY_API ? "service-binding" : "unavailable",
+          wfmGatewayTelemetry: env.WFM_GATEWAY ? "service-binding" : "unavailable",
+          desktopNotifications: env.DESKTOP_NOTIFY_TOKEN ? "token-feed" : "unavailable",
         });
       }
 
@@ -1246,6 +1391,10 @@ export default {
 
       const auth = createAuth(env, request);
       await ensureSchema(auth, env);
+
+      if (url.pathname === "/api/desktop-notifications/feed") {
+        return handleDesktopNotificationFeed(request, env);
+      }
 
       if (url.pathname === "/api/beta/status") {
         if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
@@ -1282,6 +1431,10 @@ export default {
 
       if (url.pathname === "/api/developer/resale-scanner-v1") {
         return handleDeveloperResaleScanner(request, env, auth);
+      }
+
+      if (url.pathname === "/api/developer/wfm-telemetry") {
+        return handleDeveloperWfmTelemetry(request, env, auth);
       }
 
       if (url.pathname === "/api/axi-scanner/start") {

@@ -33,6 +33,10 @@
     {
       "binding": "HOURLY_ADMIN",
       "service": "frameanalytics-hourly-test"
+    },
+    {
+      "binding": "WFM_GATEWAY",
+      "service": "frameanalytics-wfm-gateway-test"
     }
   ]
 }
