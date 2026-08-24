@@ -16,7 +16,15 @@
 .developer-telemetry-summary small{color:var(--text-secondary);font-size:10px}
 .developer-telemetry-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .developer-telemetry-breakdown>div{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.developer-telemetry-breakdown>.developer-telemetry-routes{grid-column:1/-1}
 .developer-telemetry-breakdown p{margin:5px 0 0;color:var(--text);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;line-height:1.55;overflow-wrap:anywhere}
+.developer-rate-limit-log{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.developer-rate-limit-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.developer-rate-limit-heading span{color:var(--text);font-size:12px;font-weight:850;text-transform:uppercase}
+.developer-rate-limit-heading small{color:var(--text-secondary);font-size:10px;text-align:right}
+.developer-rate-limit-table{min-width:980px}
+.developer-rate-limit-table th,.developer-rate-limit-table td{padding:10px 12px;font-size:11px}
+.developer-rate-limit-table code{color:var(--text);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;overflow-wrap:anywhere}
 .developer-tray-download{display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap}
 @media(max-width:1100px){.developer-telemetry-summary{grid-template-columns:repeat(3,1fr)}.developer-telemetry-summary>div:nth-child(3n){border-right:0}.developer-telemetry-summary>div:nth-child(-n+3){border-bottom:1px solid var(--line)}}
-@media(max-width:560px){.developer-telemetry-summary{grid-template-columns:1fr 1fr}.developer-telemetry-summary>div:nth-child(3n){border-right:1px solid var(--line)}.developer-telemetry-summary>div:nth-child(2n){border-right:0}.developer-telemetry-summary>div:nth-child(-n+4){border-bottom:1px solid var(--line)}.developer-telemetry-breakdown{grid-template-columns:1fr}}
+@media(max-width:560px){.developer-telemetry-summary{grid-template-columns:1fr 1fr}.developer-telemetry-summary>div:nth-child(3n){border-right:1px solid var(--line)}.developer-telemetry-summary>div:nth-child(2n){border-right:0}.developer-telemetry-summary>div:nth-child(-n+4){border-bottom:1px solid var(--line)}.developer-telemetry-breakdown{grid-template-columns:1fr}.developer-rate-limit-heading{align-items:flex-start;flex-direction:column}.developer-rate-limit-heading small{text-align:left}}

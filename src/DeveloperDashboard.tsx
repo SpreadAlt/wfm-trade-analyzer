@@ -72,10 +72,47 @@ type WfmTelemetry = {
   ok: true
   gatewayRevision: string
   generatedAt: string
-  configured: { intervalMs: number; targetRps: number; warningDay: number; limitDay: number }
-  current: { rps10s: number; rps60s: number; requests10s: number; requests60s: number; pending: number; running: boolean }
-  daily: { day: string; requests: number; warningAt: number; limit: number; remaining: number; warning: boolean; blocked: boolean; clients: Record<string, number>; statuses: Record<string, number> }
-  upstream: { lastRequestAt: string | null; lastStatus: number | null; cooldownActive: boolean; cooldownUntil: string | null; consecutiveThrottles: number }
+  configured: { intervalMs: number; targetRps: number; maxInFlight: number; warningDay: number; limitDay: number }
+  current: { rps10s: number; rps60s: number; requests10s: number; requests60s: number; pending: number; running: boolean; inFlight: number }
+  daily: {
+    day: string
+    requests: number
+    warningAt: number
+    limit: number
+    remaining: number
+    warning: boolean
+    blocked: boolean
+    clients: Record<string, number>
+    statuses: Record<string, number>
+    routes?: Record<string, { requests: number; statuses: Record<string, number>; clients: Record<string, number> }>
+  }
+  upstream: {
+    lastRequestAt: string | null
+    lastStatus: number | null
+    cooldownActive: boolean
+    cooldownUntil: string | null
+    consecutiveThrottles: number
+    rateLimitEvents?: Array<{
+      timestamp: string
+      status: number
+      client: string
+      route: string
+      endpoint: string
+      method: string
+      platform: string | null
+      crossplay: string | null
+      rps10s: number
+      rps60s: number
+      requests10s: number
+      requests60s: number
+      inFlight: number
+      pending: number
+      retryAfter: string | null
+      appliedCooldownSeconds: number
+      durationMs: number
+      cfRay: string | null
+    }>
+  }
   totalRequests: number
 }
 
@@ -303,6 +340,13 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <div className="developer-telemetry-breakdown">
         <div><span>{ru ? 'По процессам' : 'By process'}</span><p>{telemetry && Object.keys(telemetry.daily.clients).length ? Object.entries(telemetry.daily.clients).sort((a, b) => b[1] - a[1]).map(([name, count]) => `${name}: ${count}`).join(' · ') : '—'}</p></div>
         <div><span>{ru ? 'По статусам' : 'By status'}</span><p>{telemetry && Object.keys(telemetry.daily.statuses).length ? Object.entries(telemetry.daily.statuses).sort((a, b) => b[1] - a[1]).map(([status, count]) => `${status}: ${count}`).join(' · ') : '—'}</p></div>
+        <div className="developer-telemetry-routes"><span>{ru ? 'По endpoints' : 'By endpoint'}</span><p>{telemetry && Object.keys(telemetry.daily.routes || {}).length ? Object.entries(telemetry.daily.routes || {}).sort((a, b) => b[1].requests - a[1].requests).map(([name, route]) => `${name}: ${route.requests}${route.statuses['429'] ? ` (${route.statuses['429']}×429)` : ''}`).join(' · ') : '—'}</p></div>
+      </div>
+      <div className="developer-rate-limit-log">
+        <div className="developer-rate-limit-heading"><span>{ru ? 'Настоящие ответы WFM 429/509' : 'Upstream WFM 429/509 responses'}</span><small>{ru ? 'Последние 50 событий. Локальная пауза Gateway сюда не входит.' : 'Last 50 events. Local Gateway cooldown responses are excluded.'}</small></div>
+        <div className="table-scroll"><table className="developer-table developer-rate-limit-table"><thead><tr><th>{ru ? 'Время' : 'Time'}</th><th>Endpoint</th><th>{ru ? 'Процесс' : 'Process'}</th><th>{ru ? 'Скорость' : 'Rate'}</th><th>{ru ? 'Параллельно' : 'Concurrent'}</th><th>Retry-After</th><th>CF-Ray</th></tr></thead><tbody>
+          {!telemetry?.upstream.rateLimitEvents?.length ? <tr><td colSpan={7} className="state-cell">{ru ? 'Зафиксированных upstream 429/509 пока нет.' : 'No upstream 429/509 events have been recorded yet.'}</td></tr> : telemetry.upstream.rateLimitEvents.map((event, index) => <tr key={`${event.timestamp}-${event.client}-${index}`}><td>{dateTime(event.timestamp, locale)}<small>HTTP {event.status}</small></td><td><code>{event.endpoint}</code><small>{event.platform ? `${event.platform}${event.crossplay ? ` · crossplay=${event.crossplay}` : ''}` : event.route}</small></td><td>{event.client}</td><td>{event.rps10s.toFixed(2)} req/s<small>{event.requests10s}/10s · {event.requests60s}/60s</small></td><td>{event.inFlight}<small>{ru ? `ожидает: ${event.pending}` : `pending: ${event.pending}`}</small></td><td>{event.retryAfter || '—'}<small>{ru ? `применено ${event.appliedCooldownSeconds}с` : `applied ${event.appliedCooldownSeconds}s`}</small></td><td><code>{event.cfRay || '—'}</code></td></tr>)}
+        </tbody></table></div>
       </div>
     </section>
     <section className="panel developer-invites-panel">
