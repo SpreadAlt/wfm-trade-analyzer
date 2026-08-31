@@ -892,8 +892,9 @@ const handleDesktopNotificationFeed = async (request: Request, env: Env) => {
           [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
         },
       });
-      const result = await upstream.json() as { generatedAt?: unknown; alerts?: unknown[] };
+      const result = await upstream.json() as { scanId?: unknown; generatedAt?: unknown; alerts?: unknown[] };
       if (upstream.ok) {
+        const scanId = String(result.scanId || "scan");
         const generatedAt = String(result.generatedAt || "") || null;
         for (const raw of Array.isArray(result.alerts) ? result.alerts : []) {
           const row = raw as Record<string, unknown>;
@@ -904,7 +905,7 @@ const handleDesktopNotificationFeed = async (request: Request, env: Env) => {
           const profit = Number(row.theoreticalProfit);
           const fetchedAt = String(row.ordersFetchedAt || generatedAt || "");
           notifications.push({
-            id: `resale:${rowId}:${fetchedAt.slice(0, 13)}`,
+            id: `resale:${scanId}:${rowId}`,
             kind: "resale",
             title: `Перепродажа: +${Number.isFinite(profit) ? profit : "?"}p`,
             body: `${name}: онлайн-ордер ${Number.isFinite(minimum) ? minimum : "?"}p`,
@@ -938,16 +939,34 @@ const handleDesktopNotificationFeed = async (request: Request, env: Env) => {
         for (const raw of Array.isArray(result.rows) ? result.rows : []) {
           const row = raw as Record<string, any>;
           const ratio = Number(row.ratio);
-          if (!Number.isFinite(ratio) || ratio < 10) continue;
-          const relationId = String(row.relationId || `${row.relic?.id || "relic"}:${row.reward?.id || "reward"}`);
+          const matchesMarkup = row.matchesMarkup === true || (row.matchesMarkup == null && Number.isFinite(ratio) && ratio >= 10);
+          if (!matchesMarkup) continue;
+          const relationId = String(row.relationId || `${row.relic?.id || row.item?.id || "item"}:${row.reward?.id || "result"}`);
+          const createdAt = String(row.fetchedAt || result.updatedAt || result.completedAt || "") || null;
+          if (row.rowType === "prime-set") {
+            const itemName = String(row.item?.name || row.item?.slug || "Prime Set");
+            const profit = Number(row.possibleProfit);
+            const percent = Number(row.markupPercent);
+            notifications.push({
+              id: `axi:${run.jobId}:${relationId}`,
+              kind: "axi",
+              title: `Prime Set: +${Number.isFinite(profit) ? profit : "?"}p`,
+              body: `${itemName}${Number.isFinite(percent) ? ` · +${percent.toFixed(1)}%` : ""}`,
+              url: "https://frameanalytics.trade/profile",
+              createdAt,
+              data: row,
+            });
+            continue;
+          }
           const relicName = String(row.relic?.name || row.relic?.slug || "Axi relic");
           const rewardName = String(row.reward?.name || row.reward?.slug || "золотая награда");
-          const createdAt = String(row.fetchedAt || result.updatedAt || result.completedAt || "") || null;
+          const profit = Number(row.possibleProfit ?? row.spread);
+          const percent = Number(row.markupPercent);
           notifications.push({
             id: `axi:${run.jobId}:${relationId}`,
             kind: "axi",
-            title: `Axi: соотношение ${ratio.toFixed(2)}×`,
-            body: `${relicName} → ${rewardName}`,
+            title: `Axi: +${Number.isFinite(profit) ? profit : "?"}p`,
+            body: `${relicName} → ${rewardName}${Number.isFinite(percent) ? ` · +${percent.toFixed(1)}%` : Number.isFinite(ratio) ? ` · ${ratio.toFixed(2)}×` : ""}`,
             url: "https://frameanalytics.trade/profile",
             createdAt,
             data: row,
@@ -962,9 +981,9 @@ const handleDesktopNotificationFeed = async (request: Request, env: Env) => {
   notifications.sort((left, right) => Date.parse(right.createdAt || "") - Date.parse(left.createdAt || ""));
   return json({
     ok: true,
-    serviceRevision: "developer-wfm-safety-tray-1",
+    serviceRevision: "developer-market-tools-2",
     generatedAt: new Date().toISOString(),
-    pollAfterSeconds: 60,
+    pollAfterSeconds: 10,
     notifications: notifications.slice(0, 100),
     diagnostics,
   });

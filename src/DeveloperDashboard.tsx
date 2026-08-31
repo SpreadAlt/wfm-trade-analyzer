@@ -63,6 +63,8 @@ type ResaleScannerResponse = {
     orderRequests: number
     orderCacheHits: number
     errors: number
+    processedItems?: number
+    totalItems?: number
   } | null
   opportunities: ResaleOpportunity[]
   alerts: ResaleOpportunity[]
@@ -192,7 +194,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
 
   useEffect(() => {
     void loadResale()
-    const timer = window.setInterval(() => { void loadResale() }, 60_000)
+    const timer = window.setInterval(() => { void loadResale() }, 10_000)
     return () => window.clearInterval(timer)
   }, [loadResale])
 
@@ -342,12 +344,12 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         <div><span>{ru ? 'По статусам' : 'By status'}</span><p>{telemetry && Object.keys(telemetry.daily.statuses).length ? Object.entries(telemetry.daily.statuses).sort((a, b) => b[1] - a[1]).map(([status, count]) => `${status}: ${count}`).join(' · ') : '—'}</p></div>
         <div className="developer-telemetry-routes"><span>{ru ? 'По endpoints' : 'By endpoint'}</span><p>{telemetry && Object.keys(telemetry.daily.routes || {}).length ? Object.entries(telemetry.daily.routes || {}).sort((a, b) => b[1].requests - a[1].requests).map(([name, route]) => `${name}: ${route.requests}${route.statuses['429'] ? ` (${route.statuses['429']}×429)` : ''}`).join(' · ') : '—'}</p></div>
       </div>
-      <div className="developer-rate-limit-log">
-        <div className="developer-rate-limit-heading"><span>{ru ? 'Настоящие ответы WFM 429/509' : 'Upstream WFM 429/509 responses'}</span><small>{ru ? 'Последние 50 событий. Локальная пауза Gateway сюда не входит.' : 'Last 50 events. Local Gateway cooldown responses are excluded.'}</small></div>
+      <details className="developer-rate-limit-log">
+        <summary className="developer-rate-limit-heading"><span>{ru ? 'Настоящие ответы WFM 429/509' : 'Upstream WFM 429/509 responses'} <b>{telemetry?.upstream.rateLimitEvents?.length ?? 0}</b></span><small>{ru ? 'Нажмите, чтобы показать последние 50 событий. Локальная пауза Gateway сюда не входит.' : 'Click to show the last 50 events. Local Gateway cooldown responses are excluded.'}</small></summary>
         <div className="table-scroll"><table className="developer-table developer-rate-limit-table"><thead><tr><th>{ru ? 'Время' : 'Time'}</th><th>Endpoint</th><th>{ru ? 'Процесс' : 'Process'}</th><th>{ru ? 'Скорость' : 'Rate'}</th><th>{ru ? 'Параллельно' : 'Concurrent'}</th><th>Retry-After</th><th>CF-Ray</th></tr></thead><tbody>
           {!telemetry?.upstream.rateLimitEvents?.length ? <tr><td colSpan={7} className="state-cell">{ru ? 'Зафиксированных upstream 429/509 пока нет.' : 'No upstream 429/509 events have been recorded yet.'}</td></tr> : telemetry.upstream.rateLimitEvents.map((event, index) => <tr key={`${event.timestamp}-${event.client}-${index}`}><td>{dateTime(event.timestamp, locale)}<small>HTTP {event.status}</small></td><td><code>{event.endpoint}</code><small>{event.platform ? `${event.platform}${event.crossplay ? ` · crossplay=${event.crossplay}` : ''}` : event.route}</small></td><td>{event.client}</td><td>{event.rps10s.toFixed(2)} req/s<small>{event.requests10s}/10s · {event.requests60s}/60s</small></td><td>{event.inFlight}<small>{ru ? `ожидает: ${event.pending}` : `pending: ${event.pending}`}</small></td><td>{event.retryAfter || '—'}<small>{ru ? `применено ${event.appliedCooldownSeconds}с` : `applied ${event.appliedCooldownSeconds}s`}</small></td><td><code>{event.cfRay || '—'}</code></td></tr>)}
         </tbody></table></div>
-      </div>
+      </details>
     </section>
     <section className="panel developer-invites-panel">
       <header className="developer-section-heading">
@@ -380,7 +382,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     </section>
     <section className="panel developer-resale-panel">
       <header className="developer-resale-heading">
-        <div><span className="eyebrow">Hourly resale</span><h2>{ru ? 'Перепродажа с прибылью от 20p' : 'Resale opportunities from 20p'}</h2><p>{ru ? 'Только немоды: от 30 закрытых продаж за 24 часа, средняя цена от 45p и sell-orders игроков online/ingame.' : 'Non-mods only: at least 30 closed sales in 24h, average price from 45p, and online/ingame sell-orders.'}</p></div>
+        <div><span className="eyebrow">Hourly resale</span><h2>{ru ? 'Перепродажа с прибылью от 20p' : 'Resale opportunities from 20p'}</h2><p>{ru ? 'Без модов и мистификаторов: от 30 закрытых продаж за 24 часа, средняя цена от 45p и свежие sell-orders игроков online/ingame.' : 'Excludes mods and arcanes: at least 30 closed sales in 24h, average price from 45p, and fresh online/ingame sell-orders.'}</p></div>
         <div className="developer-resale-actions">
           <a className="secondary-action developer-tray-download" href="/downloads/frameanalytics-notifier.zip" download>▣ {ru ? 'Скачать уведомления в трей' : 'Download tray notifier'}</a>
           <button type="button" className="secondary-action" disabled={resaleLoading} onClick={() => void loadResale()}>{ru ? 'Обновить' : 'Refresh'}</button>
@@ -390,8 +392,8 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <div className="developer-resale-summary">
         <div><span>{ru ? 'Найдено' : 'Found'}</span><strong>{resale?.counts?.opportunities ?? '—'}</strong></div>
         <div><span>{ru ? 'Кандидатов' : 'Candidates'}</span><strong>{resale?.counts?.priceQualifiedSeries ?? '—'}</strong></div>
-        <div><span>{ru ? 'Проверено ордеров' : 'Order requests'}</span><strong>{resale?.counts ? resale.counts.orderRequests + resale.counts.orderCacheHits : '—'}</strong></div>
-        <div><span>{ru ? 'Последняя проверка' : 'Last scan'}</span><strong>{resale?.generatedAt ? dateTime(resale.generatedAt, locale) : '—'}</strong></div>
+        <div><span>{ru ? 'Проверено ордеров' : 'Order requests'}</span><strong>{resale?.counts ? resale.counts.orderRequests + resale.counts.orderCacheHits : '—'}</strong><small>{resale?.state === 'running' && resale.counts?.totalItems ? `${resale.counts.processedItems ?? 0}/${resale.counts.totalItems}` : null}</small></div>
+        <div><span>{resale?.state === 'running' ? (ru ? 'Сканирование' : 'Scanning') : (ru ? 'Последняя проверка' : 'Last scan')}</span><strong>{resale?.generatedAt ? dateTime(resale.generatedAt, locale) : '—'}</strong></div>
       </div>
       <div className="table-scroll"><table className="developer-table developer-resale-table"><thead><tr><th>{ru ? 'Предмет' : 'Item'}</th><th>{ru ? 'Мин. ордер' : 'Min order'}</th><th>{ru ? 'Средняя 24ч' : '24h average'}</th><th>{ru ? 'Продажи 24ч' : 'Sales 24h'}</th><th>{ru ? 'Прибыль' : 'Profit'}</th><th>{ru ? 'Онлайн-ордеры' : 'Online orders'}</th></tr></thead><tbody>
         {resaleLoading && !resale ? <tr><td colSpan={6} className="state-cell"><div className="spinner"/>{ru ? 'Загрузка проверки…' : 'Loading scan…'}</td></tr> : !resale?.opportunities?.length ? <tr><td colSpan={6} className="state-cell">{resale?.state === 'waiting-first-hourly-scan' ? (ru ? 'Ожидается первая стандартная почасовая проверка.' : 'Waiting for the first regular hourly scan.') : (ru ? 'Сейчас подходящих предложений нет.' : 'No matching opportunities right now.')}</td></tr> : resale.opportunities.map(row => <tr key={row.rowId}>

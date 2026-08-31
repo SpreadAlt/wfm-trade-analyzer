@@ -42,6 +42,8 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   sellers: 'Подходящие продавцы',
   sellersEmpty: 'По выбранному фильтру продавцов нет.',
   positions: 'позиций',
+  tradeSlots: 'торговых слотов',
+  distinctPositions: 'разных позиций',
   units: 'шт.',
   full: 'полностью',
   estimated: 'итого',
@@ -91,6 +93,8 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   sellers: 'Matching sellers',
   sellersEmpty: 'No sellers match the selected filter.',
   positions: 'positions',
+  tradeSlots: 'trade slots',
+  distinctPositions: 'distinct positions',
   units: 'units',
   full: 'full',
   estimated: 'est.',
@@ -157,7 +161,8 @@ type RankedSeller = {
   positionsCovered: number
   fullPositions: number
   unitsCovered: number
-  totalRequestedUnits: number
+  tradeSlotsCovered: number
+  totalRequestedSlots: number
   estimatedCost: number
 }
 
@@ -233,7 +238,8 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
   const rankedSellers = useMemo<RankedSeller[]>(() => {
     if (!data?.wishlist.length) return []
     const maxDeviation = limitNumber(deviation)
-    const totalRequestedUnits = data.wishlist.reduce((sum, row) => sum + Math.max(0, row.quantity || 0), 0)
+    // Every copy occupies its own Warframe trade slot, including duplicate items.
+    const totalRequestedSlots = data.wishlist.reduce((sum, row) => sum + Math.max(0, Math.floor(row.quantity || 0)), 0)
 
     return data.sellers.flatMap(seller => {
       if (onlineOnly && !ONLINE.has(seller.user.status)) return []
@@ -249,13 +255,16 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
       if (!offers.length) return []
 
       let unitsCovered = 0
+      let tradeSlotsCovered = 0
       let fullPositions = 0
       let estimatedCost = 0
 
       for (const offer of offers) {
         const wanted = wishlistByDemand.get(offer.demandKey)
         if (!wanted) continue
-        unitsCovered += Math.min(wanted.quantity, offer.fillableQuantity)
+        const coveredQuantity = Math.max(0, Math.floor(Math.min(wanted.quantity, offer.fillableQuantity)))
+        unitsCovered += coveredQuantity
+        tradeSlotsCovered += coveredQuantity
         if (offer.fillableQuantity >= wanted.quantity) fullPositions++
         estimatedCost += Math.max(0, offer.estimatedCost || offer.unitPrice * offer.fillableQuantity)
       }
@@ -266,10 +275,12 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
         positionsCovered: offers.length,
         fullPositions,
         unitsCovered,
-        totalRequestedUnits,
+        tradeSlotsCovered,
+        totalRequestedSlots,
         estimatedCost
       }]
     }).sort((left, right) =>
+      right.tradeSlotsCovered - left.tradeSlotsCovered ||
       right.positionsCovered - left.positionsCovered ||
       right.fullPositions - left.fullPositions ||
       right.unitsCovered - left.unitsCovered ||
@@ -551,7 +562,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
 
       {!rankedSellers.length ? <div className="smart-buy-state compact"><strong>{text.sellersEmpty}</strong></div> :
         <div className="smart-buy-sellers">
-          {rankedSellers.slice(0, 30).map(({ seller, offers, positionsCovered, fullPositions, unitsCovered, totalRequestedUnits, estimatedCost }) => {
+          {rankedSellers.slice(0, 30).map(({ seller, offers, positionsCovered, fullPositions, unitsCovered, tradeSlotsCovered, totalRequestedSlots, estimatedCost }) => {
             const sellerKey = seller.user.id || seller.user.slug
             const messages = buildChatMessages(seller, offers)
             const selectedBasisDelta = sellerBasisDelta(offers)
@@ -564,9 +575,9 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
                 </a>
 
                 <div className="smart-buy-coverage">
-                  <strong>{positionsCovered}/{data.wishlist.length}</strong>
-                  <span>{text.positions}</span>
-                  <small>{fullPositions} {text.full} · {unitsCovered}/{totalRequestedUnits} {text.units}</small>
+                  <strong>{tradeSlotsCovered}/{totalRequestedSlots}</strong>
+                  <span>{text.tradeSlots}</span>
+                  <small>{positionsCovered}/{data.wishlist.length} {text.distinctPositions} · {fullPositions} {text.full} · {unitsCovered} {text.units}</small>
                 </div>
 
                 <div className="smart-buy-cost">

@@ -19,8 +19,13 @@
 .developer-telemetry-breakdown>.developer-telemetry-routes{grid-column:1/-1}
 .developer-telemetry-breakdown p{margin:5px 0 0;color:var(--text);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;line-height:1.55;overflow-wrap:anywhere}
 .developer-rate-limit-log{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.developer-rate-limit-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.developer-rate-limit-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 14px;cursor:pointer;list-style:none}
+.developer-rate-limit-heading::-webkit-details-marker{display:none}
+.developer-rate-limit-heading::after{content:'⌄';flex:none;color:var(--text-secondary);font-size:18px;line-height:1;transition:transform .18s ease}
+.developer-rate-limit-log[open] .developer-rate-limit-heading{border-bottom:1px solid var(--line)}
+.developer-rate-limit-log[open] .developer-rate-limit-heading::after{transform:rotate(180deg)}
 .developer-rate-limit-heading span{color:var(--text);font-size:12px;font-weight:850;text-transform:uppercase}
+.developer-rate-limit-heading span b{display:inline-flex;min-width:22px;height:22px;align-items:center;justify-content:center;margin-left:6px;border-radius:999px;background:var(--surface-strong);color:var(--accent);font-size:10px}
 .developer-rate-limit-heading small{color:var(--text-secondary);font-size:10px;text-align:right}
 .developer-rate-limit-table{min-width:980px}
 .developer-rate-limit-table th,.developer-rate-limit-table td{padding:10px 12px;font-size:11px}
