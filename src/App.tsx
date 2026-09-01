@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchCatalog, fetchEvents, fetchHourly, fetchHourlyIndex, fetchItem, fetchMetrics, fetchMetricsBatch, fetchScanner } from './api'
-import { CustomPicker } from './CustomPicker'
+import { CustomPicker, PickerChevron } from './CustomPicker'
 import { getExtraText } from './extraText'
 import { HistoryChart } from './HistoryChart'
 import { CATEGORY_IDS, ForecastIndicator, formatDimensions, ItemIcon, MarketEventBadge } from './MarketVisuals'
@@ -14,7 +14,6 @@ import { accountRequestJson, AccountPanel, useFrameAccount } from './Account'
 import type { FrameAccountController } from './Account'
 import { uiText } from './uiText'
 import type { UiText } from './uiText'
-import type { InfoPageKind } from './InfoPage'
 import type {
   AnalysisPeriod, CatalogItem, HourlyIndexRow, HourlyIndexResponse, HourlyRange, HourlyResponse, HourlySeries, ItemDetail, ItemSeries,
   MarketEvent, MetricSeries, MetricsItem, PeriodAnalytics, Platform, ScannerItem, ScannerMode, ScannerSignal,
@@ -25,7 +24,6 @@ const SellAdvisorPanel = lazy(() => import('./SellAdvisor').then(module => ({ de
 const AdminItemsPage = lazy(() => import('./AdminItems').then(module => ({ default: module.AdminItemsPage })))
 const DeveloperDashboard = lazy(() => import('./DeveloperDashboard').then(module => ({ default: module.DeveloperDashboard })))
 const AxiScannerPage = lazy(() => import('./AxiScanner').then(module => ({ default: module.AxiScannerPage })))
-const InfoPage = lazy(() => import('./InfoPage').then(module => ({ default: module.InfoPage })))
 type T = (key: TranslationKey) => string
 type OpenPanel = 'categories' | 'table' | null
 type PageSize = 25 | 50 | 100 | 200
@@ -333,7 +331,7 @@ const loadOptionalColumns = (): OptionalColumn[] => {
     return parsed.filter((value): value is OptionalColumn => OPTIONAL_COLUMNS.includes(value))
   } catch { return DEFAULT_OPTIONAL_COLUMNS }
 }
-type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner' | InfoPageKind; slug: string | null; id: string | null; variant: string | null; rank: number | null }
+type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
 const readRoute = (): RouteState => {
   const match = location.pathname.match(/^\/items?\/([^/]+)\/?$/)
   const params = new URLSearchParams(location.search)
@@ -357,27 +355,24 @@ const readRoute = (): RouteState => {
   if (/^\/(?:profile|portfolio)\/?$/.test(location.pathname)) {
     return { kind: 'portfolio', slug: null, id: null, variant: null, rank: null }
   }
-  const infoMatch = location.pathname.match(/^\/(privacy|terms|faq|about|contact)\/?$/)
-  if (infoMatch) return { kind: infoMatch[1] as InfoPageKind, slug: null, id: null, variant: null, rank: null }
   return match
     ? { kind: 'item', slug: decodeURIComponent(match[1]), id: params.get('id'), variant: params.get('variant'), rank }
     : { kind: 'scanner', slug: null, id: null, variant: null, rank: null }
 }
 const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; setLocale: (value: Locale) => void; theme: Theme; setTheme: (value: Theme) => void; t: T }) => <footer className="footer-bar">
   <a className="footer-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
-  <nav className="footer-links" aria-label={locale === 'ru' ? 'Информация' : 'Information'}>
-    <a href="/about">{locale === 'ru' ? 'О проекте' : 'About'}</a>
-    <a href="/faq">FAQ</a>
-    <a href="/privacy">{locale === 'ru' ? 'Конфиденциальность' : 'Privacy'}</a>
-    <a href="/terms">{locale === 'ru' ? 'Условия' : 'Terms'}</a>
-    <a href="/contact">{locale === 'ru' ? 'Связаться' : 'Contact'}</a>
-  </nav>
   <div className="footer-control"><span>{t('language')}</span><CustomPicker compact value={locale} label={t('language')} options={Object.entries(localeNames).map(([value, label]) => ({ value, label }))} onChange={value => setLocale(value as Locale)}/></div>
   <div className="footer-control"><span>{t('theme')}</span><CustomPicker compact value={theme} label={t('theme')} options={[{ value: 'system', label: t('themeSystem') }, { value: 'light', label: t('themeLight') }, { value: 'dark', label: t('themeDark') }]} onChange={value => setTheme(value as Theme)}/></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')} ↗</a>
   <div className="footer-version">{t('version')} 0.9.0</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
+const PickerToggleButton = ({ label, selected, total, open, onClick }: { label: string; selected: number; total: number; open: boolean; onClick: () => void }) => <button type="button" className={`picker-toggle-button ${open ? 'open' : ''}`} aria-expanded={open} aria-haspopup="dialog" onClick={onClick}><span>{label}</span><b>{selected}/{total}</b><PickerChevron open={open}/></button>
+const PagerIcon = ({ direction, edge = false }: { direction: 'previous' | 'next'; edge?: boolean }) => <svg className="pagination-icon" viewBox="0 0 20 20" aria-hidden="true">{edge ? <path d={direction === 'previous' ? 'm11.5 5-5 5 5 5M16 5l-5 5 5 5' : 'm8.5 5 5 5-5 5M4 5l5 5-5 5'}/> : <path d={direction === 'previous' ? 'm12.5 5-5 5 5 5' : 'm7.5 5 5 5-5 5'}/>}</svg>
+const PaginationBar = ({ locale, page, pageCount, total, showingStart, showingEnd, onPage }: { locale: Locale; page: number; pageCount: number; total: number; showingStart: number; showingEnd: number; onPage: (page: number) => void }) => {
+  const p = paginationText[locale]
+  return <nav className="pagination-bar" aria-label={locale === 'ru' ? 'Навигация по страницам' : 'Page navigation'}><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{total}</strong></div><div className="pagination-buttons"><button type="button" disabled={page <= 1} aria-label={p.first} onClick={() => onPage(1)}><PagerIcon direction="previous" edge/><span>{p.first}</span></button><button type="button" disabled={page <= 1} aria-label={p.previous} onClick={() => onPage(Math.max(1, page - 1))}><PagerIcon direction="previous"/><span>{p.previous}</span></button><span className="pagination-current">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button type="button" disabled={page >= pageCount} aria-label={p.next} onClick={() => onPage(Math.min(pageCount, page + 1))}><span>{p.next}</span><PagerIcon direction="next"/></button><button type="button" disabled={page >= pageCount} aria-label={p.last} onClick={() => onPage(pageCount)}><span>{p.last}</span><PagerIcon direction="next" edge/></button></div></nav>
+}
 const ClosedBetaGate = ({ locale, auth }: { locale: Locale; auth: FrameAccountController }) => {
   const ru = locale === 'ru'
   return <main className="app-shell closed-beta-shell">
@@ -419,7 +414,7 @@ const MarketSelector = ({ platform, crossplay, locale, onPlatform, onCrossplay }
   }, [open])
   return <div className="market-selector" ref={ref}>
     <button type="button" className={`crossplay-button ${crossplay ? 'active' : ''}`} disabled={platform === 'switch'} aria-label={crossplayLabel} title={crossplayLabel} aria-pressed={crossplay} onClick={onCrossplay}><CrossplayGlyph/></button>
-    <button type="button" className="platform-button" aria-haspopup="menu" aria-expanded={open} aria-label={PLATFORM_NAMES[platform]} title={PLATFORM_NAMES[platform]} onClick={() => setOpen(value => !value)}><PlatformGlyph platform={platform}/><span aria-hidden="true">⌄</span></button>
+    <button type="button" className="platform-button" aria-haspopup="menu" aria-expanded={open} aria-label={PLATFORM_NAMES[platform]} title={PLATFORM_NAMES[platform]} onClick={() => setOpen(value => !value)}><PlatformGlyph platform={platform}/><PickerChevron open={open}/></button>
     {open ? <div className="platform-menu" role="menu">{(Object.keys(PLATFORM_NAMES) as Platform[]).map(value => <button type="button" role="menuitemradio" aria-checked={platform === value} className={platform === value ? 'selected' : ''} key={value} onClick={() => { onPlatform(value); setOpen(false) }}><PlatformGlyph platform={value}/><span>{PLATFORM_NAMES[value]}</span>{platform === value ? <b aria-hidden="true">✓</b> : null}</button>)}</div> : null}
   </div>
 }
@@ -691,7 +686,7 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
         <label className="search-field"><span>{t('name')}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
         <label><span>{ru ? 'Текущая цена от' : 'Current price from'}</span><div className="input-suffix"><input type="number" min="0" value={minCurrentPrice} onChange={event => setMinCurrentPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
         <label><span>{ru ? 'Прибыль от' : 'Profit from'}</span><div className="input-suffix"><input type="number" min="0" value={minProfit} onChange={event => setMinProfit(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
-        <div className="filter-field category-filter"><span>{u.categories}</span><button className="control-button" type="button" onClick={() => setCategoriesOpen(current => !current)}>{u.categories}<b>{selectedCategories.length}/{CATEGORY_IDS.length}</b><i>⌄</i></button>{categoriesOpen ? <div className="category-panel"><div className="category-actions"><button type="button" onClick={() => setSelectedCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setSelectedCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={selectedCategories.includes(id)} onChange={() => setSelectedCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
+        <div className="filter-field category-filter"><span>{u.categories}</span><PickerToggleButton label={u.categories} selected={selectedCategories.length} total={CATEGORY_IDS.length} open={categoriesOpen} onClick={() => setCategoriesOpen(current => !current)}/>{categoriesOpen ? <div className="category-panel picker-popover" role="dialog" aria-label={u.categories}><div className="category-actions"><button type="button" onClick={() => setSelectedCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setSelectedCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={selectedCategories.includes(id)} onChange={() => setSelectedCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{filteredEntries.length}</strong>{loading && !blockingLoading ? <em>{ru ? 'обновляем цены…' : 'refreshing prices…'}</em> : null}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className={`panel table-panel portfolio-table-panel ${loading && !blockingLoading ? 'table-refreshing' : ''}`} aria-busy={loading}><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
@@ -721,7 +716,7 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
           </tr>
         })}
       </tbody></table></div></section>
-      {!blockingLoading && filteredEntries.length ? <nav className="pagination-bar" aria-label="Pagination"><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{filteredEntries.length}</strong></div><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage(1)}>« {p.first}</button><button disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>‹ {p.previous}</button><span>{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button disabled={page >= pageCount} onClick={() => setPage(current => Math.min(pageCount, current + 1))}>{p.next} ›</button><button disabled={page >= pageCount} onClick={() => setPage(pageCount)}>{p.last} »</button></div></nav> : null}
+      {!blockingLoading && filteredEntries.length ? <PaginationBar locale={locale} page={page} pageCount={pageCount} total={filteredEntries.length} showingStart={showingStart} showingEnd={showingEnd} onPage={setPage}/> : null}
       </>}
     </>}
   </main>
@@ -1376,10 +1371,6 @@ export default function App() {
     setRoute(readRoute())
   }, [route.kind, auth.account?.access?.developer, auth.account?.access?.axiScanner])
   useEffect(() => {
-    if (route.kind === 'privacy' || route.kind === 'terms' || route.kind === 'faq' || route.kind === 'about' || route.kind === 'contact') {
-      history.replaceState(history.state, '', `/${route.kind}`)
-      return
-    }
     const params = new URLSearchParams(location.search)
     params.set('platform', platform); params.set('period', String(period)); params.set('crossplay', String(crossplay))
     if (route.kind === 'item' && route.id) params.set('id', route.id)
@@ -1402,13 +1393,6 @@ export default function App() {
             : '/'
     history.replaceState(history.state, '', `${path}?${params}`)
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
-  if (route.kind === 'privacy' || route.kind === 'terms' || route.kind === 'faq' || route.kind === 'about' || route.kind === 'contact') {
-    return <>
-      <div className="background-layer"/><div className="background-shade"/>
-      <Suspense fallback={<main className="app-shell"><section className="panel state-panel"><div className="spinner"/></section></main>}><InfoPage kind={route.kind} locale={locale}/></Suspense>
-      <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
-    </>
-  }
   if (auth.loading || !auth.account) {
     return <>
       <div className="background-layer"/><div className="background-shade"/>
@@ -1426,9 +1410,9 @@ export default function App() {
         <label><span>{t('minPrice')}</span><div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={event => setMinPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
         <label><span>{t('potentialFrom')}</span><div className="input-suffix"><input type="number" min="0" value={minPotential} onChange={event => setMinPotential(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
         <label><span>{x.rankFilter}</span><CustomPicker value={rankFilter} label={x.rankFilter} options={[{ value: 'base', label: x.rankBase }, { value: 'all', label: x.rankAll }]} onChange={value => setRankFilter(value as RankFilter)}/></label>
-        <div className="filter-field category-filter"><span>{u.categories}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'categories' ? null : 'categories')}>{u.categories}<b>{categories.length}/{CATEGORY_IDS.length}</b><i>⌄</i></button>{openPanel === 'categories' ? <div className="category-panel"><div className="category-actions"><button onClick={() => setCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button onClick={() => setCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={categories.includes(id)} onChange={() => toggleCategory(id)}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
-        <div className="filter-field table-settings-filter"><span>{x.tableSettings}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'table' ? null : 'table')}>{x.chooseTableSettings}<b>{visibleRanges.length + visibleColumns.length}/{TIME_RANGES.length + OPTIONAL_COLUMNS.length}</b><i>⌄</i></button>{openPanel === 'table' ? <div className="category-panel table-settings-panel"><div className="category-actions"><button onClick={() => { setVisibleRanges([...TIME_RANGES]); setVisibleColumns([...OPTIONAL_COLUMNS]) }}>{u.selectAll}</button><button onClick={() => { setVisibleRanges(DEFAULT_RANGES); setVisibleColumns(DEFAULT_OPTIONAL_COLUMNS) }}>{u.defaults}</button></div><div className="table-settings-section"><strong>{x.priceChangeColumns}</strong><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={`change-${range}`}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div><div className="table-settings-section"><strong>{x.salesColumns}</strong><div className="range-options">{SALES_RANGES.map(range => { const column = `sales${range}` as SalesColumn; return <label className="range-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{rangeLabel(range, x)}</span></label> })}</div></div><div className="table-settings-section"><strong>{x.otherColumns}</strong><div className="table-extra-options">{(['potential', 'score', 'forecast'] as const).map(column => <label className="category-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{column === 'potential' ? x.potentialColumn : column === 'score' ? x.scoreColumn : x.forecastColumn}</span></label>)}</div></div></div> : null}</div>
-        <div className="baro-filter"><button type="button" className={`baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={activeBaroIds.length ? x.currentBaroHint : x.currentBaroEmpty} onClick={() => setBaroOnly(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19 6v8.5L12 21l-7-6.5V6l7-3.5Zm0 3.1L8.2 7.5v5.6l3.8 3.5 3.8-3.5V7.5L12 5.6Zm0 2.2 2.1 1.1v3L12 14l-2.1-2.1v-3L12 7.8Z"/></svg></button></div>
+        <div className="filter-field category-filter"><span>{u.categories}</span><PickerToggleButton label={u.categories} selected={categories.length} total={CATEGORY_IDS.length} open={openPanel === 'categories'} onClick={() => setOpenPanel(value => value === 'categories' ? null : 'categories')}/>{openPanel === 'categories' ? <div className="category-panel picker-popover" role="dialog" aria-label={u.categories}><div className="category-actions"><button type="button" onClick={() => setCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={categories.includes(id)} onChange={() => toggleCategory(id)}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
+        <div className="filter-field table-settings-filter"><span>{x.tableSettings}</span><PickerToggleButton label={x.chooseTableSettings} selected={visibleRanges.length + visibleColumns.length} total={TIME_RANGES.length + OPTIONAL_COLUMNS.length} open={openPanel === 'table'} onClick={() => setOpenPanel(value => value === 'table' ? null : 'table')}/>{openPanel === 'table' ? <div className="category-panel picker-popover table-settings-panel" role="dialog" aria-label={x.tableSettings}><div className="category-actions"><button type="button" onClick={() => { setVisibleRanges([...TIME_RANGES]); setVisibleColumns([...OPTIONAL_COLUMNS]) }}>{u.selectAll}</button><button type="button" onClick={() => { setVisibleRanges(DEFAULT_RANGES); setVisibleColumns(DEFAULT_OPTIONAL_COLUMNS) }}>{u.defaults}</button></div><div className="table-settings-section"><strong>{x.priceChangeColumns}</strong><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={`change-${range}`}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div><div className="table-settings-section"><strong>{x.salesColumns}</strong><div className="range-options">{SALES_RANGES.map(range => { const column = `sales${range}` as SalesColumn; return <label className="range-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{rangeLabel(range, x)}</span></label> })}</div></div><div className="table-settings-section"><strong>{x.otherColumns}</strong><div className="table-extra-options">{(['potential', 'score', 'forecast'] as const).map(column => <label className="category-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{column === 'potential' ? x.potentialColumn : column === 'score' ? x.scoreColumn : x.forecastColumn}</span></label>)}</div></div></div> : null}</div>
+        <div className="baro-filter"><button type="button" className={`baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={activeBaroIds.length ? x.currentBaroHint : x.currentBaroEmpty} onClick={() => setBaroOnly(value => !value)}><svg viewBox="0 0 32 38" aria-hidden="true"><path className="baro-glyph-stroke" d="m16 2 4 4-4 4-4-4 4-4ZM7.5 8.5l4 4-4 4-4-4 4-4Zm17 0 4 4-4 4-4-4 4-4ZM16 10l9 9-9 9-9-9 9-9Zm0 5 4 4-4 4-4-4 4-4Z"/><path className="baro-glyph-fill" d="m11 32 5 5 5-5Z"/></svg></button></div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className={`panel table-panel ${activeRefreshing ? 'table-refreshing' : ''}`} aria-busy={activeRefreshing}><div className="table-scroll"><table className="market-table"><thead><tr>
@@ -1460,7 +1444,7 @@ export default function App() {
           </tr>
         })}
       </tbody></table></div></section>
-      {!activeLoading && !activeError && activeTotal > 0 ? <nav className="pagination-bar" aria-label="Pagination"><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{activeTotal}</strong></div><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage(1)}>« {p.first}</button><button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>‹ {p.previous}</button><span>{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button disabled={page >= pageCount} onClick={() => setPage(value => Math.min(pageCount, value + 1))}>{p.next} ›</button><button disabled={page >= pageCount} onClick={() => setPage(pageCount)}>{p.last} »</button></div></nav> : null}
+      {!activeLoading && !activeError && activeTotal > 0 ? <PaginationBar locale={locale} page={page} pageCount={pageCount} total={activeTotal} showingStart={showingStart} showingEnd={showingEnd} onPage={setPage}/> : null}
     </main>}
     </Suspense>
     <PurchaseDialog locale={locale} name={purchaseTarget?.name || ''} currentPrice={purchaseTarget?.currentPrice ?? null} open={Boolean(purchaseTarget)} onClose={() => setPurchaseTarget(null)} onSave={value => { if (purchaseTarget) addPurchase({ itemId: purchaseTarget.itemId, slug: purchaseTarget.slug, name: purchaseTarget.name, marketKey: purchaseTarget.marketKey, selectedModRank: purchaseTarget.selectedModRank, ...value }); setPurchaseTarget(null) }}/>

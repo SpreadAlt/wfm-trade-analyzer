@@ -6,6 +6,8 @@ export type PickerOption = {
   disabled?: boolean
 }
 
+export const PickerChevron = ({ open = false }: { open?: boolean }) => <svg className={`picker-chevron ${open ? 'open' : ''}`} viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg>
+
 export const CustomPicker = ({ value, options, onChange, label, disabled = false, compact = false, className = '' }: {
   value: string
   options: PickerOption[]
@@ -70,7 +72,7 @@ export const CustomPicker = ({ value, options, onChange, label, disabled = false
       }}
     >
       <span>{selected?.label || value}</span>
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg>
+      <PickerChevron open={open}/>
     </button>
     {open ? <div id={listId} className="custom-picker-menu" role="listbox" aria-label={label}>
       {options.map(option => <button
