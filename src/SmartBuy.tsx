@@ -4,6 +4,7 @@ import type { SmartBuyJobStatus, SmartBuyResponse, SmartBuySeller, SmartBuySelle
 import type { FrameAccountController } from './Account'
 import type { CatalogItem } from './types'
 import type { Locale } from './i18n'
+import { AdSlot } from './AdSlot'
 import './smartBuy.css'
 
 const ONLINE = new Set(['online', 'ingame'])
@@ -215,6 +216,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
     auth.account.smartBuy.remaining > 0 &&
     cooldownRemaining <= 0
   )
+  const adAtBottom = !loading && Boolean(data || error)
 
   const itemFor = (itemId: string) => catalog.get(itemId)
   const itemName = (itemId: string) => itemFor(itemId)?.name || itemFor(itemId)?.englishName || itemId
@@ -513,6 +515,8 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
       {!linkedProfile ? <div className="smart-buy-state compact"><strong>{text.linkFirst}</strong></div> : null}
     </>}
 
+    {!adAtBottom ? <AdSlot placement="smart-buy" orientation="horizontal" locale={locale}/> : null}
+
     {loading ? <div className="smart-buy-progress">
       <div className="spinner"/>
       <div>
@@ -645,5 +649,6 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
           })}
         </div>}
     </> : null}
+    {adAtBottom ? <AdSlot placement="smart-buy" orientation="horizontal" locale={locale}/> : null}
   </section>
 }
