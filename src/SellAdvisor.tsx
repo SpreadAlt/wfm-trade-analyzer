@@ -5,7 +5,6 @@ import type { FrameAccountController } from './Account'
 import type { CatalogItem, Dimensions } from './types'
 import type { Locale } from './i18n'
 import { formatDimensions, ItemIcon } from './MarketVisuals'
-import { AdSlot } from './AdSlot'
 import './sellAdvisor.css'
 
 type WindowHours = 24 | 48
@@ -84,7 +83,6 @@ export const SellAdvisorPanel = ({ locale, catalog, auth }: {
   }, [cooldown])
 
   const canRun = Boolean(auth.account && linkedProfile && !loading && !auth.busy && auth.account.smartBuy.remaining > 0 && cooldown <= 0)
-  const adAtBottom = !loading && Boolean(data || error)
   const rows = useMemo(() => [...(data?.rows || [])].sort((left, right) => {
     const leftName = catalog.get(left.itemId)?.name || left.itemId
     const rightName = catalog.get(right.itemId)?.name || right.itemId
@@ -142,8 +140,6 @@ export const SellAdvisorPanel = ({ locale, catalog, auth }: {
       <button type="button" className="primary-action" disabled={!canRun} onClick={() => void run()}>{loading ? text.loading : data ? text.rerun : text.run}</button>
       <small>{auth.account.smartBuy.remaining}/{auth.account.smartBuy.limit} {text.remaining}{cooldown > 0 ? ` · ${text.cooldown} ${cooldown} ${text.seconds}` : ''}</small>
     </div>}
-
-    <AdSlot placement="sell-advisor" orientation="horizontal" locale={locale} moveToBottom={adAtBottom}/>
 
     {loading ? <div className="sell-advisor-state"><div className="spinner"/><strong>{text.loading}</strong>{status ? <small>{status.progress.stage} · {status.progress.percent}%{status.queue?.position ? ` · ${text.queue}: ${status.queue.position}` : ''}</small> : null}</div> : null}
     {error ? <div className="sell-advisor-state error-state"><strong>{text.error}</strong><small>{error}</small></div> : null}
