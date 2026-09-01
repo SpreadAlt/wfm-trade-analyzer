@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Locale } from './i18n'
+import { marketEventName, RegalAyaGlyph } from './MarketVisuals'
 import type { HistoryPoint, MarketEvent, TimeRange } from './types'
 
 const fmtNumber = (value: number, digits = 1) => value.toFixed(digits).replace(/\.0$/, '')
@@ -90,6 +91,7 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
     })
     return { event, x: px(nearest) }
   })
+  const visibleEventTypes = new Set(visibleEvents.map(({ event }) => event.eventType))
 
   const updateHover = (clientX: number, bounds: DOMRect) => {
     const viewX = (clientX - bounds.left) * width / Math.max(1, bounds.width)
@@ -122,8 +124,10 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
       {visibleEvents.map(({ event, x }) => <g key={event.fingerprint} className={`chart-event-marker ${event.eventType}`}>
         <line x1={x} x2={x} y1={pad.top} y2={height - pad.bottom} className="event-guide"/>
         <circle cx={x} cy={pad.top + 10} r="8" className="event-node"/>
-        <text x={x} y={pad.top + 14} textAnchor="middle" className="event-symbol">{event.eventType === 'baro' ? 'B' : 'P'}</text>
-        <title>{`${event.eventType === 'baro' ? "Baro Ki'Teer" : 'Prime Resurgence'} · ${formatDate(event.startAt || '', locale)}`}</title>
+        {event.eventType === 'baro'
+          ? <text x={x} y={pad.top + 14} textAnchor="middle" className="event-symbol">B</text>
+          : <RegalAyaGlyph x={x - 6.5} y={pad.top + 3.5} size={13} className="chart-regal-aya-glyph"/>}
+        <title>{`${marketEventName(event.eventType, locale)} · ${formatDate(event.startAt || '', locale)}`}</title>
       </g>)}
       {activePoint ? <g className="chart-hover" aria-hidden="true">
         <line x1={activeX} x2={activeX} y1={pad.top} y2={height - pad.bottom} className="hover-guide"/>
@@ -138,6 +142,6 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
       <span><i className="tooltip-dot max-dot"/>{labels.max}<b>{activePoint.max == null ? '—' : fmtNumber(activePoint.max)}p</b></span>
       <span><i className="tooltip-dot volume-dot"/>{labels.sales}<b>{activePoint.sales}</b></span>
     </div> : null}
-    <div className="legend"><span><i className="legend-dot min-dot"/>{labels.min}</span><span><i className="legend-dot median-dot"/>{labels.median}</span><span><i className="legend-dot max-dot"/>{labels.max}</span><span><i className="legend-dot volume-dot"/>{labels.sales}</span></div>
+    <div className="legend"><span><i className="legend-dot min-dot"/>{labels.min}</span><span><i className="legend-dot median-dot"/>{labels.median}</span><span><i className="legend-dot max-dot"/>{labels.max}</span><span><i className="legend-dot volume-dot"/>{labels.sales}</span>{visibleEventTypes.has('baro') ? <span><i className="event-legend-symbol baro">B</i>{marketEventName('baro', locale)}</span> : null}{visibleEventTypes.has('prime_resurgence') ? <span><RegalAyaGlyph className="event-legend-regal-aya"/>{marketEventName('prime_resurgence', locale)}</span> : null}</div>
   </div>
 }

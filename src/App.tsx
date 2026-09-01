@@ -3,6 +3,8 @@ import { fetchCatalog, fetchEvents, fetchHourly, fetchHourlyIndex, fetchItem, fe
 import { CustomPicker, PickerChevron } from './CustomPicker'
 import { getExtraText } from './extraText'
 import { HistoryChart } from './HistoryChart'
+import { INFO_PAGE_PATHS, InfoPage, infoCopy } from './InfoPage'
+import type { InfoPageKind } from './InfoPage'
 import { CATEGORY_IDS, ForecastIndicator, formatDimensions, ItemIcon, MarketEventBadge } from './MarketVisuals'
 import type { CategoryId } from './MarketVisuals'
 import { AccountButton, createTemporaryAccount, loadTemporaryAccount, portfolioText, PurchaseDialog, saveTemporaryAccount } from './Portfolio'
@@ -331,12 +333,14 @@ const loadOptionalColumns = (): OptionalColumn[] => {
     return parsed.filter((value): value is OptionalColumn => OPTIONAL_COLUMNS.includes(value))
   } catch { return DEFAULT_OPTIONAL_COLUMNS }
 }
-type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
+type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner' | 'info'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
 const readRoute = (): RouteState => {
   const match = location.pathname.match(/^\/items?\/([^/]+)\/?$/)
   const params = new URLSearchParams(location.search)
   const rankValue = Number(params.get('rank'))
   const rank = params.has('rank') && Number.isInteger(rankValue) && rankValue >= 0 ? rankValue : null
+  const infoKind = (Object.entries(INFO_PAGE_PATHS).find(([, path]) => new RegExp(`^${path}\/?$`).test(location.pathname))?.[0] || null) as InfoPageKind | null
+  if (infoKind) return { kind: 'info', slug: infoKind, id: null, variant: null, rank: null }
   if (/^\/smart-buy\/?$/.test(location.pathname)) {
     return { kind: 'smartbuy', slug: null, id: null, variant: null, rank: null }
   }
@@ -359,12 +363,13 @@ const readRoute = (): RouteState => {
     ? { kind: 'item', slug: decodeURIComponent(match[1]), id: params.get('id'), variant: params.get('variant'), rank }
     : { kind: 'scanner', slug: null, id: null, variant: null, rank: null }
 }
-const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; setLocale: (value: Locale) => void; theme: Theme; setTheme: (value: Theme) => void; t: T }) => <footer className="footer-bar">
+const FooterBar = ({ locale, setLocale, theme, setTheme, onInfoNavigate, t }: { locale: Locale; setLocale: (value: Locale) => void; theme: Theme; setTheme: (value: Theme) => void; onInfoNavigate: (kind: InfoPageKind) => void; t: T }) => <footer className="footer-bar">
   <a className="footer-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
   <div className="footer-control"><span>{t('language')}</span><CustomPicker compact value={locale} label={t('language')} options={Object.entries(localeNames).map(([value, label]) => ({ value, label }))} onChange={value => setLocale(value as Locale)}/></div>
   <div className="footer-control"><span>{t('theme')}</span><CustomPicker compact value={theme} label={t('theme')} options={[{ value: 'system', label: t('themeSystem') }, { value: 'light', label: t('themeLight') }, { value: 'dark', label: t('themeDark') }]} onChange={value => setTheme(value as Theme)}/></div>
   <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')} ↗</a>
-  <div className="footer-version">{t('version')} 0.9.0</div>
+  <div className="footer-version">{t('version')} 0.9.1</div>
+  <nav className="footer-info-links" aria-label={infoCopy[locale].navigationLabel}>{(Object.keys(INFO_PAGE_PATHS) as InfoPageKind[]).map(kind => <a key={kind} href={INFO_PAGE_PATHS[kind]} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onInfoNavigate(kind) }}>{infoCopy[locale].nav[kind]}</a>)}</nav>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 const PickerToggleButton = ({ label, selected, total, open, onClick }: { label: string; selected: number; total: number; open: boolean; onClick: () => void }) => <button type="button" className={`picker-toggle-button ${open ? 'open' : ''}`} aria-expanded={open} aria-haspopup="dialog" onClick={onClick}><span>{label}</span><b>{selected}/{total}</b><PickerChevron open={open}/></button>
@@ -908,7 +913,7 @@ export default function App() {
     return () => { cancelled = true }
   }, [auth.account?.user.id])
   useEffect(() => {
-    if (!auth.account) { setCatalog(new Map()); return }
+    if (!auth.account || route.kind === 'info') { if (!auth.account) setCatalog(new Map()); return }
     const controller = new AbortController()
     fetchCatalog(locale, controller.signal).then(response => {
       const next = new Map(response.items.map(item => [item.id, item]))
@@ -918,13 +923,13 @@ export default function App() {
       // Keep the last complete localized catalog during a temporary WFM/API failure.
     })
     return () => controller.abort()
-  }, [locale, auth.account?.user.id, catalogRefresh])
+  }, [locale, auth.account?.user.id, catalogRefresh, route.kind])
   useEffect(() => {
-    if (!auth.account) { setMarketEvents([]); return }
+    if (!auth.account || route.kind === 'info') { if (!auth.account) setMarketEvents([]); return }
     const controller = new AbortController()
     fetchEvents(controller.signal).then(response => setMarketEvents(response.events)).catch(() => setMarketEvents([]))
     return () => controller.abort()
-  }, [hourlyRefresh, auth.account?.user.id])
+  }, [hourlyRefresh, auth.account?.user.id, route.kind])
   useEffect(() => {
     if (!auth.account) {
       setPortfolioMarketRows([])
@@ -1271,6 +1276,13 @@ export default function App() {
   }
   const openItem = (row: DisplayMarketRow) => { history.pushState({ frameanalyticsFromScanner: true }, '', itemHref(row)); setRoute(readRoute()); setOpenPanel(null); scrollTo({ top: 0 }) }
   const closeItem = () => { if (history.state?.frameanalyticsFromScanner || history.state?.frameanalyticsFromPortfolio) history.back(); else { history.replaceState(null, '', '/'); setRoute(readRoute()) }; scrollTo({ top: 0 }) }
+  const openInfo = (kind: InfoPageKind) => {
+    if (route.kind === 'info' && route.slug === kind) return
+    history.pushState({ frameanalyticsInfoFrom: location.pathname }, '', INFO_PAGE_PATHS[kind])
+    setRoute(readRoute())
+    setOpenPanel(null)
+    scrollTo({ top: 0 })
+  }
   const openPortfolio = () => {
     if (route.kind === 'portfolio') return
     const params = new URLSearchParams({ platform, period: String(period), crossplay: String(crossplay) })
@@ -1371,6 +1383,10 @@ export default function App() {
     setRoute(readRoute())
   }, [route.kind, auth.account?.access?.developer, auth.account?.access?.axiScanner])
   useEffect(() => {
+    if (route.kind === 'info' && route.slug && route.slug in INFO_PAGE_PATHS) {
+      history.replaceState(history.state, '', INFO_PAGE_PATHS[route.slug as InfoPageKind])
+      return
+    }
     const params = new URLSearchParams(location.search)
     params.set('platform', platform); params.set('period', String(period)); params.set('crossplay', String(crossplay))
     if (route.kind === 'item' && route.id) params.set('id', route.id)
@@ -1393,11 +1409,18 @@ export default function App() {
             : '/'
     history.replaceState(history.state, '', `${path}?${params}`)
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
+  if (route.kind === 'info' && route.slug && route.slug in INFO_PAGE_PATHS) {
+    return <>
+      <div className="background-layer"/><div className="background-shade"/>
+      <InfoPage kind={route.slug as InfoPageKind} locale={locale}/>
+      <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
+    </>
+  }
   if (auth.loading || !auth.account) {
     return <>
       <div className="background-layer"/><div className="background-shade"/>
       <ClosedBetaGate locale={locale} auth={auth}/>
-      <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
+      <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
     </>
   }
   return <>
@@ -1448,6 +1471,6 @@ export default function App() {
     </main>}
     </Suspense>
     <PurchaseDialog locale={locale} name={purchaseTarget?.name || ''} currentPrice={purchaseTarget?.currentPrice ?? null} open={Boolean(purchaseTarget)} onClose={() => setPurchaseTarget(null)} onSave={value => { if (purchaseTarget) addPurchase({ itemId: purchaseTarget.itemId, slug: purchaseTarget.slug, name: purchaseTarget.name, marketKey: purchaseTarget.marketKey, selectedModRank: purchaseTarget.selectedModRank, ...value }); setPurchaseTarget(null) }}/>
-    <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
+    <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
   </>
 }
