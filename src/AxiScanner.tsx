@@ -10,7 +10,7 @@ type AxiScanType = 'axi-rare' | 'prime-sets'
 type MarkupKind = 'percent' | 'platinum'
 type MarkupSettings = { kind: MarkupKind; value: number }
 
-type AxiStart = { ok: true; jobId: string; state: string; reused?: boolean; queuedAt: string; expiresAt: string; durationMinutes?: number; scanType?: AxiScanType; markup?: MarkupSettings; minimumAverage24h?: number }
+type AxiStart = { ok: true; jobId: string; state: string; reused?: boolean; queuedAt: string; expiresAt: string; durationMinutes?: number; scanType?: AxiScanType; markup?: MarkupSettings; minimumAverage24h?: number; progress?: AxiJobStatus['progress']; error?: string | null }
 type AxiStop = { ok: true; jobId: string; state: 'cancelled'; stoppedAt: string }
 type AxiJobStatus = { ok: true; jobId: string; state: string; expiresAt: string; scanType?: AxiScanType; markup?: MarkupSettings; minimumAverage24h?: number; progress?: { stage?: string; processed?: number; total?: number; percent?: number; cycle?: number; completedCycles?: number }; error?: string | null }
 type AxiRareRow = {
@@ -133,11 +133,9 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
   const minimumAverage24h = minimumAverageByType[scanType]
 
   const refresh = useCallback(async (id: string) => {
-    const [nextStatus, nextResult] = await Promise.all([
-      accountRequestJson<AxiJobStatus>(`/api/axi-scanner/status?id=${encodeURIComponent(id)}`),
-      accountRequestJson<AxiResult>(`/api/axi-scanner/result?id=${encodeURIComponent(id)}`)
-    ])
+    const nextStatus = await accountRequestJson<AxiJobStatus>(`/api/axi-scanner/status?id=${encodeURIComponent(id)}`)
     setStatus(nextStatus)
+    const nextResult = await accountRequestJson<AxiResult>(`/api/axi-scanner/result?id=${encodeURIComponent(id)}`)
     setResult(nextResult)
     setError(null)
     return nextStatus
@@ -158,7 +156,7 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
         }
       }
     }
-    void poll()
+    timer = window.setTimeout(poll, 1500)
     return () => { stopped = true; window.clearTimeout(timer) }
   }, [jobId, refresh])
 
@@ -202,7 +200,18 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
       })
       sessionStorage.setItem(`${JOB_KEY_PREFIX}${scanType}`, next.jobId)
       setJobId(next.jobId)
-      await refresh(next.jobId)
+      setStatus({
+        ok: true,
+        jobId: next.jobId,
+        state: next.state,
+        expiresAt: next.expiresAt,
+        scanType: next.scanType || scanType,
+        markup: next.markup || markup,
+        minimumAverage24h: next.minimumAverage24h ?? minimumAverage24h,
+        progress: next.progress,
+        error: next.error || null
+      })
+      setResult(null)
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value))
     } finally {

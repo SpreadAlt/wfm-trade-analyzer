@@ -927,20 +927,25 @@ const handleDeveloperProcessQueues = async (
   if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
   if (!env.SMART_BUY_API) return json({ ok: false, error: "SMART_BUY_API binding is missing" }, 503);
   if (!env.SMART_BUY_START_SECRET) return json({ ok: false, error: "Private process metrics are not configured" }, 503);
-  const upstream = await env.SMART_BUY_API.fetch("https://frameanalytics-api.internal/api/developer/process-queues", {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
-    },
-  });
-  return new Response(await upstream.text(), {
-    status: upstream.status,
-    headers: {
-      "Content-Type": upstream.headers.get("Content-Type") || "application/json; charset=utf-8",
-      "Cache-Control": "private, no-store",
-    },
-  });
+  try {
+    const upstream = await env.SMART_BUY_API.fetch("https://frameanalytics-api.internal/api/developer/process-queues", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
+      },
+      signal: AbortSignal.timeout(12_000),
+    });
+    return new Response(await upstream.text(), {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("Content-Type") || "application/json; charset=utf-8",
+        "Cache-Control": "private, no-store",
+      },
+    });
+  } catch (error) {
+    return json({ ok: false, error: `Process queue metrics failed: ${error instanceof Error ? error.message : String(error)}` }, 502);
+  }
 };
 
 type DesktopNotification = {
@@ -1090,26 +1095,34 @@ const handleAxiScanner = async (
     if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
     if (!env.SMART_BUY_START_SECRET) return json({ ok: false, error: "Axi scanner service is not configured" }, 503);
     const body = (await request.text()).trim() || "{}";
-    const upstream = await env.SMART_BUY_API.fetch("https://frameanalytics-api.internal/api/axi-scanner-v1/start", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
-      },
-      body,
-      signal: AbortSignal.timeout(15_000),
-    });
-    const payload = await upstream.json().catch(() => null) as SmartBuyJobStart | { error?: unknown } | null;
-    if (!upstream.ok || !payload || !("jobId" in payload)) {
-      return json({ ok: false, error: String(payload && "error" in payload ? payload.error : `Axi scanner start failed: HTTP ${upstream.status}`) }, upstream.status || 502);
+    try {
+      const upstream = await env.SMART_BUY_API.fetch("https://frameanalytics-api.internal/api/axi-scanner-v1/start", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
+        },
+        body,
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = await upstream.json().catch(() => null) as SmartBuyJobStart | { error?: unknown } | null;
+      if (!upstream.ok || !payload || !("jobId" in payload)) {
+        return json({ ok: false, error: String(payload && "error" in payload ? payload.error : `Axi scanner start failed: HTTP ${upstream.status}`) }, upstream.status || 502);
+      }
+      const expiresAt = Date.parse(String(payload.expiresAt || ""));
+      try {
+        await env.frameanalytics_auth.prepare(`
+          INSERT OR IGNORE INTO frameanalytics_axi_run (job_id, requested_by, created_at, expires_at)
+          VALUES (?, ?, ?, ?)
+        `).bind(payload.jobId, guard.user.id, nowMs(), Number.isFinite(expiresAt) ? expiresAt : null).run();
+      } catch (error) {
+        console.error("frameanalytics-axi-run-history-error", error);
+      }
+      return json(payload, 202);
+    } catch (error) {
+      return json({ ok: false, error: `Axi scanner start failed: ${error instanceof Error ? error.message : String(error)}` }, 502);
     }
-    const expiresAt = Date.parse(String(payload.expiresAt || ""));
-    await env.frameanalytics_auth.prepare(`
-      INSERT OR IGNORE INTO frameanalytics_axi_run (job_id, requested_by, created_at, expires_at)
-      VALUES (?, ?, ?, ?)
-    `).bind(payload.jobId, guard.user.id, nowMs(), Number.isFinite(expiresAt) ? expiresAt : null).run();
-    return json(payload, 202);
   }
 
   if (action === "stop") {

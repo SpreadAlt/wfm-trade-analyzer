@@ -131,6 +131,7 @@ type WfmTelemetry = {
 type ProcessQueues = {
   ok: true
   generatedAt: string
+  warnings?: string[]
   queues: Record<string, { label: string; backlogCount: number | null; oldestMessageAgeSeconds: number | null; error?: string }>
   active: {
     axiScanner: null | { jobId: string; state: string; scanType: string; queuedAt: string | null; startedAt: string | null; expiresAt: string | null; progress?: { processed?: number; total?: number; percent?: number } }
@@ -396,7 +397,8 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     </nav>
     <section className="panel developer-process-panel" hidden={category !== 'overview'}>
       <header className="developer-section-heading"><div><span className="eyebrow">Runtime</span><h2>{ru ? 'Процессы в очереди' : 'Queued processes'}</h2><p>{ru ? 'Очереди Cloudflare и процессы, ожидающие общий WFM Gateway.' : 'Cloudflare queues and processes waiting for the shared WFM Gateway.'}</p></div><button type="button" className="secondary-action" onClick={() => void Promise.all([loadProcessQueues(), loadTelemetry()])}>{ru ? 'Обновить' : 'Refresh'}</button></header>
-      {processQueuesError ? <div className="account-message error">{processQueuesError}</div> : null}
+      {processQueuesError ? <div className="developer-inline-warning" role="status"><div><strong>{ru ? 'Метрики очередей временно недоступны' : 'Queue metrics are temporarily unavailable'}</strong><span>{ru ? 'Gateway продолжает работать. Обновите блок через несколько секунд.' : 'The Gateway is still running. Refresh this section in a few seconds.'}</span></div><button type="button" className="secondary-action compact" onClick={() => void loadProcessQueues()}>{ru ? 'Повторить' : 'Retry'}</button><code title={processQueuesError}>{processQueuesError}</code></div> : null}
+      {processQueues?.warnings?.length ? <details className="developer-metric-warnings"><summary>{ru ? 'Часть данных ещё загружается' : 'Some metrics are still loading'}</summary><code>{processQueues.warnings.join(' · ')}</code></details> : null}
       <div className="developer-process-grid">
         {Object.entries(processQueues?.queues || {}).map(([key, queue]) => <article key={key}><span>{queue.label}</span><strong>{queue.backlogCount ?? '—'}</strong><small>{queue.error || (queue.oldestMessageAgeSeconds ? `${ru ? 'старейшее' : 'oldest'}: ${Math.round(queue.oldestMessageAgeSeconds)}s` : (ru ? 'сообщений в очереди' : 'queued messages'))}</small></article>)}
         <article><span>WFM Gateway</span><strong>{telemetry?.current.pending ?? '—'}</strong><small>{ru ? 'ожидают допуска' : 'waiting for admission'}</small></article>
