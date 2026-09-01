@@ -191,6 +191,7 @@ export type MetricsItem = MetricSeries & {
   variants: Record<string, MetricSeries>
 }
 export type MetricsResponse = { ok: true; metricsVersion: string; rulesVersion: string; platform: Platform; latestDate: string; referenceDate: string; period: null; item: MetricsItem }
+export type MetricsBatchResponse = { ok: true; metricsVersion: string; rulesVersion: string; platform: Platform; requested: number; returned: number; items: Record<string, MetricsItem> }
 
 export type CatalogItem = { id: string; slug: string; name: string; englishName: string; category: string; subcategory: string; defaultEnabled: boolean; thumb: string | null; icon: string | null }
 export type CatalogResponse = { ok: true; catalogVersion: string; language: string; generatedAt: string; catalogTotal: number; upstreamAvailable: boolean; matchedMarketItems: number; items: CatalogItem[] }

@@ -67,6 +67,7 @@ const ANALYTICS_READ_PATHS = new Set([
   "/api/scanner-v3",
   "/api/item-v3",
   "/api/metrics-v3",
+  "/api/metrics-v3/batch",
   "/api/hourly-v1",
   "/api/hourly-index-v1",
   "/api/events-v1",

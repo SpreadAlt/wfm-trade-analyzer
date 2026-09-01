@@ -1,4 +1,4 @@
-import type { CatalogResponse, EventsResponse, HourlyIndexQuery, HourlyIndexResponse, HourlyResponse, ItemResponse, ManualMarketItemResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
+import type { CatalogResponse, EventsResponse, HourlyIndexQuery, HourlyIndexResponse, HourlyResponse, ItemResponse, ManualMarketItemResponse, MetricsBatchResponse, MetricsResponse, Platform, ScannerQuery, ScannerResponse } from './types'
 
 export const API_BASE = ''
 
@@ -29,8 +29,30 @@ const requestJson = async <T,>(
   return response.json() as Promise<T>
 }
 
-const fetchJson = <T,>(path: string, signal?: AbortSignal) =>
-  requestJson<T>(path, { method: 'GET', signal })
+const readCache = new Map<string, { expiresAt: number; value: unknown }>()
+const cacheTtl = (path: string) => {
+  if (path.startsWith('/api/catalog-v3')) return 10 * 60 * 1000
+  if (path.startsWith('/api/item-v3') || path.startsWith('/api/metrics-v3')) return 5 * 60 * 1000
+  if (path.startsWith('/api/events-v1')) return 60 * 1000
+  if (path.startsWith('/api/hourly-index-v1') || path.startsWith('/api/hourly-v1') || path.startsWith('/api/scanner-v3')) return 30 * 1000
+  return 0
+}
+const fetchJson = async <T,>(path: string, signal?: AbortSignal) => {
+  const cached = readCache.get(path)
+  if (cached && cached.expiresAt > Date.now()) return structuredClone(cached.value) as T
+  if (cached) readCache.delete(path)
+  const value = await requestJson<T>(path, { method: 'GET', signal })
+  const ttl = cacheTtl(path)
+  if (ttl && !signal?.aborted) {
+    readCache.set(path, { expiresAt: Date.now() + ttl, value: structuredClone(value) })
+    while (readCache.size > 160) {
+      const oldest = readCache.keys().next().value
+      if (oldest === undefined) break
+      readCache.delete(oldest)
+    }
+  }
+  return value
+}
 export const fetchScanner = (query: ScannerQuery, signal?: AbortSignal) => {
   const params = new URLSearchParams({
     platform: query.platform,
@@ -61,6 +83,10 @@ export const fetchItem = (platform: Platform, id: string, signal?: AbortSignal) 
 export const fetchMetrics = (platform: Platform, id: string, signal?: AbortSignal) => {
   const params = new URLSearchParams({ platform, id })
   return fetchJson<MetricsResponse>(`/api/metrics-v3?${params}`, signal)
+}
+export const fetchMetricsBatch = (platform: Platform, ids: string[], signal?: AbortSignal) => {
+  const params = new URLSearchParams({ platform, ids: [...new Set(ids)].join(',') })
+  return fetchJson<MetricsBatchResponse>(`/api/metrics-v3/batch?${params}`, signal)
 }
 export const fetchCatalog = (language: string, signal?: AbortSignal) => {
   const params = new URLSearchParams({ lang: language, v: 'resilient-1' })

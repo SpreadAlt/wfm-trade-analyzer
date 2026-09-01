@@ -31,7 +31,7 @@ export const AdminItemsPage = ({ locale, onBack, onAdded }: { locale: Locale; on
 
   return <main className="app-shell admin-items-page">
     <header className="topbar">
-      <div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a></div>
+      <div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a></div>
       <button type="button" className="back-button" onClick={onBack}>← {ru ? 'Назад к статистике' : 'Back to statistics'}</button>
     </header>
     <section className="panel admin-items-card">

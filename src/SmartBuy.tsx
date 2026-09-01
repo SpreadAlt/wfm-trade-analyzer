@@ -4,6 +4,7 @@ import type { SmartBuyJobStatus, SmartBuyResponse, SmartBuySeller, SmartBuySelle
 import type { FrameAccountController } from './Account'
 import type { CatalogItem } from './types'
 import type { Locale } from './i18n'
+import { CustomPicker } from './CustomPicker'
 import './smartBuy.css'
 
 const ONLINE = new Set(['online', 'ingame'])
@@ -535,14 +536,14 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
 
         <label className="smart-buy-filter-field">
           <span>{text.deviation}</span>
-          <select value={deviation} onChange={event => setDeviation(event.target.value as LimitValue)}>
-            <option value="0">{text.minimumOnly}</option>
-            <option value="5">{text.upTo('5')}</option>
-            <option value="10">{text.upTo('10')}</option>
-            <option value="20">{text.upTo('20')}</option>
-            <option value="50">{text.upTo('50')}</option>
-            <option value="any">{text.any}</option>
-          </select>
+          <CustomPicker compact value={deviation} label={text.deviation} options={[
+            { value: '0', label: text.minimumOnly },
+            { value: '5', label: text.upTo('5') },
+            { value: '10', label: text.upTo('10') },
+            { value: '20', label: text.upTo('20') },
+            { value: '50', label: text.upTo('50') },
+            { value: 'any', label: text.any }
+          ]} onChange={value => setDeviation(value as LimitValue)}/>
         </label>
 
         <label className="smart-buy-check">

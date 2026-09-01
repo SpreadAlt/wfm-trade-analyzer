@@ -380,7 +380,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
 
   return <main className="app-shell developer-shell">
     <div className="detail-navigation">
-      <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a>
+      <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
       <button type="button" className="back-button" onClick={onBack}>← {ru ? 'К профилю' : 'Back to profile'}</button>
     </div>
     <section className="panel developer-heading">

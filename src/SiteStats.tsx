@@ -172,7 +172,7 @@ export const SiteStatsPage = ({ locale }: { locale: Locale }) => {
 
   return <main className="app-shell site-stats-shell">
     <div className="site-stats-topbar">
-      <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a>
+      <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
       <button type="button" className="retry-button" onClick={() => setReload(value => value + 1)} disabled={loading}>{text.refresh}</button>
     </div>
 

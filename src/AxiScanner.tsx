@@ -3,6 +3,7 @@ import type { Locale } from './i18n'
 import type { CatalogItem } from './types'
 import { ItemIcon } from './MarketVisuals'
 import { accountRequestJson } from './Account'
+import { CustomPicker } from './CustomPicker'
 import './developer.css'
 import './axiScanner.css'
 
@@ -133,9 +134,11 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
   const minimumAverage24h = minimumAverageByType[scanType]
 
   const refresh = useCallback(async (id: string) => {
-    const nextStatus = await accountRequestJson<AxiJobStatus>(`/api/axi-scanner/status?id=${encodeURIComponent(id)}`)
+    const [nextStatus, nextResult] = await Promise.all([
+      accountRequestJson<AxiJobStatus>(`/api/axi-scanner/status?id=${encodeURIComponent(id)}`),
+      accountRequestJson<AxiResult>(`/api/axi-scanner/result?id=${encodeURIComponent(id)}`)
+    ])
     setStatus(nextStatus)
-    const nextResult = await accountRequestJson<AxiResult>(`/api/axi-scanner/result?id=${encodeURIComponent(id)}`)
     setResult(nextResult)
     setError(null)
     return nextStatus
@@ -292,11 +295,11 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
     : (ru ? 'Сравнивает минимальный онлайн sell-order Prime Set со средней ценой закрытых продаж за 24 часа.' : 'Compares each Prime Set’s minimum online sell order with its 24h closed-sale average.')
 
   return <main className="app-shell axi-shell">
-    <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {ru ? 'К профилю' : 'Back to profile'}</button></div>
+    <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {ru ? 'К профилю' : 'Back to profile'}</button></div>
     <section className="panel axi-heading">
       <div><span className="eyebrow">Axi · Prime market</span><h1>{ru ? 'Сканер Axi и Prime Set' : 'Axi and Prime Set scanner'}</h1><p>{modeDescription}</p></div>
       <div className="axi-heading-actions">
-        <label className="axi-duration"><span>{ru ? 'Время сканирования' : 'Scan duration'}</span><select value={durationMinutes} disabled={running || starting} onChange={event => setDurationMinutes(Number(event.target.value))}>{DURATION_OPTIONS.map(minutes => <option value={minutes} key={minutes}>{durationLabel(minutes)}</option>)}</select></label>
+        <label className="axi-duration"><span>{ru ? 'Время сканирования' : 'Scan duration'}</span><CustomPicker compact value={String(durationMinutes)} disabled={running || starting} label={ru ? 'Время сканирования' : 'Scan duration'} options={DURATION_OPTIONS.map(minutes => ({ value: String(minutes), label: durationLabel(minutes) }))} onChange={value => setDurationMinutes(Number(value))}/></label>
         <button type="button" className={`secondary-action axi-notification ${notificationsEnabled ? 'active' : ''}`} onClick={() => void enableNotifications()} aria-pressed={notificationsEnabled}>🔔 <span>{notificationsEnabled ? (ru ? 'Уведомления включены' : 'Notifications on') : (ru ? 'Включить уведомления' : 'Enable alerts')}</span></button>
         {running ? <button type="button" className="secondary-action axi-stop" disabled={stopping} onClick={() => void stop()}>{stopping ? (ru ? 'Остановка…' : 'Stopping…') : (ru ? 'Остановить' : 'Stop')}</button> : <button type="button" className="primary-action axi-start" disabled={starting} onClick={() => void start()}>{starting ? (ru ? 'Запуск…' : 'Starting…') : `${ru ? 'Запустить на' : 'Run for'} ${durationLabel(durationMinutes)}`}</button>}
       </div>
@@ -308,7 +311,7 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
       </div>
       <div className="axi-markup-setting">
         <span>{ru ? 'Минимальная наценка для уведомления' : 'Minimum alert markup'}</span>
-        <div><input type="number" min="0" step="1" value={markup.value} disabled={running || starting} onChange={event => updateMarkup({ value: Number(event.target.value) })}/><select value={markup.kind} disabled={running || starting} onChange={event => updateMarkup({ kind: event.target.value as MarkupKind })}><option value="percent">%</option><option value="platinum">{ru ? 'платина' : 'platinum'}</option></select></div>
+        <div><input type="number" min="0" step="1" value={markup.value} disabled={running || starting} onChange={event => updateMarkup({ value: Number(event.target.value) })}/><CustomPicker compact value={markup.kind} disabled={running || starting} label={ru ? 'Тип наценки' : 'Markup type'} options={[{ value: 'percent', label: '%' }, { value: 'platinum', label: ru ? 'платина' : 'platinum' }]} onChange={value => updateMarkup({ kind: value as MarkupKind })}/></div>
         <small>{scanType === 'axi-rare' ? (ru ? 'Считается от цены реликвии.' : 'Calculated from the relic price.') : (ru ? 'Считается от минимального онлайн-ордера комплекта.' : 'Calculated from the set’s minimum online order.')}</small>
       </div>
       <div className="axi-markup-setting axi-average-setting">

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { fetchCatalog, fetchEvents, fetchHourly, fetchHourlyIndex, fetchItem, fetchMetrics, fetchScanner } from './api'
+import { fetchCatalog, fetchEvents, fetchHourly, fetchHourlyIndex, fetchItem, fetchMetrics, fetchMetricsBatch, fetchScanner } from './api'
+import { CustomPicker } from './CustomPicker'
 import { getExtraText } from './extraText'
 import { HistoryChart } from './HistoryChart'
 import { CATEGORY_IDS, ForecastIndicator, formatDimensions, ItemIcon, MarketEventBadge } from './MarketVisuals'
@@ -13,6 +14,7 @@ import { accountRequestJson, AccountPanel, useFrameAccount } from './Account'
 import type { FrameAccountController } from './Account'
 import { uiText } from './uiText'
 import type { UiText } from './uiText'
+import type { InfoPageKind } from './InfoPage'
 import type {
   AnalysisPeriod, CatalogItem, HourlyIndexRow, HourlyIndexResponse, HourlyRange, HourlyResponse, HourlySeries, ItemDetail, ItemSeries,
   MarketEvent, MetricSeries, MetricsItem, PeriodAnalytics, Platform, ScannerItem, ScannerMode, ScannerSignal,
@@ -23,6 +25,7 @@ const SellAdvisorPanel = lazy(() => import('./SellAdvisor').then(module => ({ de
 const AdminItemsPage = lazy(() => import('./AdminItems').then(module => ({ default: module.AdminItemsPage })))
 const DeveloperDashboard = lazy(() => import('./DeveloperDashboard').then(module => ({ default: module.DeveloperDashboard })))
 const AxiScannerPage = lazy(() => import('./AxiScanner').then(module => ({ default: module.AxiScannerPage })))
+const InfoPage = lazy(() => import('./InfoPage').then(module => ({ default: module.InfoPage })))
 type T = (key: TranslationKey) => string
 type OpenPanel = 'categories' | 'table' | null
 type PageSize = 25 | 50 | 100 | 200
@@ -31,6 +34,7 @@ type SalesColumn = `sales${SalesRange}`
 type OptionalColumn = SalesColumn | 'potential' | 'score' | 'forecast'
 type DeveloperResaleAlert = { name: string; theoreticalProfit: number; minimumOnlineSell: number; averagePrice24h: number; wfmUrl: string | null }
 type DeveloperResaleAlertResponse = { generatedAt: string | null; alerts: DeveloperResaleAlert[] }
+type PurchaseTarget = { itemId: string; slug: string; name: string; marketKey: string; selectedModRank: number | null; currentPrice: number | null }
 const RESALE_NOTIFY_KEY = 'frameanalytics.resale-v1.notifications'
 const RESALE_NOTIFIED_SCAN_KEY = 'frameanalytics.resale-v1.notified-scan'
 type DisplayMarketRow = {
@@ -199,6 +203,31 @@ const manualDetailFromHourly = (item: CatalogItem, hourly: HourlyResponse, prefe
     variants
   }
 }
+const manualDetailFromScanner = (item: CatalogItem, summary: ScannerItem): ItemDetail => ({
+  id: summary.id,
+  name: item.name || summary.displayName || summary.name,
+  slug: summary.slug,
+  category: summary.category,
+  subcategory: summary.subcategory,
+  defaultEnabled: summary.defaultEnabled,
+  marketMode: summary.marketMode,
+  selectedModRank: summary.selectedModRank,
+  dimensions: summary.dimensions,
+  hasHistory: summary.hasHistory,
+  hasCurrentDay: summary.hasCurrentDay,
+  historyPoints: 0,
+  firstTradeDate: null,
+  lastTradeDate: summary.updatedDate,
+  staleDays: null,
+  currentPrice: summary.currentPrice,
+  change1h: summary.change1h,
+  change24h: summary.change24h,
+  change7d: summary.change7d,
+  sales24h: summary.sales24h,
+  updatedDate: summary.updatedDate,
+  history: [],
+  variants: {}
+})
 const hourlyIndexRowFromScanner = (item: ScannerItem): HourlyIndexRow => ({
   rowId: item.rowId,
   itemId: item.itemId,
@@ -304,7 +333,7 @@ const loadOptionalColumns = (): OptionalColumn[] => {
     return parsed.filter((value): value is OptionalColumn => OPTIONAL_COLUMNS.includes(value))
   } catch { return DEFAULT_OPTIONAL_COLUMNS }
 }
-type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
+type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner' | InfoPageKind; slug: string | null; id: string | null; variant: string | null; rank: number | null }
 const readRoute = (): RouteState => {
   const match = location.pathname.match(/^\/items?\/([^/]+)\/?$/)
   const params = new URLSearchParams(location.search)
@@ -328,22 +357,31 @@ const readRoute = (): RouteState => {
   if (/^\/(?:profile|portfolio)\/?$/.test(location.pathname)) {
     return { kind: 'portfolio', slug: null, id: null, variant: null, rank: null }
   }
+  const infoMatch = location.pathname.match(/^\/(privacy|terms|faq|about|contact)\/?$/)
+  if (infoMatch) return { kind: infoMatch[1] as InfoPageKind, slug: null, id: null, variant: null, rank: null }
   return match
     ? { kind: 'item', slug: decodeURIComponent(match[1]), id: params.get('id'), variant: params.get('variant'), rank }
     : { kind: 'scanner', slug: null, id: null, variant: null, rank: null }
 }
 const FooterBar = ({ locale, setLocale, theme, setTheme, t }: { locale: Locale; setLocale: (value: Locale) => void; theme: Theme; setTheme: (value: Theme) => void; t: T }) => <footer className="footer-bar">
-  <a className="footer-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a>
-  <div className="footer-control"><span>{t('language')}</span><select value={locale} onChange={event => setLocale(event.target.value as Locale)}>{Object.entries(localeNames).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></div>
-  <div className="footer-control"><span>{t('theme')}</span><select value={theme} onChange={event => setTheme(event.target.value as Theme)}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></div>
-  <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')}</a>
+  <a className="footer-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
+  <nav className="footer-links" aria-label={locale === 'ru' ? 'Информация' : 'Information'}>
+    <a href="/about">{locale === 'ru' ? 'О проекте' : 'About'}</a>
+    <a href="/faq">FAQ</a>
+    <a href="/privacy">{locale === 'ru' ? 'Конфиденциальность' : 'Privacy'}</a>
+    <a href="/terms">{locale === 'ru' ? 'Условия' : 'Terms'}</a>
+    <a href="/contact">{locale === 'ru' ? 'Связаться' : 'Contact'}</a>
+  </nav>
+  <div className="footer-control"><span>{t('language')}</span><CustomPicker compact value={locale} label={t('language')} options={Object.entries(localeNames).map(([value, label]) => ({ value, label }))} onChange={value => setLocale(value as Locale)}/></div>
+  <div className="footer-control"><span>{t('theme')}</span><CustomPicker compact value={theme} label={t('theme')} options={[{ value: 'system', label: t('themeSystem') }, { value: 'light', label: t('themeLight') }, { value: 'dark', label: t('themeDark') }]} onChange={value => setTheme(value as Theme)}/></div>
+  <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')} ↗</a>
   <div className="footer-version">{t('version')} 0.9.0</div>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
 </footer>
 const ClosedBetaGate = ({ locale, auth }: { locale: Locale; auth: FrameAccountController }) => {
   const ru = locale === 'ru'
   return <main className="app-shell closed-beta-shell">
-    <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><span>{ru ? 'Закрытая бета' : 'Closed beta'}</span></header>
+    <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><span>{ru ? 'Закрытая бета' : 'Closed beta'}</span></header>
     <section className="closed-beta-layout">
       <div className="closed-beta-copy">
         <span className="eyebrow">FrameAnalytics.trade</span>
@@ -471,11 +509,11 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
   const chartLatest = hourlyChart ? hourlySeries.latestAt || hourly?.fetchedAt || '' : hourlySeries?.dailyLatestDate || mergedDailyHistory[mergedDailyHistory.length - 1]?.date || series?.updatedDate || ''
   useEffect(() => { setChartRange(periodRange(period)) }, [period])
   return <main className="app-shell detail-shell">
-    <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button className="back-button" onClick={onBack}>{t('back')}</button></div>
+    <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><button className="back-button" onClick={onBack}>{t('back')}</button></div>
     {loading ? <section className="panel state-panel"><div className="spinner"/><strong>{u.loading}</strong></section> : error || !detail ? <section className="panel state-panel error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={onRetry}>{u.retry}</button></section> : <>
       <section className="detail-hero panel">
         <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)}</div><h1>{name}{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale}/> : null}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{selectedRank != null || canonicalRank != null ? <span>{x.rank}: {selectedRank ?? canonicalRank}</span> : null}{!series?.hasHistory && !hourlySeries ? <span className="no-history-tag">{x.noHistory}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
-        <div className="detail-actions"><div className="detail-action-row"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={hasAccount} onClick={onOpenAccount}/></div>{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><select value={variantKey || ''} onChange={event => onVariant(event.target.value || null)}><option value="">{x.chooseVariant}</option>{Object.entries(detail.variants).map(([key, value]) => <option key={key} value={key}>{formatDimensions(value.dimensions, locale) || key}</option>)}</select></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><select value={selectedRank ?? canonicalRank ?? ''} onChange={event => onRank(event.target.value === '' ? null : Number(event.target.value))}>{rankOptions.map(rank => <option value={rank} key={rank}>{x.rank} {rank}</option>)}</select></label> : null}<div className="detail-meta-row"><span>{t('updated')}: <strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong></span><button type="button" className="portfolio-add" onClick={() => hasAccount ? setPurchaseOpen(true) : onOpenAccount()}>{locale === 'ru' ? 'Добавить покупку' : 'Add purchase'}</button></div></div>
+        <div className="detail-actions"><div className="detail-action-row"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={hasAccount} onClick={onOpenAccount}/></div>{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><CustomPicker value={variantKey || ''} label={x.variant} options={[{ value: '', label: x.chooseVariant }, ...Object.entries(detail.variants).map(([key, value]) => ({ value: key, label: formatDimensions(value.dimensions, locale) || key }))]} onChange={value => onVariant(value || null)}/></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><CustomPicker value={String(selectedRank ?? canonicalRank ?? '')} label={x.rank} options={rankOptions.map(rank => ({ value: String(rank), label: `${x.rank} ${rank}` }))} onChange={value => onRank(value === '' ? null : Number(value))}/></label> : null}<div className="detail-meta-row"><span>{t('updated')}: <strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong></span><button type="button" className="portfolio-add" onClick={() => hasAccount ? setPurchaseOpen(true) : onOpenAccount()}>{locale === 'ru' ? 'Добавить покупку' : 'Add purchase'}</button></div></div>
       </section>
       <section className="detail-dashboard panel">
         <div className="range-strip">{visibleRanges.map(range => <div className={`${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</div>
@@ -497,7 +535,7 @@ const SmartBuyPage = ({ auth, locale, catalog, onBack }: {
   onBack: () => void
 }) => <main className="app-shell smart-buy-page-shell">
   <div className="detail-navigation">
-    <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a>
+    <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
     <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'К профилю' : 'Back to profile'}</button>
   </div>
   <SmartBuyPanel locale={locale} catalog={catalog} auth={auth} standalone/>
@@ -510,7 +548,7 @@ const SellAdvisorPage = ({ auth, locale, catalog, onBack }: {
   onBack: () => void
 }) => <main className="app-shell sell-advisor-page-shell">
   <div className="detail-navigation">
-    <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a>
+    <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
     <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'К профилю' : 'Back to profile'}</button>
   </div>
   <SellAdvisorPanel locale={locale} catalog={catalog} auth={auth}/>
@@ -520,7 +558,8 @@ type PortfolioMarketEntry = {
   purchase: PortfolioPurchase
   row: DisplayMarketRow | null
 }
-const PortfolioPage = ({ account, auth, entries, loading, error, platform, crossplay, mode, visibleRanges, locale, catalog, events, onBack, onRetry, onOpenSmartBuy, onOpenSellAdvisor, onOpenDeveloper, onOpenAxiScanner, onRemove, onOpenItem, onPlatform, onCrossplay, onMode, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
+type PortfolioSort = 'name' | 'purchasePrice' | 'quantity' | 'currentPrice' | 'sales24h' | 'potential' | 'score' | 'profit' | 'return' | 'updated' | `range:${TimeRange}`
+const PortfolioPage = ({ account, auth, entries, loading, error, platform, crossplay, visibleRanges, locale, catalog, events, onBack, onRetry, onOpenSmartBuy, onOpenSellAdvisor, onOpenDeveloper, onOpenAxiScanner, onRemove, onOpenItem, onPlatform, onCrossplay, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
   account: TemporaryAccount | null
   auth: FrameAccountController
   entries: PortfolioMarketEntry[]
@@ -528,7 +567,6 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
   error: string | null
   platform: Platform
   crossplay: boolean
-  mode: ScannerMode
   visibleRanges: TimeRange[]
   locale: Locale
   catalog: Map<string, CatalogItem>
@@ -543,7 +581,6 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
   onOpenItem: (purchase: PortfolioPurchase) => void
   onPlatform: (value: Platform) => void
   onCrossplay: () => void
-  onMode: (value: ScannerMode) => void
   currentPriceFor: (row: DisplayMarketRow) => number | null
   rangeValueFor: (row: DisplayMarketRow, range: TimeRange) => number | null
   rangePlatinumFor: (row: DisplayMarketRow, range: TimeRange) => number | null
@@ -552,6 +589,18 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
   const text = portfolioText(locale)
   const x = getExtraText(locale)
   const u = uiText[locale]
+  const p = paginationText[locale]
+  const ru = locale === 'ru'
+  const [query, setQuery] = useState('')
+  const [minCurrentPrice, setMinCurrentPrice] = useState(0)
+  const [minProfit, setMinProfit] = useState(0)
+  const [selectedCategories, setSelectedCategories] = useState<CategoryId[]>([...CATEGORY_IDS])
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
+  const [sort, setSort] = useState<PortfolioSort>('updated')
+  const [direction, setDirection] = useState<SortDirection>('desc')
+  const [pageSize, setPageSize] = useState<PageSize>(25)
+  const [page, setPage] = useState(1)
+  const filterRef = useRef<HTMLElement | null>(null)
   const invested = account?.purchases.reduce((sum, purchase) => sum + purchase.purchasePrice * purchase.quantity, 0) || 0
   const pricedEntries = entries.filter((entry): entry is PortfolioMarketEntry & { row: DisplayMarketRow } => Boolean(entry.row && currentPriceFor(entry.row) != null))
   const currentValue = pricedEntries.reduce((sum, entry) => sum + (currentPriceFor(entry.row) || 0) * entry.purchase.quantity, 0)
@@ -559,57 +608,103 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
   const profit = currentValue - pricedInvestment
   const returnPct = pricedInvestment > 0 ? profit / pricedInvestment * 100 : null
   const eventFor = (itemId: string) => events.find(event => event.itemId === itemId && (event.status === 'active' || event.status === 'upcoming')) || null
+  const entryValues = (entry: PortfolioMarketEntry) => {
+    const item = entry.row?.item || null
+    const catalogItem = catalog.get(entry.purchase.itemId)
+    const name = catalogItem?.name || item?.displayName || entry.purchase.name
+    const currentPrice = entry.row ? currentPriceFor(entry.row) : null
+    const rowProfit = currentPrice == null ? null : (currentPrice - entry.purchase.purchasePrice) * entry.purchase.quantity
+    const rowReturn = currentPrice == null || entry.purchase.purchasePrice <= 0 ? null : (currentPrice - entry.purchase.purchasePrice) / entry.purchase.purchasePrice * 100
+    return { item, catalogItem, name, currentPrice, rowProfit, rowReturn, category: (item?.category || catalogItem?.category || 'misc') as CategoryId }
+  }
+  const filteredEntries = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase(locale)
+    const filtered = entries.filter(entry => {
+      const values = entryValues(entry)
+      if (normalizedQuery && !`${values.name} ${entry.purchase.slug}`.toLocaleLowerCase(locale).includes(normalizedQuery)) return false
+      if (!selectedCategories.includes(values.category)) return false
+      if (minCurrentPrice > 0 && (values.currentPrice == null || values.currentPrice < minCurrentPrice)) return false
+      if (minProfit > 0 && (values.rowProfit == null || values.rowProfit < minProfit)) return false
+      return true
+    })
+    const sortValue = (entry: PortfolioMarketEntry): string | number | null => {
+      const values = entryValues(entry)
+      if (sort === 'name') return values.name.toLocaleLowerCase(locale)
+      if (sort === 'purchasePrice') return entry.purchase.purchasePrice
+      if (sort === 'quantity') return entry.purchase.quantity
+      if (sort === 'currentPrice') return values.currentPrice
+      if (sort === 'sales24h') return entry.row?.canonical ? values.item?.sales24h ?? null : null
+      if (sort === 'potential') return entry.row?.canonical ? values.item?.sell.potential ?? null : null
+      if (sort === 'score') return entry.row?.canonical ? values.item?.sell.score ?? null : null
+      if (sort === 'profit') return values.rowProfit
+      if (sort === 'return') return values.rowReturn
+      if (sort === 'updated') return Date.parse(entry.row?.hourlyFetchedAt || values.item?.updatedDate || entry.purchase.createdAt) || 0
+      if (sort.startsWith('range:')) return entry.row ? rangeValueFor(entry.row, sort.slice(6) as TimeRange) : null
+      return null
+    }
+    return filtered.sort((left, right) => {
+      const a = sortValue(left)
+      const b = sortValue(right)
+      if (a == null && b == null) return left.purchase.id.localeCompare(right.purchase.id)
+      if (a == null) return 1
+      if (b == null) return -1
+      const comparison = typeof a === 'string' || typeof b === 'string' ? String(a).localeCompare(String(b), locale) : Number(a) - Number(b)
+      return (direction === 'asc' ? comparison : -comparison) || left.purchase.id.localeCompare(right.purchase.id)
+    })
+  }, [entries, query, selectedCategories, minCurrentPrice, minProfit, sort, direction, locale, catalog, currentPriceFor, rangeValueFor])
+  const pageCount = Math.max(1, Math.ceil(filteredEntries.length / pageSize))
+  const pageEntries = filteredEntries.slice((page - 1) * pageSize, page * pageSize)
+  const showingStart = filteredEntries.length ? (page - 1) * pageSize + 1 : 0
+  const showingEnd = Math.min(filteredEntries.length, page * pageSize)
+  const changeSort = (next: PortfolioSort) => {
+    if (sort === next) setDirection(current => current === 'asc' ? 'desc' : 'asc')
+    else { setSort(next); setDirection(next === 'name' ? 'asc' : 'desc') }
+  }
+  const indicator = (key: PortfolioSort) => sort === key ? (direction === 'asc' ? '↑' : '↓') : ''
+  const blockingLoading = loading && !entries.some(entry => entry.row)
+  useEffect(() => { setPage(1) }, [query, selectedCategories, minCurrentPrice, minProfit, sort, direction, pageSize])
+  useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
+  useEffect(() => {
+    if (!categoriesOpen) return
+    const close = (event: PointerEvent) => { if (!filterRef.current?.contains(event.target as Node)) setCategoriesOpen(false) }
+    addEventListener('pointerdown', close)
+    return () => removeEventListener('pointerdown', close)
+  }, [categoriesOpen])
   return <main className={`app-shell portfolio-shell ${auth.account ? "" : "portfolio-shell-guest"}`}>
-    <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {text.back}</button></div>
+    <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {text.back}</button></div>
     <div className="portfolio-heading"><div><span>{auth.account ? auth.account.user.email : text.title}</span><h1>{text.title}</h1><p>{auth.account ? (locale === 'ru' ? 'Данные профиля сохраняются в аккаунте FrameAnalytics.' : 'Profile data is saved to your FrameAnalytics account.') : (locale === 'ru' ? 'Войдите или зарегистрируйтесь, чтобы открыть личный кабинет.' : 'Sign in or register to open your profile.')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={() => undefined}/></div></div>
     <div className={`portfolio-account-stage ${auth.account ? "signed" : "guest"}`}><AccountPanel locale={locale} auth={auth}/></div>
     {!auth.account ? null : <>
+      <nav className="profile-tool-buttons" aria-label={ru ? 'Инструменты' : 'Tools'}>
+        <button type="button" onClick={onOpenSmartBuy}><span aria-hidden="true">⌁</span>{ru ? 'Умная покупка' : 'Smart Buy'}</button>
+        <button type="button" onClick={onOpenSellAdvisor}><span aria-hidden="true">↗</span>{ru ? 'Советник по продаже' : 'Sell Advisor'}</button>
+        {auth.account.access?.axiScanner ? <button type="button" onClick={onOpenAxiScanner}><span aria-hidden="true">◇</span>{ru ? 'Axi и Prime Set' : 'Axi & Prime Set'}</button> : null}
+        {auth.account.access?.developer ? <button type="button" onClick={onOpenDeveloper}><span aria-hidden="true">⚙</span>{ru ? 'Управление доступом' : 'Access management'}</button> : null}
+      </nav>
       <section className="portfolio-summary-grid">
         <article className="panel"><span>{text.total}</span><strong>{fmtPlat(invested)}</strong><small>{account?.purchases.length || 0} · {text.purchases.toLowerCase()}</small></article>
         <article className="panel"><span>{text.currentValue}</span><strong>{pricedEntries.length ? fmtPlat(currentValue) : '—'}</strong><small>{pricedEntries.length}/{entries.length}</small></article>
         <article className={`panel ${valueClass(profit)}`} title={text.profitHint}><span>{text.possibleProfit}</span><strong>{pricedEntries.length ? fmtPlatDelta(profit) : '—'}</strong><small>{text.returnPct}: {fmtPercent(returnPct)}</small></article>
       </section>
-      <section className="panel portfolio-smart-buy-entry">
-        <div>
-          <span className="eyebrow">Warframe Market</span>
-          <h3>{locale === 'ru' ? 'Умная покупка' : 'Smart Buy'}</h3>
-          <p>{locale === 'ru' ? 'Подбор продавцов и сообщения для сделки открываются на отдельной странице.' : 'Seller matching and trade messages open on a dedicated page.'}</p>
-        </div>
-        <button type="button" className="primary-action" onClick={onOpenSmartBuy}>{locale === 'ru' ? 'Открыть Smart Buy' : 'Open Smart Buy'}</button>
+      {!account?.purchases.length ? <section className="panel portfolio-empty">{text.empty}</section> : <>
+      <section className="panel portfolio-filters" ref={filterRef}>
+        <label className="search-field"><span>{t('name')}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
+        <label><span>{ru ? 'Текущая цена от' : 'Current price from'}</span><div className="input-suffix"><input type="number" min="0" value={minCurrentPrice} onChange={event => setMinCurrentPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
+        <label><span>{ru ? 'Прибыль от' : 'Profit from'}</span><div className="input-suffix"><input type="number" min="0" value={minProfit} onChange={event => setMinProfit(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
+        <div className="filter-field category-filter"><span>{u.categories}</span><button className="control-button" type="button" onClick={() => setCategoriesOpen(current => !current)}>{u.categories}<b>{selectedCategories.length}/{CATEGORY_IDS.length}</b><i>⌄</i></button>{categoriesOpen ? <div className="category-panel"><div className="category-actions"><button type="button" onClick={() => setSelectedCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setSelectedCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={selectedCategories.includes(id)} onChange={() => setSelectedCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
       </section>
-      <section className="panel portfolio-smart-buy-entry portfolio-sell-advisor-entry">
-        <div>
-          <span className="eyebrow">Warframe Market</span>
-          <h3>{locale === 'ru' ? 'Советник по продаже' : 'Sell Advisor'}</h3>
-          <p>{locale === 'ru' ? 'Проверьте активные ордера и получите цены для быстрой продажи, баланса или большей прибыли.' : 'Review active listings and get prices for a fast sale, balance, or higher profit.'}</p>
-        </div>
-        <button type="button" className="primary-action" onClick={onOpenSellAdvisor}>{locale === 'ru' ? 'Открыть советник' : 'Open Sell Advisor'}</button>
-      </section>
-      {auth.account.access?.axiScanner ? <section className="panel portfolio-smart-buy-entry portfolio-axi-entry">
-        <div>
-          <span className="eyebrow">Axi · Rare rewards</span>
-          <h3>{locale === 'ru' ? 'Сканер реликвий Акси' : 'Axi relic scanner'}</h3>
-          <p>{locale === 'ru' ? 'Сравнение цены целой реликвии с её золотой наградой. Общий сканер работает по кругу один час.' : 'Compare intact relic prices with their rare rewards. The shared scanner loops for one hour.'}</p>
-        </div>
-        <button type="button" className="primary-action" onClick={onOpenAxiScanner}>{locale === 'ru' ? 'Открыть Axi-сканер' : 'Open Axi scanner'}</button>
-      </section> : null}
-      {auth.account.access?.developer ? <section className="panel portfolio-smart-buy-entry portfolio-developer-entry">
-        <div>
-          <span className="eyebrow">FrameAnalytics</span>
-          <h3>{locale === 'ru' ? 'Кабинет разработчика' : 'Developer dashboard'}</h3>
-          <p>{locale === 'ru' ? 'Управление аккаунтами и разрешениями закрытых функций.' : 'Manage accounts and permissions for private features.'}</p>
-        </div>
-        <button type="button" className="primary-action" onClick={onOpenDeveloper}>{locale === 'ru' ? 'Управление доступом' : 'Manage access'}</button>
-      </section> : null}
-      <section className="mode-tabs portfolio-mode-tabs"><button className={mode === 'buy' ? 'mode-tab active buy' : 'mode-tab'} onClick={() => onMode('buy')}>{t('buy')}</button><button className={mode === 'sell' ? 'mode-tab active sell' : 'mode-tab'} onClick={() => onMode('sell')}>{t('sell')}</button></section>
-      {!account?.purchases.length ? <section className="panel portfolio-empty">{text.empty}</section> : <section className="panel table-panel portfolio-table-panel"><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
-        <th>{t('item')}</th><th>{text.price}</th><th>{text.quantity}</th><th>{t('current')}</th>
-        {visibleRanges.map(range => <th key={range} className={HOURLY_RANGES.has(range) ? 'hourly-column' : ''}>{rangeLabel(range, x)}</th>)}
-        <th>{t('sales24h')}</th><th>{t('potential')}</th><th>{t('score')}</th><th>{x.forecast}</th><th>{text.possibleProfit}</th><th>{t('updated')}</th><th aria-label={text.remove}/>
+      <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{filteredEntries.length}</strong>{loading && !blockingLoading ? <em>{ru ? 'обновляем цены…' : 'refreshing prices…'}</em> : null}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
+      <section className={`panel table-panel portfolio-table-panel ${loading && !blockingLoading ? 'table-refreshing' : ''}`} aria-busy={loading}><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
+        <th><button className="sort-button" onClick={() => changeSort('name')}><span>{t('item')}</span><span className="sort-indicator">{indicator('name')}</span></button></th>
+        <th><button className="sort-button" onClick={() => changeSort('purchasePrice')}><span>{text.price}</span><span className="sort-indicator">{indicator('purchasePrice')}</span></button></th>
+        <th><button className="sort-button" onClick={() => changeSort('quantity')}><span>{text.quantity}</span><span className="sort-indicator">{indicator('quantity')}</span></button></th>
+        <th><button className="sort-button" onClick={() => changeSort('currentPrice')}><span>{t('current')}</span><span className="sort-indicator">{indicator('currentPrice')}</span></button></th>
+        {visibleRanges.map(range => <th key={range} className={HOURLY_RANGES.has(range) ? 'hourly-column' : ''}><button className="sort-button" onClick={() => changeSort(`range:${range}`)}><span>{rangeLabel(range, x)}</span><span className="sort-indicator">{indicator(`range:${range}`)}</span></button></th>)}
+        <th><button className="sort-button" onClick={() => changeSort('sales24h')}><span>{t('sales24h')}</span><span className="sort-indicator">{indicator('sales24h')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('potential')}><span>{t('potential')}</span><span className="sort-indicator">{indicator('potential')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('score')}><span>{t('score')}</span><span className="sort-indicator">{indicator('score')}</span></button></th><th>{x.forecast}</th><th><button className="sort-button" onClick={() => changeSort('profit')}><span>{text.possibleProfit}</span><span className="sort-indicator">{indicator('profit')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('updated')}><span>{t('updated')}</span><span className="sort-indicator">{indicator('updated')}</span></button></th><th aria-label={text.remove}/>
       </tr></thead><tbody>
-        {loading ? <tr><td colSpan={12 + visibleRanges.length} className="state-cell"><div className="spinner"/><strong>{text.loading}</strong></td></tr> : error ? <tr><td colSpan={12 + visibleRanges.length} className="state-cell error-state"><strong>{text.loadError}</strong><button className="retry-button" onClick={onRetry}>{text.retry}</button></td></tr> : entries.map(({ purchase, row }) => {
+        {blockingLoading ? <tr><td colSpan={11 + visibleRanges.length} className="state-cell"><div className="spinner"/><strong>{text.loading}</strong></td></tr> : error && !entries.some(entry => entry.row) ? <tr><td colSpan={11 + visibleRanges.length} className="state-cell error-state"><strong>{text.loadError}</strong><button className="retry-button" onClick={onRetry}>{text.retry}</button></td></tr> : !pageEntries.length ? <tr><td colSpan={11 + visibleRanges.length} className="state-cell"><strong>{u.noData}</strong></td></tr> : pageEntries.map(({ purchase, row }) => {
           const item = row?.item || null
-          const signal = row?.canonical && item ? item[mode] : emptySignal()
+          const signal = row?.canonical && item ? item.sell : emptySignal()
           const currentPrice = row ? currentPriceFor(row) : null
           const rowProfit = currentPrice == null ? null : (currentPrice - purchase.purchasePrice) * purchase.quantity
           const rowReturn = currentPrice == null || purchase.purchasePrice <= 0 ? null : (currentPrice - purchase.purchasePrice) / purchase.purchasePrice * 100
@@ -625,7 +720,9 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
             <td>{row?.canonical ? item?.sales24h ?? '—' : '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={item?.change7d ?? null} direction={currentEvent ? 'down' : trend} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td><span className={`portfolio-profit ${valueClass(rowProfit)}`}><strong>{fmtPlatDelta(rowProfit)}</strong><small>{fmtPercent(rowReturn)}</small></span></td><td className="updated-cell">{formatDate(row?.hourlyFetchedAt || item?.updatedDate, locale)}</td><td><button type="button" className="portfolio-remove" onClick={() => onRemove(purchase.id)} title={text.remove} aria-label={`${text.remove}: ${name}`}>×</button></td>
           </tr>
         })}
-      </tbody></table></div></section>}
+      </tbody></table></div></section>
+      {!blockingLoading && filteredEntries.length ? <nav className="pagination-bar" aria-label="Pagination"><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{filteredEntries.length}</strong></div><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage(1)}>« {p.first}</button><button disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>‹ {p.previous}</button><span>{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button disabled={page >= pageCount} onClick={() => setPage(current => Math.min(pageCount, current + 1))}>{p.next} ›</button><button disabled={page >= pageCount} onClick={() => setPage(pageCount)}>{p.last} »</button></div></nav> : null}
+      </>}
     </>}
   </main>
 }
@@ -676,6 +773,7 @@ export default function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailReload, setDetailReload] = useState(0)
+  const [purchaseTarget, setPurchaseTarget] = useState<PurchaseTarget | null>(null)
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem('frameanalytics-locale')
     if (saved && saved in localeNames) return saved as Locale
@@ -833,7 +931,14 @@ export default function App() {
     return () => controller.abort()
   }, [hourlyRefresh, auth.account?.user.id])
   useEffect(() => {
-    if (!auth.account || route.kind !== 'portfolio' || !temporaryAccount?.purchases.length) {
+    if (!auth.account) {
+      setPortfolioMarketRows([])
+      setPortfolioLoading(false)
+      setPortfolioError(null)
+      return
+    }
+    if (route.kind !== 'portfolio') { setPortfolioLoading(false); setPortfolioError(null); return }
+    if (!temporaryAccount?.purchases.length) {
       setPortfolioMarketRows([])
       setPortfolioLoading(false)
       setPortfolioError(null)
@@ -841,6 +946,19 @@ export default function App() {
     }
     const controller = new AbortController()
     const ids = [...new Set(temporaryAccount.purchases.map(purchase => purchase.itemId))]
+    const idSet = new Set(ids)
+    const indexSeed = supportsHourly(platform, crossplay) && hourlyIndexData?.platform === platform && hourlyIndexData.crossplay === crossplay
+      ? hourlyIndexData.items.filter(row => idSet.has(row.itemId))
+      : []
+    const scannerSeed = !supportsHourly(platform, crossplay) && scannerData?.platform === platform
+      ? scannerData.items.filter(item => idSet.has(item.id)).map(hourlyIndexRowFromScanner)
+      : []
+    const seedRows = [...indexSeed, ...scannerSeed]
+    if (seedRows.length) setPortfolioMarketRows(current => {
+      const merged = new Map(current.map(row => [row.rowId, row]))
+      seedRows.forEach(row => merged.set(row.rowId, row))
+      return [...merged.values()]
+    })
     const batches: string[][] = []
     for (let index = 0; index < ids.length; index += 100) batches.push(ids.slice(index, index + 100))
     setPortfolioLoading(true)
@@ -857,16 +975,17 @@ export default function App() {
         platform, crossplay, period, mode, ids: batch,
         offset: 0, limit: 200, sort: 'name', direction: 'asc', language: locale
       }, controller.signal).then(data => data.items.map(hourlyIndexRowFromScanner)))
+    const metricsRequest = supportsHourly(platform, crossplay)
+      ? Promise.resolve<Record<string, MetricsItem>>({})
+      : fetchMetricsBatch(platform, ids, controller.signal).then(result => result.items)
     Promise.all([
       Promise.all(marketRequests),
-      Promise.allSettled(ids.map(id => fetchMetrics(platform, id, controller.signal)))
-    ]).then(([marketBatches, metricResults]) => {
+      metricsRequest
+    ]).then(([marketBatches, metricsById]) => {
       if (controller.signal.aborted) return
       setPortfolioMarketRows(marketBatches.flat())
       const metrics: Record<string, MetricsItem> = {}
-      metricResults.forEach((result, index) => {
-        if (result.status === 'fulfilled') metrics[`${platform}:${ids[index]}`] = result.value.item
-      })
+      Object.entries(metricsById).forEach(([id, item]) => { metrics[`${platform}:${id}`] = item })
       setRangeMetrics(current => ({ ...current, ...metrics }))
       setPortfolioLoading(false)
     }).catch(error => {
@@ -875,12 +994,13 @@ export default function App() {
       setPortfolioLoading(false)
     })
     return () => controller.abort()
-  }, [auth.account?.user.id, route.kind, temporaryAccount, platform, crossplay, period, mode, locale, portfolioReload])
+  }, [auth.account?.user.id, route.kind, temporaryAccount, platform, crossplay, period, mode, locale, portfolioReload, hourlyIndexData, scannerData])
   useEffect(() => {
     setPage(1)
   }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, baroOnly, activeBaroKey, sort, direction, pageSize])
   useEffect(() => {
     if (!auth.account) { setScannerLoading(false); setScannerData(null); return }
+    if (route.kind !== 'scanner') { setScannerLoading(false); return }
     if (hourlySortActive) { setScannerLoading(false); return }
     const controller = new AbortController()
     setScannerLoading(true); setScannerError(null)
@@ -893,9 +1013,10 @@ export default function App() {
       setScannerError(error instanceof Error ? error.message : String(error)); setScannerLoading(false)
     })
     return () => controller.abort()
-  }, [auth.account?.user.id, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive, baroOnly, activeBaroKey])
+  }, [auth.account?.user.id, route.kind, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive, baroOnly, activeBaroKey])
   useEffect(() => {
     if (!auth.account) { setHourlyIndexLoading(false); setHourlyIndexData(null); return }
+    if (route.kind !== 'scanner') { setHourlyIndexLoading(false); return }
     if (!hourlySortActive) { setHourlyIndexLoading(false); setHourlyIndexError(null); return }
     const controller = new AbortController()
     setHourlyIndexLoading(true); setHourlyIndexError(null)
@@ -913,7 +1034,7 @@ export default function App() {
       setHourlyIndexError(error instanceof Error ? error.message : String(error)); setHourlyIndexLoading(false)
     })
     return () => controller.abort()
-  }, [auth.account?.user.id, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh, baroOnly, activeBaroKey])
+  }, [auth.account?.user.id, route.kind, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh, baroOnly, activeBaroKey])
   const selectedSummary = useMemo(() => {
     if (route.kind !== 'item') return null
     const dailyRows = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.daily).filter((item): item is ScannerItem => Boolean(item)) : scannerData?.items || []
@@ -923,29 +1044,41 @@ export default function App() {
     if (!auth.account) { setDetail(null); setDetailMetrics(null); setDetailHourly(null); setDetailLoading(false); setDetailError(null); return }
     if (route.kind !== 'item' || !route.id) { setDetail(null); setDetailMetrics(null); setDetailHourly(null); setDetailError(null); return }
     const controller = new AbortController()
-    setDetailLoading(true); setDetailError(null)
-    Promise.allSettled([
-      fetchItem(platform, route.id, controller.signal),
-      fetchMetrics(platform, route.id, controller.signal),
-      supportsHourly(platform, crossplay) ? fetchHourly(platform, crossplay, route.id, controller.signal).catch(() => null) : Promise.resolve(null)
-    ])
-      .then(([itemResult, metricsResult, hourlyResult]) => {
-        if (controller.signal.aborted) return
-        const hourlyResponse = hourlyResult.status === 'fulfilled' ? hourlyResult.value : null
-        const catalogEntry = catalogRef.current.get(route.id!)
-        const preferredMarketKey = route.variant || (route.rank != null ? `mod_rank=${route.rank}` : null)
-        const fallback = itemResult.status === 'rejected' && hourlyResponse && catalogEntry ? manualDetailFromHourly(catalogEntry, hourlyResponse, preferredMarketKey) : null
-        const item = itemResult.status === 'fulfilled' ? itemResult.value.item : fallback
-        if (!item) throw itemResult.status === 'rejected' ? itemResult.reason : new Error('Item data is unavailable')
-        setDetail(item)
-        setDetailMetrics(metricsResult.status === 'fulfilled' ? metricsResult.value.item : null)
-        setDetailHourly(hourlyResponse)
-        setDetailLoading(false)
-      })
-      .catch(error => { if (error instanceof DOMException && error.name === 'AbortError') return; setDetailError(error instanceof Error ? error.message : String(error)); setDetailLoading(false) })
+    const catalogEntry = catalogRef.current.get(route.id)
+    const seed = catalogEntry && selectedSummary?.id === route.id ? manualDetailFromScanner(catalogEntry, selectedSummary) : null
+    setDetail(seed)
+    setDetailMetrics(null)
+    setDetailHourly(null)
+    setDetailLoading(!seed)
+    setDetailError(null)
+    const itemRequest = fetchItem(platform, route.id, controller.signal)
+    const hourlyRequest = supportsHourly(platform, crossplay)
+      ? fetchHourly(platform, crossplay, route.id, controller.signal)
+      : Promise.resolve<HourlyResponse | null>(null)
+    itemRequest.then(result => {
+      if (controller.signal.aborted) return
+      setDetail(result.item)
+      setDetailLoading(false)
+    }).catch(() => undefined)
+    hourlyRequest.then(result => {
+      if (!controller.signal.aborted) setDetailHourly(result)
+    }).catch(() => undefined)
+    fetchMetrics(platform, route.id, controller.signal).then(result => {
+      if (!controller.signal.aborted) setDetailMetrics(result.item)
+    }).catch(() => undefined)
+    Promise.allSettled([itemRequest, hourlyRequest]).then(([itemResult, hourlyResult]) => {
+      if (controller.signal.aborted || itemResult.status === 'fulfilled') return
+      const hourlyResponse = hourlyResult.status === 'fulfilled' ? hourlyResult.value : null
+      const preferredMarketKey = route.variant || (route.rank != null ? `mod_rank=${route.rank}` : null)
+      const fallback = hourlyResponse && catalogEntry ? manualDetailFromHourly(catalogEntry, hourlyResponse, preferredMarketKey) : seed
+      if (fallback) setDetail(fallback)
+      else setDetailError(itemResult.reason instanceof Error ? itemResult.reason.message : String(itemResult.reason))
+      setDetailLoading(false)
+    })
     return () => controller.abort()
-  }, [auth.account?.user.id, route.kind, route.id, route.variant, route.rank, platform, crossplay, detailReload, catalogRefresh])
+  }, [auth.account?.user.id, route.kind, route.id, route.variant, route.rank, platform, crossplay, detailReload, catalogRefresh, selectedSummary])
   useEffect(() => {
+    if (route.kind !== 'scanner') { setHourlyLoading(false); return }
     if (hourlySortActive || !scannerData?.items.length || !supportsHourly(platform, crossplay)) { setHourlyLoading(false); setHourlyPartial(false); return }
     const ids = [...new Set(scannerData.items.map(item => item.id))]
     const now = Date.now()
@@ -976,30 +1109,35 @@ export default function App() {
       setHourlyLoading(false)
     })
     return () => controller.abort()
-  }, [scannerData, platform, crossplay, hourlyRefresh, hourlySortActive])
+  }, [route.kind, scannerData, platform, crossplay, hourlyRefresh, hourlySortActive])
   useEffect(() => {
+    if (route.kind !== 'scanner') { setRangesLoading(false); return }
     const needsSupplement = visibleRanges.some(range => ['30d', '90d', '180d'].includes(range) && range !== periodRange(period))
     const sourceIds = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.itemId) : (scannerData?.items || []).map(item => item.id)
-    if (!needsSupplement || !sourceIds.length) { setRangesLoading(false); return }
+    if (hourlySortActive || !needsSupplement || !sourceIds.length) { setRangesLoading(false); setRangesError(false); return }
     const ids = [...new Set(sourceIds)]
     const missing = ids.filter(id => !rangeMetrics[`${platform}:${id}`])
     if (!missing.length) { setRangesLoading(false); return }
     const controller = new AbortController()
     setRangesLoading(true); setRangesError(false)
-    Promise.allSettled(missing.map(id => fetchMetrics(platform, id, controller.signal))).then(results => {
+    fetchMetricsBatch(platform, missing, controller.signal).then(result => {
       if (controller.signal.aborted) return
       const additions: Record<string, MetricsItem> = {}
-      results.forEach((result, index) => { if (result.status === 'fulfilled') additions[`${platform}:${missing[index]}`] = result.value.item })
+      Object.entries(result.items).forEach(([id, item]) => { additions[`${platform}:${id}`] = item })
       setRangeMetrics(current => ({ ...current, ...additions }))
-      setRangesError(results.some(result => result.status === 'rejected')); setRangesLoading(false)
+      setRangesError(result.returned < result.requested); setRangesLoading(false)
+    }).catch(error => {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setRangesError(true); setRangesLoading(false)
     })
     return () => controller.abort()
-  }, [visibleRanges, period, scannerData, hourlyIndexData, hourlySortActive, platform, rangeMetrics])
+  }, [route.kind, visibleRanges, period, scannerData, hourlyIndexData, hourlySortActive, platform, rangeMetrics])
   const activeTotal = hourlySortActive ? hourlyIndexData?.filteredItems || 0 : scannerData?.filteredItems || 0
   const activeOffset = hourlySortActive ? hourlyIndexData?.offset || 0 : scannerData?.offset || 0
   const activeReturned = hourlySortActive ? hourlyIndexData?.returned || 0 : scannerData?.returned || 0
-  const activeLoading = hourlySortActive ? hourlyIndexLoading : scannerLoading
-  const activeError = hourlySortActive ? hourlyIndexError : scannerError
+  const activeLoading = hourlySortActive ? hourlyIndexLoading && !hourlyIndexData : scannerLoading && !scannerData
+  const activeRefreshing = hourlySortActive ? hourlyIndexLoading && Boolean(hourlyIndexData) : scannerLoading && Boolean(scannerData)
+  const activeError = hourlySortActive ? hourlyIndexData ? null : hourlyIndexError : scannerData ? null : scannerError
   const pageCount = Math.max(1, Math.ceil(activeTotal / pageSize))
   useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
   const showingStart = activeTotal ? activeOffset + 1 : 0
@@ -1111,7 +1249,7 @@ export default function App() {
   const showPotentialColumn = visibleColumns.includes('potential')
   const showScoreColumn = visibleColumns.includes('score')
   const showForecastColumn = visibleColumns.includes('forecast')
-  const tableColumnCount = 3 + visibleRanges.length + visibleSalesRanges.length + (showPotentialColumn ? 1 : 0) + (showScoreColumn ? 1 : 0) + (showForecastColumn ? 1 : 0)
+  const tableColumnCount = 4 + visibleRanges.length + visibleSalesRanges.length + (showPotentialColumn ? 1 : 0) + (showScoreColumn ? 1 : 0) + (showForecastColumn ? 1 : 0)
   const currentEventFor = (itemId: string) => marketEvents.find(event => event.itemId === itemId && (event.status === 'active' || event.status === 'upcoming')) || null
   const changeSort = (next: ScannerSort, range?: TimeRange) => {
     if (range && !HOURLY_RANGES.has(range)) setPeriod(Number(range.replace('d', '')) as AnalysisPeriod)
@@ -1238,6 +1376,10 @@ export default function App() {
     setRoute(readRoute())
   }, [route.kind, auth.account?.access?.developer, auth.account?.access?.axiScanner])
   useEffect(() => {
+    if (route.kind === 'privacy' || route.kind === 'terms' || route.kind === 'faq' || route.kind === 'about' || route.kind === 'contact') {
+      history.replaceState(history.state, '', `/${route.kind}`)
+      return
+    }
     const params = new URLSearchParams(location.search)
     params.set('platform', platform); params.set('period', String(period)); params.set('crossplay', String(crossplay))
     if (route.kind === 'item' && route.id) params.set('id', route.id)
@@ -1260,6 +1402,13 @@ export default function App() {
             : '/'
     history.replaceState(history.state, '', `${path}?${params}`)
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
+  if (route.kind === 'privacy' || route.kind === 'terms' || route.kind === 'faq' || route.kind === 'about' || route.kind === 'contact') {
+    return <>
+      <div className="background-layer"/><div className="background-shade"/>
+      <Suspense fallback={<main className="app-shell"><section className="panel state-panel"><div className="spinner"/></section></main>}><InfoPage kind={route.kind} locale={locale}/></Suspense>
+      <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
+    </>
+  }
   if (auth.loading || !auth.account) {
     return <>
       <div className="background-layer"/><div className="background-shade"/>
@@ -1270,19 +1419,19 @@ export default function App() {
   return <>
     <div className="background-layer"/><div className="background-shade"/>
     <Suspense fallback={<main className="app-shell"><section className="panel smart-buy-state"><div className="spinner"/></section></main>}>
-    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} mode={mode} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onMode={setMode} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
-      <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.png" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={openPortfolio}/></div></header>
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
+      <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={openPortfolio}/></div></header>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
         <label><span>{t('minPrice')}</span><div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={event => setMinPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
         <label><span>{t('potentialFrom')}</span><div className="input-suffix"><input type="number" min="0" value={minPotential} onChange={event => setMinPotential(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
-        <label><span>{x.rankFilter}</span><select value={rankFilter} onChange={event => setRankFilter(event.target.value as RankFilter)}><option value="base">{x.rankBase}</option><option value="all">{x.rankAll}</option></select></label>
+        <label><span>{x.rankFilter}</span><CustomPicker value={rankFilter} label={x.rankFilter} options={[{ value: 'base', label: x.rankBase }, { value: 'all', label: x.rankAll }]} onChange={value => setRankFilter(value as RankFilter)}/></label>
         <div className="filter-field category-filter"><span>{u.categories}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'categories' ? null : 'categories')}>{u.categories}<b>{categories.length}/{CATEGORY_IDS.length}</b><i>⌄</i></button>{openPanel === 'categories' ? <div className="category-panel"><div className="category-actions"><button onClick={() => setCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button onClick={() => setCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={categories.includes(id)} onChange={() => toggleCategory(id)}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
         <div className="filter-field table-settings-filter"><span>{x.tableSettings}</span><button className="control-button" onClick={() => setOpenPanel(value => value === 'table' ? null : 'table')}>{x.chooseTableSettings}<b>{visibleRanges.length + visibleColumns.length}/{TIME_RANGES.length + OPTIONAL_COLUMNS.length}</b><i>⌄</i></button>{openPanel === 'table' ? <div className="category-panel table-settings-panel"><div className="category-actions"><button onClick={() => { setVisibleRanges([...TIME_RANGES]); setVisibleColumns([...OPTIONAL_COLUMNS]) }}>{u.selectAll}</button><button onClick={() => { setVisibleRanges(DEFAULT_RANGES); setVisibleColumns(DEFAULT_OPTIONAL_COLUMNS) }}>{u.defaults}</button></div><div className="table-settings-section"><strong>{x.priceChangeColumns}</strong><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={`change-${range}`}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div><div className="table-settings-section"><strong>{x.salesColumns}</strong><div className="range-options">{SALES_RANGES.map(range => { const column = `sales${range}` as SalesColumn; return <label className="range-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{rangeLabel(range, x)}</span></label> })}</div></div><div className="table-settings-section"><strong>{x.otherColumns}</strong><div className="table-extra-options">{(['potential', 'score', 'forecast'] as const).map(column => <label className="category-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{column === 'potential' ? x.potentialColumn : column === 'score' ? x.scoreColumn : x.forecastColumn}</span></label>)}</div></div></div> : null}</div>
         <div className="baro-filter"><button type="button" className={`baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={activeBaroIds.length ? x.currentBaroHint : x.currentBaroEmpty} onClick={() => setBaroOnly(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19 6v8.5L12 21l-7-6.5V6l7-3.5Zm0 3.1L8.2 7.5v5.6l3.8 3.5 3.8-3.5V7.5L12 5.6Zm0 2.2 2.1 1.1v3L12 14l-2.1-2.1v-3L12 7.8Z"/></svg></button></div>
       </section>
-      <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><select value={pageSize} onChange={event => setPageSize(Number(event.target.value) as PageSize)}>{PAGE_SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
-      <section className="panel table-panel"><div className="table-scroll"><table className="market-table"><thead><tr>
+      <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
+      <section className={`panel table-panel ${activeRefreshing ? 'table-refreshing' : ''}`} aria-busy={activeRefreshing}><div className="table-scroll"><table className="market-table"><thead><tr>
         <th><button className="sort-button" onClick={() => changeSort('name')}><span>{t('item')}</span><span className="sort-indicator">{indicator('name')}</span></button></th>
         <th><button className="sort-button" onClick={() => changeSort('currentPrice')}><span>{t('current')}</span><span className="sort-indicator">{indicator('currentPrice')}</span></button></th>
         {visibleRanges.map(range => { const key = rangeSort(range); return <th key={range} className={HOURLY_RANGES.has(range) ? 'hourly-column' : ''}><button className="sort-button" disabled={!key} title={HOURLY_RANGES.has(range) ? key ? x.hourlyLive : x.hourlyUnavailable : undefined} onClick={() => key && changeSort(key, range)}><span>{rangeLabel(range, x)}</span><span className="sort-indicator">{key && (HOURLY_RANGES.has(range) || range === periodRange(period) || range === '7d') ? indicator(key) : ''}</span></button></th> })}
@@ -1291,6 +1440,7 @@ export default function App() {
         {showScoreColumn ? <th><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('score')}><span>{t('score')}</span><span className="sort-indicator">{indicator('score')}</span></button></th> : null}
         {showForecastColumn ? <th title={x.forecastHint}><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('decision')}><span>{x.forecast}</span><span className="sort-indicator">{indicator('decision')}</span></button></th> : null}
         <th><button className="sort-button" onClick={() => changeSort('updatedDate')}><span>{t('updated')}</span><span className="sort-indicator">{indicator('updatedDate')}</span></button></th>
+        <th className="row-action-heading" aria-label={locale === 'ru' ? 'Добавить покупку' : 'Add purchase'}/>
       </tr></thead><tbody>
         {activeLoading ? <tr><td colSpan={tableColumnCount} className="state-cell"><div className="spinner"/><strong>{u.loading}</strong></td></tr> : activeError ? <tr><td colSpan={tableColumnCount} className="state-cell error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={() => setScannerReload(value => value + 1)}>{u.retry}</button></td></tr> : !displayRows.length ? <tr><td colSpan={tableColumnCount} className="state-cell"><strong>{u.noData}</strong></td></tr> : displayRows.map(row => {
           const item = row.item
@@ -1306,12 +1456,14 @@ export default function App() {
             {showScoreColumn ? <td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td> : null}
             {showForecastColumn ? <td><ForecastIndicator signal={signal} fallbackChange={row.canonical ? item.change7d : null} direction={currentEventFor(item.id) ? 'down' : rowTrendDirection(row)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td> : null}
             <td className="updated-cell">{formatDate(row.hourlyFetchedAt || (row.canonical ? item.updatedDate : null), locale)}</td>
+            <td className="row-action-cell"><button type="button" className="row-cart-button" title={locale === 'ru' ? `Добавить покупку: ${itemName(item)}` : `Add purchase: ${itemName(item)}`} aria-label={locale === 'ru' ? `Добавить покупку: ${itemName(item)}` : `Add purchase: ${itemName(item)}`} onClick={() => setPurchaseTarget({ itemId: item.id, slug: item.slug, name: itemName(item), marketKey: row.marketKey, selectedModRank: row.selectedModRank, currentPrice: rowCurrentPrice(row) })}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h2l1.7 9.1a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4l1.2-5.8H6.2M9.5 20h.01M17.5 20h.01"/></svg></button></td>
           </tr>
         })}
       </tbody></table></div></section>
       {!activeLoading && !activeError && activeTotal > 0 ? <nav className="pagination-bar" aria-label="Pagination"><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{activeTotal}</strong></div><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage(1)}>« {p.first}</button><button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>‹ {p.previous}</button><span>{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button disabled={page >= pageCount} onClick={() => setPage(value => Math.min(pageCount, value + 1))}>{p.next} ›</button><button disabled={page >= pageCount} onClick={() => setPage(pageCount)}>{p.last} »</button></div></nav> : null}
     </main>}
     </Suspense>
+    <PurchaseDialog locale={locale} name={purchaseTarget?.name || ''} currentPrice={purchaseTarget?.currentPrice ?? null} open={Boolean(purchaseTarget)} onClose={() => setPurchaseTarget(null)} onSave={value => { if (purchaseTarget) addPurchase({ itemId: purchaseTarget.itemId, slug: purchaseTarget.slug, name: purchaseTarget.name, marketKey: purchaseTarget.marketKey, selectedModRank: purchaseTarget.selectedModRank, ...value }); setPurchaseTarget(null) }}/>
     <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} t={t}/>
   </>
 }
