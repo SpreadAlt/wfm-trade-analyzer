@@ -515,7 +515,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
       {!linkedProfile ? <div className="smart-buy-state compact"><strong>{text.linkFirst}</strong></div> : null}
     </>}
 
-    {!adAtBottom ? <AdSlot placement="smart-buy" orientation="horizontal" locale={locale}/> : null}
+    <AdSlot placement="smart-buy" orientation="horizontal" locale={locale} moveToBottom={adAtBottom}/>
 
     {loading ? <div className="smart-buy-progress">
       <div className="spinner"/>
@@ -649,6 +649,5 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
           })}
         </div>}
     </> : null}
-    {adAtBottom ? <AdSlot placement="smart-buy" orientation="horizontal" locale={locale}/> : null}
   </section>
 }

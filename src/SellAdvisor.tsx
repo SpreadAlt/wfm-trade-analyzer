@@ -143,7 +143,7 @@ export const SellAdvisorPanel = ({ locale, catalog, auth }: {
       <small>{auth.account.smartBuy.remaining}/{auth.account.smartBuy.limit} {text.remaining}{cooldown > 0 ? ` · ${text.cooldown} ${cooldown} ${text.seconds}` : ''}</small>
     </div>}
 
-    {!adAtBottom ? <AdSlot placement="sell-advisor" orientation="horizontal" locale={locale}/> : null}
+    <AdSlot placement="sell-advisor" orientation="horizontal" locale={locale} moveToBottom={adAtBottom}/>
 
     {loading ? <div className="sell-advisor-state"><div className="spinner"/><strong>{text.loading}</strong>{status ? <small>{status.progress.stage} · {status.progress.percent}%{status.queue?.position ? ` · ${text.queue}: ${status.queue.position}` : ''}</small> : null}</div> : null}
     {error ? <div className="sell-advisor-state error-state"><strong>{text.error}</strong><small>{error}</small></div> : null}
@@ -167,6 +167,5 @@ export const SellAdvisorPanel = ({ locale, catalog, auth }: {
       </tbody></table></div>}
       <p className="sell-advisor-disclaimer">{text.disclaimer}</p>
     </> : null}
-    {adAtBottom ? <AdSlot placement="sell-advisor" orientation="horizontal" locale={locale}/> : null}
   </section>
 }

@@ -1,49 +1,99 @@
+import { useEffect, useRef } from 'react'
 import type { Locale } from './i18n'
 import './adSlot.css'
 
 export type AdPlacement = 'main-sidebar' | 'profile' | 'smart-buy' | 'sell-advisor'
 
-type AdCreative = {
-  title?: string
-  description?: string
-  imageUrl?: string
-  href?: string
-  cta?: string
+type AdSenseRuntimeConfig = {
+  client?: string
+  slots?: Partial<Record<AdPlacement, string>>
 }
 
 declare global {
+  interface ImportMeta {
+    readonly env: Record<string, string | undefined>
+  }
+
   interface Window {
-    FRAMEANALYTICS_ADS?: Partial<Record<AdPlacement, AdCreative>>
+    FRAMEANALYTICS_ADSENSE?: AdSenseRuntimeConfig
+    adsbygoogle?: Array<Record<string, never>>
   }
 }
 
-const fallbackText = (locale: Locale) => locale === 'ru' ? {
-  label: 'Реклама', title: 'Рекламное место',
-  description: 'Ненавязчивый партнёрский блок без всплывающих окон.', cta: 'Подробнее'
-} : {
-  label: 'Advertisement', title: 'Advertising space',
-  description: 'A quiet partner placement with no pop-ups.', cta: 'Learn more'
+const slotEnvironmentKeys: Record<AdPlacement, string> = {
+  'main-sidebar': 'VITE_GOOGLE_ADSENSE_SLOT_MAIN',
+  profile: 'VITE_GOOGLE_ADSENSE_SLOT_PROFILE',
+  'smart-buy': 'VITE_GOOGLE_ADSENSE_SLOT_SMART_BUY',
+  'sell-advisor': 'VITE_GOOGLE_ADSENSE_SLOT_SELL_ADVISOR'
 }
 
-export const AdSlot = ({ placement, locale, orientation }: {
+const environment = import.meta.env as Record<string, string | undefined>
+
+const adsenseConfig = (placement: AdPlacement) => {
+  const runtime = typeof window === 'undefined' ? undefined : window.FRAMEANALYTICS_ADSENSE
+  const clientCandidate = (runtime?.client || environment.VITE_GOOGLE_ADSENSE_CLIENT || '').trim()
+  const slotCandidate = (runtime?.slots?.[placement] || environment[slotEnvironmentKeys[placement]] || '').trim()
+
+  return {
+    client: /^ca-pub-\d+$/.test(clientCandidate) ? clientCandidate : '',
+    slot: /^\d+$/.test(slotCandidate) ? slotCandidate : ''
+  }
+}
+
+const ensureAdSenseScript = (client: string) => {
+  if (document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]')) return
+
+  const script = document.createElement('script')
+  script.id = 'frameanalytics-adsense-script'
+  script.async = true
+  script.crossOrigin = 'anonymous'
+  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`
+  document.head.appendChild(script)
+}
+
+export const AdSlot = ({ placement, locale, orientation, moveToBottom = false }: {
   placement: AdPlacement
   locale: Locale
   orientation: 'vertical' | 'horizontal' | 'compact'
+  moveToBottom?: boolean
 }) => {
-  const text = fallbackText(locale)
-  const creative = typeof window === 'undefined' ? undefined : window.FRAMEANALYTICS_ADS?.[placement]
-  const title = creative?.title?.trim() || text.title
-  const description = creative?.description?.trim() || text.description
-  const content = <>
-    {creative?.imageUrl ? <img className="ad-slot-image" src={creative.imageUrl} alt="" loading="lazy"/> : <span className="ad-slot-mark" aria-hidden="true">FA</span>}
-    <span className="ad-slot-copy"><strong>{title}</strong><small>{description}</small></span>
-    {creative?.href ? <span className="ad-slot-cta">{creative.cta?.trim() || text.cta} ↗</span> : null}
-  </>
+  const unitRef = useRef<HTMLModElement | null>(null)
+  const { client, slot } = adsenseConfig(placement)
 
-  return <aside className={`ad-slot ad-slot-${orientation} ad-slot-${placement}`} aria-label={text.label} data-ad-placement={placement}>
-    <span className="ad-slot-label">{text.label}</span>
-    {creative?.href
-      ? <a className="ad-slot-content" href={creative.href} target="_blank" rel="sponsored noopener noreferrer">{content}</a>
-      : <div className="ad-slot-content">{content}</div>}
+  useEffect(() => {
+    const unit = unitRef.current
+    if (!client || !slot || !unit || unit.dataset.adRequested === 'true') return
+
+    unit.dataset.adRequested = 'true'
+    ensureAdSenseScript(client)
+    window.adsbygoogle = window.adsbygoogle || []
+
+    try {
+      window.adsbygoogle.push({})
+    } catch (error) {
+      unit.dataset.adRequested = 'false'
+      console.error('FrameAnalytics AdSense request failed', error)
+    }
+  }, [client, slot])
+
+  if (!client || !slot) return null
+
+  const label = locale === 'ru' ? 'Реклама Google' : 'Google advertisement'
+  const format = orientation === 'vertical' ? 'auto' : 'horizontal'
+
+  return <aside
+    className={`ad-slot ad-slot-${orientation} ad-slot-${placement}${moveToBottom ? ' ad-slot-process-bottom' : ''}`}
+    aria-label={label}
+    data-ad-placement={placement}
+  >
+    <ins
+      ref={unitRef}
+      className="adsbygoogle frameanalytics-adsense-unit"
+      style={{ display: 'block' }}
+      data-ad-client={client}
+      data-ad-slot={slot}
+      data-ad-format={format}
+      data-full-width-responsive="true"
+    />
   </aside>
 }
