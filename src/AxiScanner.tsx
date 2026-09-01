@@ -10,9 +10,9 @@ type AxiScanType = 'axi-rare' | 'prime-sets'
 type MarkupKind = 'percent' | 'platinum'
 type MarkupSettings = { kind: MarkupKind; value: number }
 
-type AxiStart = { ok: true; jobId: string; state: string; reused?: boolean; queuedAt: string; expiresAt: string; durationMinutes?: number; scanType?: AxiScanType; markup?: MarkupSettings }
+type AxiStart = { ok: true; jobId: string; state: string; reused?: boolean; queuedAt: string; expiresAt: string; durationMinutes?: number; scanType?: AxiScanType; markup?: MarkupSettings; minimumAverage24h?: number }
 type AxiStop = { ok: true; jobId: string; state: 'cancelled'; stoppedAt: string }
-type AxiJobStatus = { ok: true; jobId: string; state: string; expiresAt: string; scanType?: AxiScanType; markup?: MarkupSettings; progress?: { stage?: string; processed?: number; total?: number; percent?: number; cycle?: number; completedCycles?: number }; error?: string | null }
+type AxiJobStatus = { ok: true; jobId: string; state: string; expiresAt: string; scanType?: AxiScanType; markup?: MarkupSettings; minimumAverage24h?: number; progress?: { stage?: string; processed?: number; total?: number; percent?: number; cycle?: number; completedCycles?: number }; error?: string | null }
 type AxiRareRow = {
   rowType?: 'axi-rare'
   relationId: string
@@ -58,6 +58,8 @@ type AxiResult = {
   state: string
   scanType?: AxiScanType
   markup?: MarkupSettings
+  minimumAverage24h?: number
+  filteredByMinimumAverage24h?: number
   generatedAt: string | null
   expiresAt: string
   cycle: number
@@ -75,6 +77,7 @@ const JOB_KEY_PREFIX = 'frameanalytics-axi-scanner-job:'
 const SCAN_TYPE_KEY = 'frameanalytics-axi-scanner-type'
 const DURATION_KEY = 'frameanalytics-axi-scanner-duration'
 const MARKUP_KEY_PREFIX = 'frameanalytics-axi-scanner-markup:'
+const MINIMUM_AVERAGE_KEY_PREFIX = 'frameanalytics-axi-scanner-minimum-average-24h:'
 const DURATION_OPTIONS = [15, 30, 60, 120, 240, 480, 1440] as const
 const DEFAULT_MARKUP: Record<AxiScanType, MarkupSettings> = {
   'axi-rare': { kind: 'percent', value: 900 },
@@ -97,6 +100,10 @@ const readMarkup = (scanType: AxiScanType): MarkupSettings => {
     return DEFAULT_MARKUP[scanType]
   }
 }
+const readMinimumAverage24h = (scanType: AxiScanType) => {
+  const value = Number(localStorage.getItem(`${MINIMUM_AVERAGE_KEY_PREFIX}${scanType}`))
+  return Number.isFinite(value) && value >= 0 ? value : 0
+}
 const isPrimeSetRow = (row: AxiRow): row is PrimeSetRow => row.rowType === 'prime-set'
 
 export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; catalog: Map<string, CatalogItem>; onBack: () => void }) => {
@@ -116,9 +123,14 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
     'axi-rare': readMarkup('axi-rare'),
     'prime-sets': readMarkup('prime-sets')
   }))
+  const [minimumAverageByType, setMinimumAverageByType] = useState<Record<AxiScanType, number>>(() => ({
+    'axi-rare': readMinimumAverage24h('axi-rare'),
+    'prime-sets': readMinimumAverage24h('prime-sets')
+  }))
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted')
   const [error, setError] = useState<string | null>(null)
   const markup = markupByType[scanType]
+  const minimumAverage24h = minimumAverageByType[scanType]
 
   const refresh = useCallback(async (id: string) => {
     const [nextStatus, nextResult] = await Promise.all([
@@ -169,6 +181,12 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
     })
   }
 
+  const updateMinimumAverage24h = (value: number) => {
+    const normalized = Math.max(0, Number(value) || 0)
+    localStorage.setItem(`${MINIMUM_AVERAGE_KEY_PREFIX}${scanType}`, String(normalized))
+    setMinimumAverageByType(current => ({ ...current, [scanType]: normalized }))
+  }
+
   const start = async () => {
     setStarting(true)
     setError(null)
@@ -180,7 +198,7 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
       localStorage.setItem(DURATION_KEY, String(durationMinutes))
       const next = await accountRequestJson<AxiStart>('/api/axi-scanner/start', {
         method: 'POST',
-        body: JSON.stringify({ durationMinutes, scanType, markupKind: markup.kind, markupValue: markup.value })
+        body: JSON.stringify({ durationMinutes, scanType, markupKind: markup.kind, markupValue: markup.value, minimumAverage24h })
       })
       sessionStorage.setItem(`${JOB_KEY_PREFIX}${scanType}`, next.jobId)
       setJobId(next.jobId)
@@ -284,11 +302,16 @@ export const AxiScannerPage = ({ locale, catalog, onBack }: { locale: Locale; ca
         <div><input type="number" min="0" step="1" value={markup.value} disabled={running || starting} onChange={event => updateMarkup({ value: Number(event.target.value) })}/><select value={markup.kind} disabled={running || starting} onChange={event => updateMarkup({ kind: event.target.value as MarkupKind })}><option value="percent">%</option><option value="platinum">{ru ? 'платина' : 'platinum'}</option></select></div>
         <small>{scanType === 'axi-rare' ? (ru ? 'Считается от цены реликвии.' : 'Calculated from the relic price.') : (ru ? 'Считается от минимального онлайн-ордера комплекта.' : 'Calculated from the set’s minimum online order.')}</small>
       </div>
+      <div className="axi-markup-setting axi-average-setting">
+        <span>{ru ? 'Мин. средняя цена за 24ч' : 'Minimum 24h average price'}</span>
+        <div><input type="number" min="0" step="1" value={minimumAverage24h} disabled={running || starting} onChange={event => updateMinimumAverage24h(Number(event.target.value))}/><span className="axi-setting-unit">p</span></div>
+        <small>{ru ? 'Предметы дешевле значения не запрашивают ордера WFM. Лоты по 1–3p всегда игнорируются.' : 'Items below this value skip WFM order requests. Listings priced at 1–3p are always ignored.'}</small>
+      </div>
     </section>
     {error ? <div className="account-message error">{error}</div> : null}
     <section className="axi-status-grid">
       <article className="panel"><span>{ru ? 'Состояние' : 'State'}</span><strong>{stateLabel}</strong><small>{status?.progress?.stage || '—'}</small></article>
-      <article className="panel"><span>{scanType === 'axi-rare' ? (ru ? 'Активные реликвии' : 'Active relics') : (ru ? 'Prime комплекты' : 'Prime Sets')}</span><strong>{scanType === 'axi-rare' ? result?.activeRelics ?? '—' : result?.activeItems ?? '—'}</strong><small>{ru ? `Исключено: ${scanType === 'axi-rare' ? result?.excludedRelics ?? '—' : result?.excludedItems ?? '—'}` : `Excluded: ${scanType === 'axi-rare' ? result?.excludedRelics ?? '—' : result?.excludedItems ?? '—'}`}</small></article>
+      <article className="panel"><span>{scanType === 'axi-rare' ? (ru ? 'Активные реликвии' : 'Active relics') : (ru ? 'Prime комплекты' : 'Prime Sets')}</span><strong>{scanType === 'axi-rare' ? result?.activeRelics ?? '—' : result?.activeItems ?? '—'}</strong><small>{ru ? `Исключено: ${scanType === 'axi-rare' ? result?.excludedRelics ?? '—' : result?.excludedItems ?? '—'} · фильтр 24ч: ${result?.filteredByMinimumAverage24h ?? 0}` : `Excluded: ${scanType === 'axi-rare' ? result?.excludedRelics ?? '—' : result?.excludedItems ?? '—'} · 24h filter: ${result?.filteredByMinimumAverage24h ?? 0}`}</small></article>
       <article className="panel"><span>{ru ? 'Проход' : 'Cycle'}</span><strong>{result?.cycle || status?.progress?.cycle || '—'}</strong><small>{ru ? `Завершено: ${result?.completedCycles ?? status?.progress?.completedCycles ?? 0}` : `Completed: ${result?.completedCycles ?? status?.progress?.completedCycles ?? 0}`}</small></article>
       <article className="panel"><span>{ru ? 'Осталось' : 'Remaining'}</span><strong>{remainingMinutes == null ? '—' : `${remainingMinutes} ${ru ? 'мин' : 'min'}`}</strong><small>{time(result?.generatedAt, locale)}</small></article>
     </section>

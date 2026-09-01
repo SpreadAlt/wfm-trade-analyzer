@@ -13,7 +13,17 @@ type ManagedAccount = {
   axiScanner: boolean
   disabled: boolean
   purchaseCount: number
+  purchaseUnits: number
+  investedPlatinum: number
   sessionCount: number
+  sessionExpiresAt: number | null
+  wfmProfile: string | null
+  profileUpdatedAt: number | null
+  accessUpdatedAt: number | null
+  stateUpdatedAt: number | null
+  smartBuy: { limit: number; used: number; remaining: number; cooldownSeconds: number; lastRunAt: string | null }
+  axiRunCount: number
+  axiLastRunAt: number | null
   betaJoinedAt: number | null
   inviteCodePrefix: string | null
   inviteLabel: string | null
@@ -74,8 +84,8 @@ type WfmTelemetry = {
   ok: true
   gatewayRevision: string
   generatedAt: string
-  configured: { intervalMs: number; targetRps: number; maxInFlight: number; warningDay: number; limitDay: number }
-  current: { rps10s: number; rps60s: number; requests10s: number; requests60s: number; pending: number; running: boolean; inFlight: number }
+  configured: { intervalMs: number; targetRps: number; hardMinimumIntervalMs?: number; hardMaximumRps?: number; belowThreeRps?: boolean; maxInFlight: number; warningDay: number; limitDay: number }
+  current: { rps10s: number; rps60s: number; requests10s: number; requests60s: number; pending: number; pendingClients?: Record<string, number>; running: boolean; inFlight: number; inFlightClients?: Record<string, number> }
   daily: {
     day: string
     requests: number
@@ -118,6 +128,18 @@ type WfmTelemetry = {
   totalRequests: number
 }
 
+type ProcessQueues = {
+  ok: true
+  generatedAt: string
+  queues: Record<string, { label: string; backlogCount: number | null; oldestMessageAgeSeconds: number | null; error?: string }>
+  active: {
+    axiScanner: null | { jobId: string; state: string; scanType: string; queuedAt: string | null; startedAt: string | null; expiresAt: string | null; progress?: { processed?: number; total?: number; percent?: number } }
+    resaleScanner: null | { state: string; generatedAt: string | null; processedItems: number; totalItems: number }
+  }
+}
+
+type DeveloperCategory = 'overview' | 'scanners' | 'accounts' | 'access'
+
 const platinum = (value: number) => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)}p`
 
 const dateTime = (value: string | number | null, locale: Locale) => {
@@ -128,6 +150,7 @@ const dateTime = (value: string | number | null, locale: Locale) => {
 
 export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack: () => void }) => {
   const ru = locale === 'ru'
+  const [category, setCategory] = useState<DeveloperCategory>('overview')
   const [query, setQuery] = useState('')
   const [accounts, setAccounts] = useState<ManagedAccount[]>([])
   const [loading, setLoading] = useState(true)
@@ -146,6 +169,8 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   const [resaleError, setResaleError] = useState<string | null>(null)
   const [telemetry, setTelemetry] = useState<WfmTelemetry | null>(null)
   const [telemetryError, setTelemetryError] = useState<string | null>(null)
+  const [processQueues, setProcessQueues] = useState<ProcessQueues | null>(null)
+  const [processQueuesError, setProcessQueuesError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -161,9 +186,10 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   }, [query])
 
   useEffect(() => {
+    if (category !== 'accounts') return
     const timer = window.setTimeout(() => { void load() }, 250)
     return () => window.clearTimeout(timer)
-  }, [load])
+  }, [category, load])
 
   const loadInvites = useCallback(async () => {
     setInvitesLoading(true)
@@ -178,7 +204,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     }
   }, [])
 
-  useEffect(() => { void loadInvites() }, [loadInvites])
+  useEffect(() => { if (category === 'access') void loadInvites() }, [category, loadInvites])
 
   const loadResale = useCallback(async () => {
     try {
@@ -193,10 +219,11 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   }, [])
 
   useEffect(() => {
+    if (category !== 'scanners') return
     void loadResale()
     const timer = window.setInterval(() => { void loadResale() }, 10_000)
     return () => window.clearInterval(timer)
-  }, [loadResale])
+  }, [category, loadResale])
 
   const loadTelemetry = useCallback(async () => {
     try {
@@ -209,10 +236,27 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   }, [])
 
   useEffect(() => {
+    if (category !== 'overview') return
     void loadTelemetry()
     const timer = window.setInterval(() => { void loadTelemetry() }, 10_000)
     return () => window.clearInterval(timer)
-  }, [loadTelemetry])
+  }, [category, loadTelemetry])
+
+  const loadProcessQueues = useCallback(async () => {
+    try {
+      setProcessQueues(await accountRequestJson<ProcessQueues>('/api/developer/process-queues'))
+      setProcessQueuesError(null)
+    } catch (value) {
+      setProcessQueuesError(value instanceof Error ? value.message : String(value))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (category !== 'overview') return
+    void loadProcessQueues()
+    const timer = window.setInterval(() => { void loadProcessQueues() }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [category, loadProcessQueues])
 
   const setAxiAccess = async (account: ManagedAccount, enabled: boolean) => {
     setSaving(account.id)
@@ -262,6 +306,23 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         body: JSON.stringify({ userId: account.id, action: 'revoke-sessions' })
       })
       setAccounts(current => current.map(item => item.id === account.id ? { ...item, sessionCount: 0 } : item))
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const restoreSmartBuyLimit = async (account: ManagedAccount) => {
+    if (!window.confirm(ru ? `Восстановить лимит Smart Buy для ${account.email}? Счётчик запусков за 24 часа станет равен нулю.` : `Restore the Smart Buy limit for ${account.email}? Their 24-hour run counter will be reset to zero.`)) return
+    setSaving(account.id)
+    setError(null)
+    try {
+      const result = await accountRequestJson<{ ok: true; smartBuy: ManagedAccount['smartBuy'] }>('/api/developer/accounts', {
+        method: 'POST',
+        body: JSON.stringify({ userId: account.id, action: 'reset-smart-buy-limit' })
+      })
+      setAccounts(current => current.map(item => item.id === account.id ? { ...item, smartBuy: result.smartBuy } : item))
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value))
     } finally {
@@ -325,7 +386,30 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <div><span className="eyebrow">FrameAnalytics</span><h1>{ru ? 'Кабинет разработчика' : 'Developer dashboard'}</h1><p>{ru ? 'Управление закрытыми функциями аккаунтов. Права проверяются Worker-ом при каждом запросе.' : 'Manage account access to private features. Every request is authorized by the Worker.'}</p></div>
       <div className="developer-private-badge">{ru ? 'Только владелец' : 'Owner only'}</div>
     </section>
-    <section className="panel developer-telemetry-panel">
+    <nav className="panel developer-category-nav" aria-label={ru ? 'Разделы кабинета' : 'Dashboard sections'}>
+      {([
+        ['overview', ru ? 'Обзор и очереди' : 'Overview & queues'],
+        ['scanners', ru ? 'Сканеры' : 'Scanners'],
+        ['accounts', ru ? 'Аккаунты и лимиты' : 'Accounts & limits'],
+        ['access', ru ? 'Доступ и приглашения' : 'Access & invites']
+      ] as Array<[DeveloperCategory, string]>).map(([value, label]) => <button type="button" key={value} className={category === value ? 'active' : ''} onClick={() => setCategory(value)}>{label}</button>)}
+    </nav>
+    <section className="panel developer-process-panel" hidden={category !== 'overview'}>
+      <header className="developer-section-heading"><div><span className="eyebrow">Runtime</span><h2>{ru ? 'Процессы в очереди' : 'Queued processes'}</h2><p>{ru ? 'Очереди Cloudflare и процессы, ожидающие общий WFM Gateway.' : 'Cloudflare queues and processes waiting for the shared WFM Gateway.'}</p></div><button type="button" className="secondary-action" onClick={() => void Promise.all([loadProcessQueues(), loadTelemetry()])}>{ru ? 'Обновить' : 'Refresh'}</button></header>
+      {processQueuesError ? <div className="account-message error">{processQueuesError}</div> : null}
+      <div className="developer-process-grid">
+        {Object.entries(processQueues?.queues || {}).map(([key, queue]) => <article key={key}><span>{queue.label}</span><strong>{queue.backlogCount ?? '—'}</strong><small>{queue.error || (queue.oldestMessageAgeSeconds ? `${ru ? 'старейшее' : 'oldest'}: ${Math.round(queue.oldestMessageAgeSeconds)}s` : (ru ? 'сообщений в очереди' : 'queued messages'))}</small></article>)}
+        <article><span>WFM Gateway</span><strong>{telemetry?.current.pending ?? '—'}</strong><small>{ru ? 'ожидают допуска' : 'waiting for admission'}</small></article>
+        <article><span>{ru ? 'В работе WFM' : 'WFM in flight'}</span><strong>{telemetry?.current.inFlight ?? '—'}</strong><small>{telemetry?.configured.maxInFlight ? `${ru ? 'макс.' : 'max'} ${telemetry.configured.maxInFlight}` : '—'}</small></article>
+      </div>
+      <div className="developer-live-processes">
+        <div><span>{ru ? 'Ожидают Gateway' : 'Waiting in Gateway'}</span><p>{telemetry && Object.keys(telemetry.current.pendingClients || {}).length ? Object.entries(telemetry.current.pendingClients || {}).map(([name, count]) => `${name}: ${count}`).join(' · ') : '—'}</p></div>
+        <div><span>{ru ? 'Выполняются через Gateway' : 'Running through Gateway'}</span><p>{telemetry && Object.keys(telemetry.current.inFlightClients || {}).length ? Object.entries(telemetry.current.inFlightClients || {}).map(([name, count]) => `${name}: ${count}`).join(' · ') : '—'}</p></div>
+        <div><span>Axi / Prime Set</span><p>{processQueues?.active.axiScanner ? `${processQueues.active.axiScanner.scanType} · ${processQueues.active.axiScanner.state} · ${processQueues.active.axiScanner.progress?.processed ?? 0}/${processQueues.active.axiScanner.progress?.total ?? '—'}` : (ru ? 'не запущен' : 'not running')}</p></div>
+        <div><span>{ru ? 'Перепродажа' : 'Resale'}</span><p>{processQueues?.active.resaleScanner ? `${processQueues.active.resaleScanner.state} · ${processQueues.active.resaleScanner.processedItems}/${processQueues.active.resaleScanner.totalItems || '—'}` : '—'}</p></div>
+      </div>
+    </section>
+    <section className="panel developer-telemetry-panel" hidden={category !== 'overview'}>
       <header className="developer-section-heading">
         <div><span className="eyebrow">Warframe Market gateway</span><h2>{ru ? 'Текущая скорость запросов' : 'Current request rate'}</h2><p>{ru ? 'Общая скорость API, Hourly, Smart Buy, Axi и сканера перепродажи. Данные обновляются каждые 10 секунд.' : 'Combined rate for API, Hourly, Smart Buy, Axi and resale scanner. Refreshes every 10 seconds.'}</p></div>
         <span className={`developer-state ${telemetry?.upstream.cooldownActive || telemetry?.daily.blocked ? 'danger' : 'active'}`}>{telemetry?.daily.blocked ? (ru ? 'Лимит достигнут' : 'Budget reached') : telemetry?.upstream.cooldownActive ? (ru ? 'Пауза WFM' : 'WFM cooldown') : (ru ? 'Норма' : 'Healthy')}</span>
@@ -336,7 +420,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         <div><span>{ru ? 'Скорость 60с' : '60s rate'}</span><strong>{telemetry ? `${telemetry.current.rps60s.toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.current.requests60s} / 60s` : '—'}</small></div>
         <div><span>{ru ? 'Очередь шлюза' : 'Gateway queue'}</span><strong>{telemetry ? telemetry.current.pending : '—'}</strong><small>{telemetry?.current.running ? (ru ? 'запрос выполняется' : 'request running') : (ru ? 'свободен' : 'idle')}</small></div>
         <div><span>{ru ? 'Сегодня' : 'Today'}</span><strong>{telemetry ? new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US').format(telemetry.daily.requests) : '—'}</strong><small>{telemetry ? `${new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US').format(telemetry.daily.remaining)} ${ru ? 'осталось' : 'remaining'}` : '—'}</small></div>
-        <div><span>{ru ? 'Целевой максимум' : 'Target ceiling'}</span><strong>{telemetry ? `${telemetry.configured.targetRps.toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.configured.intervalMs} ms` : '—'}</small></div>
+        <div><span>{ru ? 'Жёсткий максимум' : 'Hard ceiling'}</span><strong>{telemetry ? `${(telemetry.configured.hardMaximumRps ?? telemetry.configured.targetRps).toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.configured.intervalMs} ms · ${telemetry.configured.belowThreeRps === false ? '⚠' : '< 3 req/s'}` : '—'}</small></div>
         <div><span>{ru ? 'Ответ WFM' : 'WFM response'}</span><strong>{telemetry?.upstream.lastStatus ?? '—'}</strong><small>{telemetry?.upstream.lastRequestAt ? dateTime(telemetry.upstream.lastRequestAt, locale) : '—'}</small></div>
       </div>
       <div className="developer-telemetry-breakdown">
@@ -351,7 +435,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         </tbody></table></div>
       </details>
     </section>
-    <section className="panel developer-invites-panel">
+    <section className="panel developer-invites-panel" hidden={category !== 'access'}>
       <header className="developer-section-heading">
         <div><span className="eyebrow">Closed beta</span><h2>{ru ? 'Приглашения на бета-тест' : 'Beta invitations'}</h2><p>{ru ? 'Код показывается только один раз сразу после создания. В базе хранится только его хеш.' : 'The code is shown only once after creation. Only its hash is stored.'}</p></div>
         <button type="button" className="secondary-action" disabled={invitesLoading} onClick={() => void loadInvites()}>{ru ? 'Обновить список' : 'Refresh list'}</button>
@@ -380,7 +464,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         })}
       </tbody></table></div>
     </section>
-    <section className="panel developer-resale-panel">
+    <section className="panel developer-resale-panel" hidden={category !== 'scanners'}>
       <header className="developer-resale-heading">
         <div><span className="eyebrow">Hourly resale</span><h2>{ru ? 'Перепродажа с прибылью от 20p' : 'Resale opportunities from 20p'}</h2><p>{ru ? 'Без модов и мистификаторов: от 30 закрытых продаж за 24 часа, средняя цена от 45p и свежие sell-orders игроков online/ingame.' : 'Excludes mods and arcanes: at least 30 closed sales in 24h, average price from 45p, and fresh online/ingame sell-orders.'}</p></div>
         <div className="developer-resale-actions">
@@ -402,20 +486,20 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         </tr>)}
       </tbody></table></div>
     </section>
-    <section className="panel developer-controls">
+    <section className="panel developer-controls" hidden={category !== 'accounts'}>
       <label><span>{ru ? 'Поиск аккаунта' : 'Search accounts'}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={ru ? 'Имя или email' : 'Name or email'}/></label>
       <button type="button" className="secondary-action" disabled={loading} onClick={() => void load()}>{ru ? 'Обновить' : 'Refresh'}</button>
     </section>
-    {error ? <div className="account-message error">{error}</div> : null}
-    <section className="panel table-panel developer-table-panel">
-      <div className="table-scroll"><table className="developer-table developer-accounts-table"><thead><tr><th>{ru ? 'Аккаунт' : 'Account'}</th><th>{ru ? 'Регистрация' : 'Registration'}</th><th>{ru ? 'Данные' : 'Data'}</th><th>{ru ? 'Axi-сканер' : 'Axi scanner'}</th><th>{ru ? 'Доступ' : 'Access'}</th><th>{ru ? 'Сессии' : 'Sessions'}</th></tr></thead><tbody>
+    {error && category === 'accounts' ? <div className="account-message error">{error}</div> : null}
+    <section className="panel table-panel developer-table-panel" hidden={category !== 'accounts'}>
+      <div className="table-scroll"><table className="developer-table developer-accounts-table"><thead><tr><th>{ru ? 'Аккаунт' : 'Account'}</th><th>{ru ? 'Регистрация и WFM' : 'Registration & WFM'}</th><th>{ru ? 'Портфель' : 'Portfolio'}</th><th>{ru ? 'Лимиты' : 'Limits'}</th><th>{ru ? 'Доступ' : 'Access'}</th><th>{ru ? 'Сессии' : 'Sessions'}</th></tr></thead><tbody>
         {loading ? <tr><td colSpan={6} className="state-cell"><div className="spinner"/>{ru ? 'Загрузка аккаунтов…' : 'Loading accounts…'}</td></tr> : !accounts.length ? <tr><td colSpan={6} className="state-cell">{ru ? 'Аккаунты не найдены.' : 'No accounts found.'}</td></tr> : accounts.map(account => <tr key={account.id} className={account.disabled ? 'developer-account-disabled' : ''}>
           <td><strong>{account.name || '—'}</strong><span className="developer-email">{account.email}</span>{account.developer ? <small className="developer-role">developer</small> : account.emailVerified ? <small>{ru ? 'Email подтверждён' : 'Email verified'}</small> : null}</td>
-          <td>{dateTime(account.createdAt, locale)}{account.inviteLabel || account.inviteCodePrefix ? <small>{account.inviteLabel || account.inviteCodePrefix}</small> : null}</td>
-          <td><strong>{account.purchaseCount}</strong><small>{ru ? 'покупок в профиле' : 'profile purchases'}</small></td>
-          <td><label className="access-toggle"><input type="checkbox" checked={account.axiScanner} disabled={account.developer || account.disabled || saving === account.id} onChange={event => void setAxiAccess(account, event.target.checked)}/><span>{account.axiScanner ? (ru ? 'Разрешён' : 'Allowed') : (ru ? 'Закрыт' : 'Blocked')}</span></label></td>
-          <td><button type="button" className={`secondary-action compact ${account.disabled ? 'danger' : ''}`} disabled={account.developer || saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Восстановить' : 'Restore') : (ru ? 'Приостановить' : 'Suspend')}</button></td>
-          <td><strong>{account.sessionCount}</strong><button type="button" className="secondary-action compact" disabled={account.developer || saving === account.id || account.sessionCount < 1} onClick={() => void revokeSessions(account)}>{ru ? 'Выйти везде' : 'Sign out all'}</button></td>
+          <td>{dateTime(account.createdAt, locale)}{account.wfmProfile ? <a className="developer-profile-link" href={`https://warframe.market/profile/${encodeURIComponent(account.wfmProfile)}`} target="_blank" rel="noreferrer">@{account.wfmProfile}</a> : <small>{ru ? 'WFM профиль не указан' : 'No WFM profile'}</small>}{account.inviteLabel || account.inviteCodePrefix ? <small>{ru ? 'Приглашение' : 'Invite'}: {account.inviteLabel || account.inviteCodePrefix}</small> : null}</td>
+          <td><strong>{account.purchaseCount}</strong><small>{ru ? `${account.purchaseUnits} ед. · вложено ${platinum(account.investedPlatinum)}` : `${account.purchaseUnits} units · ${platinum(account.investedPlatinum)} invested`}</small></td>
+          <td><div className="developer-limit"><strong>Smart Buy {account.smartBuy.used}/{account.smartBuy.limit}</strong><small>{ru ? `Осталось: ${account.smartBuy.remaining}` : `Remaining: ${account.smartBuy.remaining}`}{account.smartBuy.lastRunAt ? ` · ${dateTime(account.smartBuy.lastRunAt, locale)}` : ''}</small><button type="button" className="secondary-action compact" disabled={saving === account.id || account.smartBuy.used < 1} onClick={() => void restoreSmartBuyLimit(account)}>{ru ? 'Восстановить лимит' : 'Restore limit'}</button></div></td>
+          <td><label className="access-toggle"><input type="checkbox" checked={account.axiScanner} disabled={account.developer || account.disabled || saving === account.id} onChange={event => void setAxiAccess(account, event.target.checked)}/><span>{account.axiScanner ? (ru ? 'Axi разрешён' : 'Axi allowed') : (ru ? 'Axi закрыт' : 'Axi blocked')}</span></label><small>{ru ? `Запусков Axi: ${account.axiRunCount}` : `Axi runs: ${account.axiRunCount}`}</small><button type="button" className={`secondary-action compact ${account.disabled ? 'danger' : ''}`} disabled={account.developer || saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Восстановить аккаунт' : 'Restore account') : (ru ? 'Приостановить' : 'Suspend')}</button></td>
+          <td><strong>{account.sessionCount}</strong><small>{account.sessionExpiresAt ? `${ru ? 'до' : 'until'} ${dateTime(account.sessionExpiresAt, locale)}` : (ru ? 'активных сессий нет' : 'no active sessions')}</small><button type="button" className="secondary-action compact" disabled={account.developer || saving === account.id || account.sessionCount < 1} onClick={() => void revokeSessions(account)}>{ru ? 'Выйти везде' : 'Sign out all'}</button></td>
         </tr>)}
       </tbody></table></div>
     </section>

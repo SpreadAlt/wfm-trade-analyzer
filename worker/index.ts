@@ -56,6 +56,9 @@ const json = (value: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
   });
 
 const nowMs = () => Date.now();
+const SMART_BUY_DAILY_LIMIT = 30;
+const SMART_BUY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SMART_BUY_COOLDOWN_MS = 60 * 1000;
 
 const SMART_BUY_START_HEADER = "X-FrameAnalytics-SmartBuy-Token";
 const WFM_GATEWAY_HEADER = "X-FrameAnalytics-Gateway-Token";
@@ -545,8 +548,8 @@ const handleManualMarketItem = async (
 
 const readSmartBuyUsage = async (env: Env, userId: string) => {
   const now = nowMs();
-  const since = now - 24 * 60 * 60 * 1000;
-  const cooldownCutoff = now - 60 * 1000;
+  const since = now - SMART_BUY_WINDOW_MS;
+  const cooldownCutoff = now - SMART_BUY_COOLDOWN_MS;
 
   const countRow = await env.frameanalytics_auth
     .prepare(`
@@ -571,17 +574,17 @@ const readSmartBuyUsage = async (env: Env, userId: string) => {
   const used = Number(countRow?.used ?? 0);
   const lastRunAt = Number(lastRow?.created_at ?? 0) || null;
   const cooldownRemainingSeconds = lastRunAt
-    ? Math.max(0, Math.ceil((lastRunAt + 60_000 - now) / 1000))
+    ? Math.max(0, Math.ceil((lastRunAt + SMART_BUY_COOLDOWN_MS - now) / 1000))
     : 0;
 
   return {
-    limit: 30,
+    limit: SMART_BUY_DAILY_LIMIT,
     windowHours: 24,
     used,
-    remaining: Math.max(0, 30 - used),
-    cooldownSeconds: 60,
+    remaining: Math.max(0, SMART_BUY_DAILY_LIMIT - used),
+    cooldownSeconds: SMART_BUY_COOLDOWN_MS / 1000,
     cooldownRemainingSeconds,
-    canRun: used < 30 && (!lastRunAt || lastRunAt <= cooldownCutoff),
+    canRun: used < SMART_BUY_DAILY_LIMIT && (!lastRunAt || lastRunAt <= cooldownCutoff),
     lastRunAt: lastRunAt ? new Date(lastRunAt).toISOString() : null,
   };
 };
@@ -589,8 +592,8 @@ const readSmartBuyUsage = async (env: Env, userId: string) => {
 const reserveSmartBuyRun = async (env: Env, userId: string) => {
   const now = nowMs();
   const id = crypto.randomUUID();
-  const since = now - 24 * 60 * 60 * 1000;
-  const cooldownCutoff = now - 60 * 1000;
+  const since = now - SMART_BUY_WINDOW_MS;
+  const cooldownCutoff = now - SMART_BUY_COOLDOWN_MS;
 
   const result = await env.frameanalytics_auth
     .prepare(`
@@ -601,7 +604,7 @@ const reserveSmartBuyRun = async (env: Env, userId: string) => {
           SELECT COUNT(*)
           FROM frameanalytics_smart_buy_run
           WHERE user_id = ? AND created_at > ?
-        ) < 30
+        ) < ${SMART_BUY_DAILY_LIMIT}
         AND
         COALESCE(
           (
@@ -693,23 +696,45 @@ const handleDeveloperAccounts = async (
         u.createdAt AS createdAt,
         COALESCE(a.axi_scanner, 0) AS axiScanner,
         COALESCE(s.disabled, 0) AS disabled,
+        a.updated_at AS accessUpdatedAt,
+        s.updated_at AS stateUpdatedAt,
+        profile.wfm_profile AS wfmProfile,
+        profile.updated_at AS profileUpdatedAt,
         COALESCE(p.purchaseCount, 0) AS purchaseCount,
+        COALESCE(p.purchaseUnits, 0) AS purchaseUnits,
+        COALESCE(p.investedPlatinum, 0) AS investedPlatinum,
         COALESCE(sess.sessionCount, 0) AS sessionCount,
+        sess.sessionExpiresAt AS sessionExpiresAt,
+        COALESCE(smart.smartBuyUsed, 0) AS smartBuyUsed,
+        smart.smartBuyLastRunAt AS smartBuyLastRunAt,
+        COALESCE(axi.axiRunCount, 0) AS axiRunCount,
+        axi.axiLastRunAt AS axiLastRunAt,
         beta.joined_at AS betaJoinedAt,
         invite.code_prefix AS inviteCodePrefix,
         invite.label AS inviteLabel
       FROM user u
       LEFT JOIN frameanalytics_access a ON a.user_id = u.id
       LEFT JOIN frameanalytics_account_state s ON s.user_id = u.id
+      LEFT JOIN frameanalytics_profile profile ON profile.user_id = u.id
       LEFT JOIN frameanalytics_beta_access beta ON beta.user_id = u.id
       LEFT JOIN frameanalytics_beta_invite invite ON invite.code_hash = beta.code_hash
       LEFT JOIN (
-        SELECT user_id, COUNT(*) AS purchaseCount
+        SELECT user_id, COUNT(*) AS purchaseCount, SUM(quantity) AS purchaseUnits, SUM(purchase_price * quantity) AS investedPlatinum
         FROM frameanalytics_purchase
         GROUP BY user_id
       ) p ON p.user_id = u.id
       LEFT JOIN (
-        SELECT userId AS user_id, COUNT(*) AS sessionCount
+        SELECT user_id, SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) AS smartBuyUsed, MAX(created_at) AS smartBuyLastRunAt
+        FROM frameanalytics_smart_buy_run
+        GROUP BY user_id
+      ) smart ON smart.user_id = u.id
+      LEFT JOIN (
+        SELECT requested_by AS user_id, COUNT(*) AS axiRunCount, MAX(created_at) AS axiLastRunAt
+        FROM frameanalytics_axi_run
+        GROUP BY requested_by
+      ) axi ON axi.user_id = u.id
+      LEFT JOIN (
+        SELECT userId AS user_id, COUNT(*) AS sessionCount, MAX(expiresAt) AS sessionExpiresAt
         FROM "session"
         WHERE expiresAt > ?
         GROUP BY userId
@@ -717,7 +742,7 @@ const handleDeveloperAccounts = async (
       WHERE (? = '' OR LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)
       ORDER BY CASE WHEN LOWER(u.email) = ? THEN 0 ELSE 1 END, u.createdAt DESC
       LIMIT ?
-    `).bind(nowMs(), search, pattern, pattern, ownerEmail, limit).all<{
+    `).bind(nowMs() - SMART_BUY_WINDOW_MS, nowMs(), search, pattern, pattern, ownerEmail, limit).all<{
       id: string;
       name: string;
       email: string;
@@ -725,8 +750,19 @@ const handleDeveloperAccounts = async (
       createdAt: string;
       axiScanner: number;
       disabled: number;
+      accessUpdatedAt: number | null;
+      stateUpdatedAt: number | null;
+      wfmProfile: string | null;
+      profileUpdatedAt: number | null;
       purchaseCount: number;
+      purchaseUnits: number;
+      investedPlatinum: number;
       sessionCount: number;
+      sessionExpiresAt: number | null;
+      smartBuyUsed: number;
+      smartBuyLastRunAt: number | null;
+      axiRunCount: number;
+      axiLastRunAt: number | null;
       betaJoinedAt: number | null;
       inviteCodePrefix: string | null;
       inviteLabel: string | null;
@@ -740,7 +776,17 @@ const handleDeveloperAccounts = async (
         axiScanner: row.email.trim().toLowerCase() === ownerEmail || Number(row.axiScanner) === 1,
         disabled: row.email.trim().toLowerCase() === ownerEmail ? false : Number(row.disabled) === 1,
         purchaseCount: Number(row.purchaseCount) || 0,
+        purchaseUnits: Number(row.purchaseUnits) || 0,
+        investedPlatinum: Number(row.investedPlatinum) || 0,
         sessionCount: Number(row.sessionCount) || 0,
+        smartBuy: {
+          limit: SMART_BUY_DAILY_LIMIT,
+          used: Number(row.smartBuyUsed) || 0,
+          remaining: Math.max(0, SMART_BUY_DAILY_LIMIT - (Number(row.smartBuyUsed) || 0)),
+          cooldownSeconds: SMART_BUY_COOLDOWN_MS / 1000,
+          lastRunAt: row.smartBuyLastRunAt ? new Date(Number(row.smartBuyLastRunAt)).toISOString() : null,
+        },
+        axiRunCount: Number(row.axiRunCount) || 0,
       })),
     });
   }
@@ -800,9 +846,13 @@ const handleDeveloperAccounts = async (
     const userId = String(body.userId || "").trim();
     const action = String(body.action || "").trim();
     if (!userId) return json({ ok: false, error: "userId is required" }, 400);
-    if (action !== "revoke-sessions") return json({ ok: false, error: "Unsupported account action" }, 400);
+    if (!new Set(["revoke-sessions", "reset-smart-buy-limit"]).has(action)) return json({ ok: false, error: "Unsupported account action" }, 400);
     const target = await env.frameanalytics_auth.prepare(`SELECT id, email FROM user WHERE id = ?`).bind(userId).first<{ id: string; email: string }>();
     if (!target) return json({ ok: false, error: "Account not found" }, 404);
+    if (action === "reset-smart-buy-limit") {
+      const result = await env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_smart_buy_run WHERE user_id = ?`).bind(userId).run();
+      return json({ ok: true, userId, restoredRuns: Number(result.meta?.changes ?? 0), smartBuy: await readSmartBuyUsage(env, userId) });
+    }
     if (target.email.trim().toLowerCase() === ownerEmail) {
       return json({ ok: false, error: "Owner sessions cannot be revoked here" }, 409);
     }
@@ -856,6 +906,32 @@ const handleDeveloperWfmTelemetry = async (
     headers: {
       Accept: "application/json",
       [WFM_GATEWAY_HEADER]: env.WFM_GATEWAY_TOKEN,
+    },
+  });
+  return new Response(await upstream.text(), {
+    status: upstream.status,
+    headers: {
+      "Content-Type": upstream.headers.get("Content-Type") || "application/json; charset=utf-8",
+      "Cache-Control": "private, no-store",
+    },
+  });
+};
+
+const handleDeveloperProcessQueues = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  const guard = await requireDeveloper(request, env, auth);
+  if (guard.response || !guard.user) return guard.response!;
+  if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+  if (!env.SMART_BUY_API) return json({ ok: false, error: "SMART_BUY_API binding is missing" }, 503);
+  if (!env.SMART_BUY_START_SECRET) return json({ ok: false, error: "Private process metrics are not configured" }, 503);
+  const upstream = await env.SMART_BUY_API.fetch("https://frameanalytics-api.internal/api/developer/process-queues", {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      [SMART_BUY_START_HEADER]: env.SMART_BUY_START_SECRET,
     },
   });
   return new Response(await upstream.text(), {
@@ -1454,6 +1530,10 @@ export default {
 
       if (url.pathname === "/api/developer/wfm-telemetry") {
         return handleDeveloperWfmTelemetry(request, env, auth);
+      }
+
+      if (url.pathname === "/api/developer/process-queues") {
+        return handleDeveloperProcessQueues(request, env, auth);
       }
 
       if (url.pathname === "/api/axi-scanner/start") {
