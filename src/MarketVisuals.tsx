@@ -101,17 +101,16 @@ const marketEventText: Record<Locale, { baro: string; resurgence: string; baroTi
 
 export const marketEventName = (eventType: MarketEvent['eventType'], locale: Locale) => eventType === 'baro' ? marketEventText[locale].baro : marketEventText[locale].resurgence
 
-export const RegalAyaGlyph = ({ x, y, size, className }: { x?: number; y?: number; size?: number; className?: string }) => <svg
+export const AyaGlyph = ({ x, y, size, className }: { x?: number; y?: number; size?: number; className?: string }) => <svg
   x={x} y={y} width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true"
 >
-  <path d="M12 2.7c1.5 2.1 3.4 4.2 3.4 7.5 0 4.3-2 8.4-3.4 11.1-1.4-2.7-3.4-6.8-3.4-11.1 0-3.3 1.9-5.4 3.4-7.5Z"/>
-  <path d="M12 5.8v12.5M9.5 7.2c1.2 1.1 1.6 2.4 1.6 4.1 0 2.2-.7 4.2-1.5 5.8M14.5 7.2c-1.2 1.1-1.6 2.4-1.6 4.1 0 2.2.7 4.2 1.5 5.8M8.9 8.2 5.6 6.7M8.5 11.8 4.3 12M9.2 15.5l-3.4 1.8M15.1 8.2l3.3-1.5M15.5 11.8l4.2.2M14.8 15.5l3.4 1.8"/>
+  <image href="/assets/aya.png" x="1.2" y="1" width="21.6" height="21.9" preserveAspectRatio="xMidYMid meet"/>
 </svg>
 
 export const MarketEventBadge = ({ event, locale, compact = false }: { event: MarketEvent; locale: Locale; compact?: boolean }) => {
   const baro = event.eventType === 'baro'
   const title = baro ? marketEventText[locale].baroTitle : marketEventText[locale].resurgenceTitle
   return <span className={`market-event-badge ${baro ? 'baro-event' : 'resurgence-event'} ${compact ? 'compact' : ''}`} title={title} aria-label={title} role="img">
-    {baro ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18h12M8 18l1-8h6l1 8M10 10V7h4v3M7 6l2 1M17 6l-2 1"/></svg> : <RegalAyaGlyph/>}
+    {baro ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18h12M8 18l1-8h6l1 8M10 10V7h4v3M7 6l2 1M17 6l-2 1"/></svg> : <AyaGlyph/>}
   </span>
 }

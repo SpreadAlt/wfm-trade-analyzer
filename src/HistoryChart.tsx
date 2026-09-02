@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Locale } from './i18n'
-import { marketEventName, RegalAyaGlyph } from './MarketVisuals'
+import { AyaGlyph, marketEventName } from './MarketVisuals'
 import type { HistoryPoint, MarketEvent, TimeRange } from './types'
 
 const fmtNumber = (value: number, digits = 1) => value.toFixed(digits).replace(/\.0$/, '')
@@ -126,7 +126,7 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
         <circle cx={x} cy={pad.top + 10} r="8" className="event-node"/>
         {event.eventType === 'baro'
           ? <text x={x} y={pad.top + 14} textAnchor="middle" className="event-symbol">B</text>
-          : <RegalAyaGlyph x={x - 6.5} y={pad.top + 3.5} size={13} className="chart-regal-aya-glyph"/>}
+          : <AyaGlyph x={x - 7} y={pad.top + 3} size={14} className="chart-aya-icon"/>}
         <title>{`${marketEventName(event.eventType, locale)} · ${formatDate(event.startAt || '', locale)}`}</title>
       </g>)}
       {activePoint ? <g className="chart-hover" aria-hidden="true">
@@ -142,6 +142,6 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
       <span><i className="tooltip-dot max-dot"/>{labels.max}<b>{activePoint.max == null ? '—' : fmtNumber(activePoint.max)}p</b></span>
       <span><i className="tooltip-dot volume-dot"/>{labels.sales}<b>{activePoint.sales}</b></span>
     </div> : null}
-    <div className="legend"><span><i className="legend-dot min-dot"/>{labels.min}</span><span><i className="legend-dot median-dot"/>{labels.median}</span><span><i className="legend-dot max-dot"/>{labels.max}</span><span><i className="legend-dot volume-dot"/>{labels.sales}</span>{visibleEventTypes.has('baro') ? <span><i className="event-legend-symbol baro">B</i>{marketEventName('baro', locale)}</span> : null}{visibleEventTypes.has('prime_resurgence') ? <span><RegalAyaGlyph className="event-legend-regal-aya"/>{marketEventName('prime_resurgence', locale)}</span> : null}</div>
+    <div className="legend"><span><i className="legend-dot min-dot"/>{labels.min}</span><span><i className="legend-dot median-dot"/>{labels.median}</span><span><i className="legend-dot max-dot"/>{labels.max}</span><span><i className="legend-dot volume-dot"/>{labels.sales}</span>{visibleEventTypes.has('baro') ? <span><i className="event-legend-symbol baro">B</i>{marketEventName('baro', locale)}</span> : null}{visibleEventTypes.has('prime_resurgence') ? <span><AyaGlyph className="event-legend-aya"/>{marketEventName('prime_resurgence', locale)}</span> : null}</div>
   </div>
 }

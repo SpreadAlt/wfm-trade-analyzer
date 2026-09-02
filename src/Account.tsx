@@ -234,6 +234,9 @@ const copy = (locale: Locale) => locale === 'ru' ? {
   title: 'Аккаунт FrameAnalytics',
   signedIn: 'Вы вошли как',
   serverSaved: 'Профиль и покупки синхронизируются с аккаунтом.',
+  sessionActive: 'Сессия активна',
+  syncTitle: 'Облачная синхронизация',
+  syncDetail: 'Изменения сохраняются автоматически',
   signIn: 'Войти',
   signUp: 'Регистрация',
   name: 'Имя',
@@ -250,6 +253,9 @@ const copy = (locale: Locale) => locale === 'ru' ? {
   title: 'FrameAnalytics account',
   signedIn: 'Signed in as',
   serverSaved: 'Your profile and purchases are synced with your account.',
+  sessionActive: 'Session active',
+  syncTitle: 'Cloud sync',
+  syncDetail: 'Changes are saved automatically',
   signIn: 'Sign in',
   signUp: 'Register',
   name: 'Name',
@@ -278,16 +284,22 @@ export const AccountPanel = ({ locale, auth }: { locale: Locale; auth: FrameAcco
 
   if (auth.account) {
     return <section className="panel account-panel account-signed">
-      <div className="account-identity">
-        <div className="account-avatar">{(auth.account.user.name || auth.account.user.email).slice(0, 2).toUpperCase()}</div>
-        <div>
-          <span className="eyebrow">{t.title}</span>
-          <strong>{auth.account.user.name}</strong>
-          <small>{auth.account.user.email}</small>
+      <div className="account-signed-header">
+        <div className="account-identity">
+          <div className="account-avatar">{(auth.account.user.name || auth.account.user.email).slice(0, 2).toUpperCase()}</div>
+          <div>
+            <span className="eyebrow">{t.title}</span>
+            <strong>{auth.account.user.name}</strong>
+            <small>{auth.account.user.email}</small>
+          </div>
         </div>
+        <span className="account-session-status"><i aria-hidden="true"/>{t.sessionActive}</span>
       </div>
-      <p>{t.serverSaved}</p>
-      <button type="button" className="smart-buy-secondary danger" disabled={auth.busy} onClick={() => void auth.signOut()}>{t.logout}</button>
+      <div className="account-sync-state">
+        <span className="account-sync-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.5 18.5h9a4 4 0 0 0 .7-7.9 5.7 5.7 0 0 0-10.9-1.5A4.8 4.8 0 0 0 7.5 18.5Z"/><path d="m9 13 2 2 4-4"/></svg></span>
+        <div><strong>{t.syncTitle}</strong><p>{t.serverSaved}</p><small>{t.syncDetail}</small></div>
+      </div>
+      <button type="button" className="account-logout" disabled={auth.busy} onClick={() => void auth.signOut()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10M13 8l4 4-4 4M9 12h8"/></svg>{t.logout}</button>
     </section>
   }
 
