@@ -122,10 +122,15 @@
 }
 
 .account-auth-copy h2{
-  margin:4px 0 7px;
-  font-size:clamp(1.65rem,2.5vw,2.05rem);
-  line-height:1.05;
+  max-width:100%;
+  margin:0 0 7px;
+  overflow:visible;
+  font-size:clamp(1.5rem,4vw,1.95rem);
+  line-height:1.12;
   letter-spacing:-.025em;
+  overflow-wrap:anywhere;
+  text-overflow:clip;
+  white-space:normal;
 }
 
 .account-auth-copy p,
@@ -204,6 +209,14 @@
   letter-spacing:.04em;
   text-transform:uppercase;
   opacity:.68;
+}
+
+.account-field-hint{
+  margin-top:-2px;
+  color:var(--muted);
+  font-size:.7rem;
+  line-height:1.35;
+  opacity:.82;
 }
 
 .account-form input{
@@ -328,8 +341,15 @@
 }
 
 .account-text-action:disabled{
-  cursor:wait;
+  cursor:not-allowed;
   opacity:.5;
+}
+
+.account-cooldown{
+  justify-self:center;
+  color:var(--muted);
+  font-size:.72rem;
+  font-variant-numeric:tabular-nums;
 }
 
 /* Signed-in account card */
@@ -337,17 +357,18 @@
   position:relative;
   grid-template-columns:minmax(0,1fr) auto;
   align-items:center;
-  gap:16px;
+  gap:10px;
   overflow:hidden;
-  width:min(100%,350px);
-  min-height:70px;
+  width:min(100%,330px);
+  min-height:58px;
   box-sizing:border-box;
-  padding:12px 13px 12px 16px;
-  border-color:color-mix(in srgb,var(--accent) 28%,var(--line));
+  margin:0;
+  padding:8px 9px 8px 13px;
+  border-color:color-mix(in srgb,var(--accent) 34%,var(--line));
   background:
     radial-gradient(circle at 5% 0%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 42%),
     linear-gradient(140deg,color-mix(in srgb,var(--surface-2) 97%,transparent),color-mix(in srgb,var(--surface-2) 82%,#06111f 18%));
-  box-shadow:0 13px 34px rgba(0,0,0,.2),0 0 0 1px color-mix(in srgb,var(--accent) 7%,transparent) inset;
+  box-shadow:0 11px 28px rgba(0,0,0,.2),0 0 0 1px color-mix(in srgb,var(--accent) 9%,transparent) inset;
 }
 
 .account-signed::before{
@@ -376,13 +397,13 @@
   position:relative;
   z-index:1;
   display:grid;
-  gap:4px;
+  gap:3px;
   min-width:0;
 }
 
 .account-identity strong{
   color:var(--text);
-  font-size:1.02rem;
+  font-size:.95rem;
   line-height:1.2;
 }
 
@@ -390,7 +411,7 @@
   max-width:min(58vw,420px);
   overflow:hidden;
   color:var(--muted);
-  font-size:.76rem;
+  font-size:.7rem;
   opacity:.8;
   text-overflow:ellipsis;
   white-space:nowrap;
@@ -399,18 +420,19 @@
 .account-logout{
   position:relative;
   z-index:1;
-  min-height:36px;
+  min-height:33px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  gap:8px;
-  padding:7px 10px;
-  border:1px solid color-mix(in srgb,var(--negative,#e36a6a) 34%,var(--line));
-  border-radius:10px;
+  gap:6px;
+  padding:6px 9px;
+  border:1px solid color-mix(in srgb,var(--negative,#e36a6a) 64%,var(--line));
+  border-radius:9px;
   color:color-mix(in srgb,var(--negative,#e36a6a) 82%,white 18%);
-  background:color-mix(in srgb,var(--negative,#e36a6a) 7%,var(--surface-2));
+  background:color-mix(in srgb,var(--negative,#e36a6a) 10%,var(--surface-2));
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--negative,#e36a6a) 7%,transparent) inset;
   font:inherit;
-  font-size:.75rem;
+  font-size:.72rem;
   font-weight:800;
   cursor:pointer;
   transition:border-color .16s ease,background .16s ease,transform .16s ease;
@@ -430,8 +452,8 @@
 }
 
 .account-logout svg{
-  width:16px;
-  height:16px;
+  width:15px;
+  height:15px;
   fill:none;
   stroke:currentColor;
   stroke-width:1.8;
@@ -439,92 +461,115 @@
   stroke-linejoin:round;
 }
 
-/* Closed beta access gate */
+.account-confirm-backdrop{
+  position:fixed;
+  z-index:1000;
+  inset:0;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  background:rgba(1,7,14,.68);
+  backdrop-filter:blur(7px);
+  -webkit-backdrop-filter:blur(7px);
+}
+
+.account-confirm-dialog{
+  width:min(390px,100%);
+  box-sizing:border-box;
+  display:grid;
+  justify-items:center;
+  gap:14px;
+  margin:0;
+  padding:24px;
+  border:1px solid color-mix(in srgb,var(--negative,#e36a6a) 34%,var(--line));
+  border-radius:18px;
+  background:
+    radial-gradient(circle at 50% 0%,color-mix(in srgb,var(--negative,#e36a6a) 11%,transparent),transparent 48%),
+    var(--surface-2);
+  box-shadow:0 28px 80px rgba(0,0,0,.42);
+  text-align:center;
+}
+
+.account-confirm-icon{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  border:1px solid color-mix(in srgb,var(--negative,#e36a6a) 42%,var(--line));
+  border-radius:13px;
+  color:var(--negative,#e36a6a);
+  background:color-mix(in srgb,var(--negative,#e36a6a) 9%,var(--surface-2));
+}
+
+.account-confirm-icon svg{
+  width:21px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.account-confirm-dialog h2{
+  margin:0;
+  color:var(--text);
+  font-size:1.08rem;
+  line-height:1.35;
+}
+
+.account-confirm-dialog .account-error{
+  width:100%;
+  box-sizing:border-box;
+}
+
+.account-confirm-actions{
+  width:100%;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+
+.account-confirm-actions button{
+  min-height:39px;
+}
+
+.account-confirm-logout{
+  width:100%;
+}
+
+/* Account access page */
 .closed-beta-shell{
   flex:1 0 auto;
-  width:min(1280px,calc(100% - 32px));
+  width:min(560px,calc(100% - 32px));
   display:flex;
   flex-direction:column;
   justify-content:center;
-  padding-block:24px 42px;
+  padding-block:20px 38px;
 }
 
 .closed-beta-topbar{
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  justify-content:flex-start;
   gap:20px;
-  margin-bottom:22px;
-}
-
-.closed-beta-topbar>span{
-  padding:8px 12px;
-  border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line));
-  border-radius:999px;
-  color:var(--accent);
-  background:color-mix(in srgb,var(--surface-2) 86%,transparent);
-  font-size:.73rem;
-  font-weight:900;
-  letter-spacing:.08em;
-  text-transform:uppercase;
+  margin-bottom:14px;
 }
 
 .closed-beta-layout{
-  display:grid;
-  grid-template-columns:minmax(0,1.08fr) minmax(390px,.92fr);
-  gap:clamp(22px,4vw,58px);
-  align-items:center;
-  padding:clamp(24px,5vw,66px);
-  border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line));
-  border-radius:26px;
-  background:
-    radial-gradient(circle at 4% 5%,color-mix(in srgb,var(--accent) 15%,transparent),transparent 34%),
-    color-mix(in srgb,var(--surface-2) 88%,transparent);
-  box-shadow:0 28px 90px rgba(0,0,0,.27);
-  backdrop-filter:blur(12px);
-}
-
-.closed-beta-copy h1{
-  max-width:12ch;
-  margin:9px 0 15px;
-  font-size:clamp(2.3rem,5vw,5rem);
-  line-height:.96;
-  letter-spacing:-.055em;
-}
-
-.closed-beta-copy>p{
-  max-width:62ch;
-  margin:0;
-  color:var(--muted);
-  font-size:clamp(.98rem,1.4vw,1.12rem);
-  line-height:1.68;
-}
-
-.closed-beta-points{
-  display:grid;
-  gap:9px;
-  margin-top:24px;
-  color:color-mix(in srgb,var(--text) 78%,var(--muted));
-  font-size:.9rem;
-}
-
-.closed-beta-points span::first-letter{
-  color:var(--accent);
+  display:block;
 }
 
 .closed-beta-auth .account-panel{
+  width:100%;
+  box-sizing:border-box;
   margin:0;
-  padding:clamp(20px,3vw,30px);
+  padding:clamp(22px,4vw,30px);
+  border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line));
   border-radius:20px;
-  background:color-mix(in srgb,var(--surface-2) 94%,transparent);
-  box-shadow:0 18px 50px rgba(0,0,0,.2);
-}
-
-html[data-theme="light"] .closed-beta-layout{
   background:
-    radial-gradient(circle at 4% 5%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 35%),
-    rgba(213,225,227,.92);
-  box-shadow:0 24px 70px rgba(37,67,76,.15);
+    radial-gradient(circle at 8% 0%,color-mix(in srgb,var(--accent) 11%,transparent),transparent 38%),
+    color-mix(in srgb,var(--surface-2) 94%,transparent);
+  box-shadow:0 20px 60px rgba(0,0,0,.24);
 }
 
 html[data-theme="light"] .closed-beta-auth .account-panel{
@@ -566,29 +611,23 @@ html[data-theme="light"] .closed-beta-auth .account-panel{
   }
 
   .account-signed{
-    grid-template-columns:1fr;
-    align-items:stretch;
-    gap:16px;
-    padding:20px 18px;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;
+    gap:8px;
+    padding:8px 9px 8px 12px;
   }
 
   .account-logout{
-    width:100%;
+    width:auto;
   }
 
   .closed-beta-shell{
-    width:min(100% - 16px,1280px);
+    width:min(100% - 16px,560px);
     padding-top:12px;
   }
 
   .closed-beta-layout{
-    grid-template-columns:1fr;
-    padding:22px 16px;
-    border-radius:20px;
-  }
-
-  .closed-beta-copy h1{
-    max-width:none;
+    display:block;
   }
 }
 

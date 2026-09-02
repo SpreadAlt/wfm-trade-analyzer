@@ -59,6 +59,8 @@ const json = (value: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
 
 const nowMs = () => Date.now();
 const AUTH_OTP_EXPIRES_SECONDS = 10 * 60;
+const EMAIL_CODE_COOLDOWN_MS = 60 * 1000;
+const ACCOUNT_LOGIN_PATTERN = /^[A-Za-z][A-Za-z0-9_]{2,23}$/;
 const SMART_BUY_DAILY_LIMIT = 30;
 const SMART_BUY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SMART_BUY_COOLDOWN_MS = 60 * 1000;
@@ -127,6 +129,36 @@ const escapeEmailHtml = (value: string) => value
   .replace(/"/g, "&quot;")
   .replace(/'/g, "&#039;");
 
+const AUTH_MAIL_COPY = {
+  en: { verifySubject: "FrameAnalytics verification code", resetSubject: "FrameAnalytics password recovery", signInSubject: "FrameAnalytics sign-in code", verifyLine: "Your email verification code", resetLine: "Your password recovery code", signInLine: "Your sign-in code", expires: "The code is valid for 10 minutes.", ignore: "If you did not request it, ignore this email.", passwordSubject: "Your new FrameAnalytics password", passwordLine: "A new password has been created for your account", sessions: "All previous sessions have been closed.", contact: "If you did not recover access, contact the administrator.", cooldown: "A code was already sent. Try again in {seconds} seconds.", blocked: "This account is blocked.", invalidName: "The username must start with a Latin letter and contain 3–24 characters: A–Z, digits or _." },
+  ru: { verifySubject: "Код подтверждения FrameAnalytics", resetSubject: "Восстановление пароля FrameAnalytics", signInSubject: "Код входа FrameAnalytics", verifyLine: "Код подтверждения адреса электронной почты", resetLine: "Код восстановления пароля", signInLine: "Код входа в аккаунт", expires: "Код действует 10 минут.", ignore: "Если вы не запрашивали код, проигнорируйте это письмо.", passwordSubject: "Новый пароль FrameAnalytics", passwordLine: "Для аккаунта создан новый пароль", sessions: "Все прежние сессии завершены.", contact: "Если вы не восстанавливали доступ, обратитесь к администратору.", cooldown: "Код уже отправлен. Повторите через {seconds} сек.", blocked: "Этот аккаунт заблокирован.", invalidName: "Ник должен начинаться с латинской буквы и содержать 3–24 символа: A–Z, цифры или _." },
+  de: { verifySubject: "FrameAnalytics-Bestätigungscode", resetSubject: "FrameAnalytics-Passwortwiederherstellung", signInSubject: "FrameAnalytics-Anmeldecode", verifyLine: "Dein Code zur Bestätigung der E-Mail-Adresse", resetLine: "Dein Code zur Passwortwiederherstellung", signInLine: "Dein Anmeldecode", expires: "Der Code ist 10 Minuten gültig.", ignore: "Wenn du den Code nicht angefordert hast, ignoriere diese E-Mail.", passwordSubject: "Dein neues FrameAnalytics-Passwort", passwordLine: "Für dein Konto wurde ein neues Passwort erstellt", sessions: "Alle bisherigen Sitzungen wurden beendet.", contact: "Wenn du den Zugriff nicht wiederhergestellt hast, wende dich an den Administrator.", cooldown: "Ein Code wurde bereits gesendet. Versuche es in {seconds} Sekunden erneut.", blocked: "Dieses Konto ist gesperrt.", invalidName: "Der Benutzername muss mit einem lateinischen Buchstaben beginnen und 3–24 Zeichen enthalten: A–Z, Ziffern oder _." },
+  fr: { verifySubject: "Code de confirmation FrameAnalytics", resetSubject: "Récupération du mot de passe FrameAnalytics", signInSubject: "Code de connexion FrameAnalytics", verifyLine: "Votre code de confirmation d’adresse e-mail", resetLine: "Votre code de récupération du mot de passe", signInLine: "Votre code de connexion", expires: "Le code est valable pendant 10 minutes.", ignore: "Si vous ne l’avez pas demandé, ignorez cet e-mail.", passwordSubject: "Votre nouveau mot de passe FrameAnalytics", passwordLine: "Un nouveau mot de passe a été créé pour votre compte", sessions: "Toutes les anciennes sessions ont été fermées.", contact: "Si vous n’avez pas demandé cette récupération, contactez l’administrateur.", cooldown: "Un code a déjà été envoyé. Réessayez dans {seconds} secondes.", blocked: "Ce compte est bloqué.", invalidName: "Le nom d’utilisateur doit commencer par une lettre latine et contenir 3 à 24 caractères : A–Z, chiffres ou _." },
+  es: { verifySubject: "Código de confirmación de FrameAnalytics", resetSubject: "Recuperación de contraseña de FrameAnalytics", signInSubject: "Código de acceso de FrameAnalytics", verifyLine: "Tu código de confirmación de correo", resetLine: "Tu código de recuperación de contraseña", signInLine: "Tu código de acceso", expires: "El código es válido durante 10 minutos.", ignore: "Si no lo solicitaste, ignora este correo.", passwordSubject: "Tu nueva contraseña de FrameAnalytics", passwordLine: "Se ha creado una nueva contraseña para tu cuenta", sessions: "Todas las sesiones anteriores se han cerrado.", contact: "Si no solicitaste la recuperación, contacta con el administrador.", cooldown: "Ya se ha enviado un código. Inténtalo de nuevo en {seconds} segundos.", blocked: "Esta cuenta está bloqueada.", invalidName: "El nombre debe comenzar con una letra latina y contener entre 3 y 24 caracteres: A–Z, números o _." },
+  pt: { verifySubject: "Código de confirmação FrameAnalytics", resetSubject: "Recuperação de palavra-passe FrameAnalytics", signInSubject: "Código de acesso FrameAnalytics", verifyLine: "O seu código de confirmação de e-mail", resetLine: "O seu código de recuperação de palavra-passe", signInLine: "O seu código de acesso", expires: "O código é válido durante 10 minutos.", ignore: "Se não pediu este código, ignore este e-mail.", passwordSubject: "A sua nova palavra-passe FrameAnalytics", passwordLine: "Foi criada uma nova palavra-passe para a sua conta", sessions: "Todas as sessões anteriores foram terminadas.", contact: "Se não recuperou o acesso, contacte o administrador.", cooldown: "Já foi enviado um código. Tente novamente dentro de {seconds} segundos.", blocked: "Esta conta está bloqueada.", invalidName: "O nome deve começar por uma letra latina e conter 3–24 caracteres: A–Z, números ou _." },
+  pl: { verifySubject: "Kod potwierdzający FrameAnalytics", resetSubject: "Odzyskiwanie hasła FrameAnalytics", signInSubject: "Kod logowania FrameAnalytics", verifyLine: "Kod potwierdzający adres e-mail", resetLine: "Kod odzyskiwania hasła", signInLine: "Kod logowania", expires: "Kod jest ważny przez 10 minut.", ignore: "Jeśli nie proszono o kod, zignoruj tę wiadomość.", passwordSubject: "Nowe hasło FrameAnalytics", passwordLine: "Dla konta utworzono nowe hasło", sessions: "Wszystkie poprzednie sesje zostały zakończone.", contact: "Jeśli nie odzyskiwano dostępu, skontaktuj się z administratorem.", cooldown: "Kod został już wysłany. Spróbuj ponownie za {seconds} s.", blocked: "To konto jest zablokowane.", invalidName: "Nazwa musi zaczynać się od litery łacińskiej i zawierać 3–24 znaki: A–Z, cyfry lub _." },
+  uk: { verifySubject: "Код підтвердження FrameAnalytics", resetSubject: "Відновлення пароля FrameAnalytics", signInSubject: "Код входу FrameAnalytics", verifyLine: "Код підтвердження електронної пошти", resetLine: "Код відновлення пароля", signInLine: "Код входу", expires: "Код дійсний 10 хвилин.", ignore: "Якщо ви не запитували код, проігноруйте цей лист.", passwordSubject: "Новий пароль FrameAnalytics", passwordLine: "Для облікового запису створено новий пароль", sessions: "Усі попередні сесії завершено.", contact: "Якщо ви не відновлювали доступ, зверніться до адміністратора.", cooldown: "Код уже надіслано. Повторіть через {seconds} с.", blocked: "Цей обліковий запис заблоковано.", invalidName: "Нік має починатися з латинської літери та містити 3–24 символи: A–Z, цифри або _." },
+  tr: { verifySubject: "FrameAnalytics doğrulama kodu", resetSubject: "FrameAnalytics parola kurtarma", signInSubject: "FrameAnalytics giriş kodu", verifyLine: "E-posta doğrulama kodunuz", resetLine: "Parola kurtarma kodunuz", signInLine: "Giriş kodunuz", expires: "Kod 10 dakika geçerlidir.", ignore: "Bu kodu istemediyseniz e-postayı yok sayın.", passwordSubject: "Yeni FrameAnalytics parolanız", passwordLine: "Hesabınız için yeni bir parola oluşturuldu", sessions: "Önceki tüm oturumlar kapatıldı.", contact: "Erişim kurtarma talebinde bulunmadıysanız yöneticiyle iletişime geçin.", cooldown: "Kod zaten gönderildi. {seconds} saniye sonra tekrar deneyin.", blocked: "Bu hesap engellendi.", invalidName: "Kullanıcı adı Latin harfiyle başlamalı ve 3–24 karakter içermelidir: A–Z, rakamlar veya _." },
+  it: { verifySubject: "Codice di conferma FrameAnalytics", resetSubject: "Recupero password FrameAnalytics", signInSubject: "Codice di accesso FrameAnalytics", verifyLine: "Il tuo codice di conferma email", resetLine: "Il tuo codice di recupero password", signInLine: "Il tuo codice di accesso", expires: "Il codice è valido per 10 minuti.", ignore: "Se non hai richiesto il codice, ignora questa email.", passwordSubject: "La tua nuova password FrameAnalytics", passwordLine: "È stata creata una nuova password per il tuo account", sessions: "Tutte le sessioni precedenti sono state chiuse.", contact: "Se non hai richiesto il recupero, contatta l’amministratore.", cooldown: "È già stato inviato un codice. Riprova tra {seconds} secondi.", blocked: "Questo account è bloccato.", invalidName: "Il nome deve iniziare con una lettera latina e contenere 3–24 caratteri: A–Z, numeri o _." },
+  sv: { verifySubject: "FrameAnalytics bekräftelsekod", resetSubject: "FrameAnalytics lösenordsåterställning", signInSubject: "FrameAnalytics inloggningskod", verifyLine: "Din kod för e-postbekräftelse", resetLine: "Din kod för lösenordsåterställning", signInLine: "Din inloggningskod", expires: "Koden är giltig i 10 minuter.", ignore: "Om du inte begärde koden kan du ignorera mejlet.", passwordSubject: "Ditt nya FrameAnalytics-lösenord", passwordLine: "Ett nytt lösenord har skapats för ditt konto", sessions: "Alla tidigare sessioner har avslutats.", contact: "Kontakta administratören om du inte begärde återställningen.", cooldown: "En kod har redan skickats. Försök igen om {seconds} sekunder.", blocked: "Det här kontot är blockerat.", invalidName: "Användarnamnet måste börja med en latinsk bokstav och innehålla 3–24 tecken: A–Z, siffror eller _." },
+  cs: { verifySubject: "Ověřovací kód FrameAnalytics", resetSubject: "Obnovení hesla FrameAnalytics", signInSubject: "Přihlašovací kód FrameAnalytics", verifyLine: "Váš kód pro ověření e-mailu", resetLine: "Váš kód pro obnovení hesla", signInLine: "Váš přihlašovací kód", expires: "Kód platí 10 minut.", ignore: "Pokud jste kód nevyžádali, tento e-mail ignorujte.", passwordSubject: "Vaše nové heslo FrameAnalytics", passwordLine: "Pro váš účet bylo vytvořeno nové heslo", sessions: "Všechny předchozí relace byly ukončeny.", contact: "Pokud jste obnovení nevyžádali, kontaktujte správce.", cooldown: "Kód již byl odeslán. Zkuste to znovu za {seconds} sekund.", blocked: "Tento účet je zablokovaný.", invalidName: "Jméno musí začínat latinským písmenem a obsahovat 3–24 znaků: A–Z, číslice nebo _." },
+  ja: { verifySubject: "FrameAnalytics 確認コード", resetSubject: "FrameAnalytics パスワード復旧", signInSubject: "FrameAnalytics ログインコード", verifyLine: "メールアドレス確認コード", resetLine: "パスワード復旧コード", signInLine: "ログインコード", expires: "コードの有効期限は10分です。", ignore: "心当たりがない場合は、このメールを無視してください。", passwordSubject: "新しい FrameAnalytics パスワード", passwordLine: "アカウント用の新しいパスワードが作成されました", sessions: "以前のセッションはすべて終了しました。", contact: "復旧を依頼していない場合は管理者に連絡してください。", cooldown: "コードは送信済みです。{seconds}秒後にもう一度お試しください。", blocked: "このアカウントはブロックされています。", invalidName: "ユーザー名は英字で始まり、3～24文字の英字・数字・_のみ使用できます。" },
+  ko: { verifySubject: "FrameAnalytics 확인 코드", resetSubject: "FrameAnalytics 비밀번호 복구", signInSubject: "FrameAnalytics 로그인 코드", verifyLine: "이메일 확인 코드", resetLine: "비밀번호 복구 코드", signInLine: "로그인 코드", expires: "코드는 10분 동안 유효합니다.", ignore: "요청하지 않았다면 이 메일을 무시하세요.", passwordSubject: "새 FrameAnalytics 비밀번호", passwordLine: "계정에 새 비밀번호가 생성되었습니다", sessions: "이전의 모든 세션이 종료되었습니다.", contact: "복구를 요청하지 않았다면 관리자에게 문의하세요.", cooldown: "코드가 이미 전송되었습니다. {seconds}초 후 다시 시도하세요.", blocked: "이 계정은 차단되었습니다.", invalidName: "사용자 이름은 영문자로 시작하고 3~24자의 영문자, 숫자 또는 _만 포함해야 합니다." },
+  "zh-hans": { verifySubject: "FrameAnalytics 验证码", resetSubject: "FrameAnalytics 密码恢复", signInSubject: "FrameAnalytics 登录验证码", verifyLine: "您的邮箱验证码", resetLine: "您的密码恢复验证码", signInLine: "您的登录验证码", expires: "验证码有效期为10分钟。", ignore: "如果不是您本人请求，请忽略此邮件。", passwordSubject: "您的新 FrameAnalytics 密码", passwordLine: "已为您的账户创建新密码", sessions: "所有旧会话均已结束。", contact: "如果不是您本人恢复访问，请联系管理员。", cooldown: "验证码已发送，请在{seconds}秒后重试。", blocked: "此账户已被封禁。", invalidName: "用户名必须以英文字母开头，长度为3–24个字符，只能包含英文字母、数字或下划线。" },
+  "zh-hant": { verifySubject: "FrameAnalytics 驗證碼", resetSubject: "FrameAnalytics 密碼復原", signInSubject: "FrameAnalytics 登入驗證碼", verifyLine: "您的電子郵件驗證碼", resetLine: "您的密碼復原驗證碼", signInLine: "您的登入驗證碼", expires: "驗證碼有效期限為10分鐘。", ignore: "如果不是您本人要求，請忽略此郵件。", passwordSubject: "您的新 FrameAnalytics 密碼", passwordLine: "已為您的帳戶建立新密碼", sessions: "所有舊工作階段均已結束。", contact: "如果不是您本人復原存取權，請聯絡管理員。", cooldown: "驗證碼已傳送，請在{seconds}秒後重試。", blocked: "此帳戶已被封鎖。", invalidName: "使用者名稱必須以英文字母開頭，長度為3–24個字元，只能包含英文字母、數字或底線。" },
+} as const;
+
+type AuthMailLocale = keyof typeof AUTH_MAIL_COPY;
+
+const authMailLocale = (request: Request): AuthMailLocale => {
+  const raw = String(request.headers.get("Language") || "en").trim().toLowerCase().replace(/_/g, "-");
+  if (raw in AUTH_MAIL_COPY) return raw as AuthMailLocale;
+  if (raw.startsWith("zh-hant")) return "zh-hant";
+  if (raw.startsWith("zh")) return "zh-hans";
+  const short = raw.split("-")[0];
+  return short in AUTH_MAIL_COPY ? short as AuthMailLocale : "en";
+};
+
 const assertEmailDeliveryConfigured = (env: Env) => {
   const apiKey = String(env.RESEND_API_KEY || "").trim();
   const from = String(env.AUTH_EMAIL_FROM || "").trim();
@@ -165,29 +197,32 @@ const sendOtpEmail = async (
   email: string,
   otp: string,
   type: "sign-in" | "email-verification" | "forget-password" | "change-email",
+  locale: AuthMailLocale,
 ) => {
   const code = escapeEmailHtml(otp);
+  const copy = AUTH_MAIL_COPY[locale];
   const verification = type === "email-verification" || type === "change-email";
   const subject = verification
-    ? "Код подтверждения FrameAnalytics"
+    ? copy.verifySubject
     : type === "forget-password"
-      ? "Восстановление пароля FrameAnalytics"
-      : "Код входа FrameAnalytics";
+      ? copy.resetSubject
+      : copy.signInSubject;
   const purpose = verification
-    ? "подтверждения адреса электронной почты"
+    ? copy.verifyLine
     : type === "forget-password"
-      ? "восстановления пароля"
-      : "входа в аккаунт";
+      ? copy.resetLine
+      : copy.signInLine;
   await sendAuthEmail(env, {
     to: email,
     subject,
-    text: `Код для ${purpose}: ${otp}. Он действует 10 минут. Если вы не запрашивали код, проигнорируйте письмо.`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#102033"><h1 style="font-size:22px;margin:0 0 14px">FrameAnalytics</h1><p>Код для ${purpose}:</p><div style="font:700 30px/1.2 ui-monospace,monospace;letter-spacing:.18em;padding:16px 18px;border-radius:12px;background:#eef8f5;color:#087c64">${code}</div><p style="color:#64748b;font-size:13px;line-height:1.55">Код действует 10 минут. Если вы не запрашивали его, просто проигнорируйте это письмо.</p></div>`,
+    text: `${purpose}: ${otp}. ${copy.expires} ${copy.ignore}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#102033"><h1 style="font-size:22px;margin:0 0 14px">FrameAnalytics</h1><p>${purpose}:</p><div style="font:700 30px/1.2 ui-monospace,monospace;letter-spacing:.18em;padding:16px 18px;border-radius:12px;background:#eef8f5;color:#087c64">${code}</div><p style="color:#64748b;font-size:13px;line-height:1.55">${copy.expires} ${copy.ignore}</p></div>`,
   });
 };
 
 const createAuth = (env: Env, request: Request) => {
   const origin = new URL(request.url).origin;
+  const locale = authMailLocale(request);
   return betterAuth({
     database: env.frameanalytics_auth as any,
     secret: env.BETTER_AUTH_SECRET,
@@ -209,9 +244,9 @@ const createAuth = (env: Env, request: Request) => {
         expiresIn: AUTH_OTP_EXPIRES_SECONDS,
         allowedAttempts: 5,
         storeOTP: "hashed",
-        rateLimit: { window: 60, max: 3 },
+        rateLimit: { window: 60, max: 1 },
         sendVerificationOTP: async ({ email, otp, type }) => {
-          await sendOtpEmail(env, email, otp, type);
+          await sendOtpEmail(env, email, otp, type, locale);
         },
       }),
     ],
@@ -278,6 +313,13 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_frameanalytics_account_state_disabled
           ON frameanalytics_account_state(disabled, updated_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_email_cooldown (
+          email_key TEXT PRIMARY KEY NOT NULL,
+          next_allowed_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_email_cooldown_next
+          ON frameanalytics_email_cooldown(next_allowed_at)`,
         `CREATE TABLE IF NOT EXISTS frameanalytics_axi_run (
           job_id TEXT PRIMARY KEY NOT NULL,
           requested_by TEXT NOT NULL,
@@ -314,6 +356,46 @@ const requireSession = async (auth: ReturnType<typeof createAuth>, request: Requ
     if (Number(state?.disabled ?? 0) === 1) return null;
   }
   return user;
+};
+
+const claimEmailCodeCooldown = async (env: Env, email: string) => {
+  const emailKey = email.trim().toLowerCase();
+  const now = nowMs();
+  const nextAllowedAt = now + EMAIL_CODE_COOLDOWN_MS;
+  const result = await env.frameanalytics_auth.prepare(`
+    INSERT INTO frameanalytics_email_cooldown (email_key, next_allowed_at, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(email_key) DO UPDATE SET
+      next_allowed_at = excluded.next_allowed_at,
+      updated_at = excluded.updated_at
+    WHERE frameanalytics_email_cooldown.next_allowed_at <= ?
+  `).bind(emailKey, nextAllowedAt, now, now).run();
+  if (Number(result.meta?.changes ?? 0) > 0) {
+    return { allowed: true as const, retryAfterSeconds: 0 };
+  }
+  const current = await env.frameanalytics_auth.prepare(`
+    SELECT next_allowed_at AS nextAllowedAt
+    FROM frameanalytics_email_cooldown
+    WHERE email_key = ?
+  `).bind(emailKey).first<{ nextAllowedAt: number }>();
+  return {
+    allowed: false as const,
+    retryAfterSeconds: Math.max(1, Math.ceil((Number(current?.nextAllowedAt ?? nextAllowedAt) - now) / 1000)),
+  };
+};
+
+const blockedAccountByEmail = async (env: Env, email: string) => {
+  const ownerEmail = developerEmail(env);
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || normalizedEmail === ownerEmail) return false;
+  const state = await env.frameanalytics_auth.prepare(`
+    SELECT COALESCE(state.disabled, 0) AS disabled
+    FROM user u
+    LEFT JOIN frameanalytics_account_state state ON state.user_id = u.id
+    WHERE LOWER(u.email) = ?
+    LIMIT 1
+  `).bind(normalizedEmail).first<{ disabled: number }>();
+  return Number(state?.disabled ?? 0) === 1;
 };
 
 type AccountAccess = {
@@ -586,12 +668,14 @@ const handlePasswordRecoveryConfirm = async (
   ));
   if (!resetResponse.ok) return resetResponse;
 
+  const locale = authMailLocale(request);
+  const copy = AUTH_MAIL_COPY[locale];
   const safePassword = escapeEmailHtml(password);
   await sendAuthEmail(env, {
     to: email,
-    subject: "Новый пароль FrameAnalytics",
-    text: `Новый пароль FrameAnalytics: ${password}. Все прежние сессии завершены.`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#102033"><h1 style="font-size:22px;margin:0 0 14px">FrameAnalytics</h1><p>Для аккаунта создан новый пароль:</p><div style="font:700 24px/1.2 ui-monospace,monospace;letter-spacing:.08em;padding:16px 18px;border-radius:12px;background:#eef8f5;color:#087c64">${safePassword}</div><p style="color:#64748b;font-size:13px;line-height:1.55">Все прежние сессии завершены. Если вы не восстанавливали доступ, обратитесь к администратору.</p></div>`,
+    subject: copy.passwordSubject,
+    text: `${copy.passwordLine}: ${password}. ${copy.sessions} ${copy.contact}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#102033"><h1 style="font-size:22px;margin:0 0 14px">FrameAnalytics</h1><p>${copy.passwordLine}:</p><div style="font:700 24px/1.2 ui-monospace,monospace;letter-spacing:.08em;padding:16px 18px;border-radius:12px;background:#eef8f5;color:#087c64">${safePassword}</div><p style="color:#64748b;font-size:13px;line-height:1.55">${copy.sessions} ${copy.contact}</p></div>`,
   });
   return json({ ok: true, passwordSent: true });
 };
@@ -1580,12 +1664,14 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "public-analytics-auth-actions-1",
+          serviceRevision: "localized-auth-cooldown-access-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
           registration: "email-verification",
           emailDelivery: env.RESEND_API_KEY && env.AUTH_EMAIL_FROM ? "configured" : "unavailable",
           publicAnalytics: true,
+          otpCooldownSeconds: EMAIL_CODE_COOLDOWN_MS / 1000,
+          usernamePolicy: "latin-3-24",
           smartBuyStartProxy: true,
           sellAdvisorStartProxy: true,
           developerAccess: "email-owner+D1-permissions",
@@ -1605,6 +1691,7 @@ export default {
 
       const auth = createAuth(env, request);
       await ensureSchema(auth, env);
+      const authPath = url.pathname.replace(/\/$/, "");
 
       if (url.pathname === "/api/desktop-notifications/feed") {
         return handleDesktopNotificationFeed(request, env);
@@ -1614,15 +1701,43 @@ export default {
         return handlePasswordRecoveryConfirm(request, env, auth);
       }
 
-      if (new Set([
+      const codeSendPaths = new Set([
         "/api/auth/sign-up/email",
         "/api/auth/email-otp/send-verification-otp",
         "/api/auth/email-otp/request-password-reset",
-      ]).has(url.pathname.replace(/\/$/, ""))) {
+      ]);
+      if (codeSendPaths.has(authPath)) {
         try {
           assertEmailDeliveryConfigured(env);
         } catch {
           return json({ ok: false, error: "Email delivery is not configured" }, 503);
+        }
+        if (request.method === "POST") {
+          const body = await readBody<{ email?: unknown; name?: unknown }>(request.clone());
+          const email = String(body.email || "").trim().toLowerCase();
+          const locale = authMailLocale(request);
+          const copy = AUTH_MAIL_COPY[locale];
+          if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) {
+            return json({ ok: false, error: "Invalid email" }, 400);
+          }
+          if (authPath === "/api/auth/sign-up/email" && !ACCOUNT_LOGIN_PATTERN.test(String(body.name || "").trim())) {
+            return json({ ok: false, error: copy.invalidName }, 400);
+          }
+          const cooldown = await claimEmailCodeCooldown(env, email);
+          if (!cooldown.allowed) {
+            return json({
+              ok: false,
+              error: copy.cooldown.replace("{seconds}", String(cooldown.retryAfterSeconds)),
+              retryAfterSeconds: cooldown.retryAfterSeconds,
+            }, 429, { "Retry-After": String(cooldown.retryAfterSeconds) });
+          }
+        }
+      }
+
+      if (authPath === "/api/auth/sign-in/email" && request.method === "POST") {
+        const body = await readBody<{ email?: unknown }>(request.clone());
+        if (await blockedAccountByEmail(env, String(body.email || ""))) {
+          return json({ ok: false, error: AUTH_MAIL_COPY[authMailLocale(request)].blocked }, 403);
         }
       }
 

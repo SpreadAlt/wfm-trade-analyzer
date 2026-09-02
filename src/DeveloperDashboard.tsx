@@ -286,11 +286,12 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
 
   const setAccountDisabled = async (account: ManagedAccount, disabled: boolean) => {
     const accepted = !disabled || window.confirm(ru
-      ? `Приостановить аккаунт ${account.email}? Все его активные сессии будут завершены.`
-      : `Suspend ${account.email}? All active sessions will be revoked.`)
+      ? `Заблокировать аккаунт ${account.email}? Все его активные сессии будут завершены.`
+      : `Block ${account.email}? All active sessions will be revoked.`)
     if (!accepted) return
     setSaving(account.id)
     setError(null)
+    setAccountStatsError(null)
     try {
       await accountRequestJson('/api/developer/accounts', {
         method: 'PATCH',
@@ -299,8 +300,16 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       setAccounts(current => current.map(item => item.id === account.id
         ? { ...item, disabled, sessionCount: disabled ? 0 : item.sessionCount }
         : item))
+      setSelectedAccount(current => current?.id === account.id ? { ...current, disabled, sessionCount: disabled ? 0 : current.sessionCount } : current)
+      setAccountStats(current => current?.account.id === account.id ? {
+        ...current,
+        account: { ...current.account, disabled, sessionCount: disabled ? 0 : current.account.sessionCount },
+        sessions: disabled ? [] : current.sessions
+      } : current)
     } catch (value) {
-      setError(value instanceof Error ? value.message : String(value))
+      const message = value instanceof Error ? value.message : String(value)
+      setError(message)
+      setAccountStatsError(message)
     } finally {
       setSaving(null)
     }
@@ -370,7 +379,10 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       </div>
       <section className="panel developer-user-hero">
         <div><span className="eyebrow">{ru ? 'Статистика пользователя' : 'User statistics'}</span><h1>{account.name || '—'}</h1><p>{account.email}</p></div>
-        <div className="developer-user-badges"><span className={`developer-state ${account.disabled ? 'danger' : 'active'}`}>{account.disabled ? (ru ? 'Приостановлен' : 'Suspended') : (ru ? 'Активен' : 'Active')}</span><span className={`developer-state ${account.emailVerified ? 'active' : 'muted'}`}>{account.emailVerified ? (ru ? 'Email подтверждён' : 'Email verified') : (ru ? 'Email не подтверждён' : 'Email unverified')}</span>{account.developer ? <span className="developer-state active">developer</span> : null}</div>
+        <div className="developer-user-actions">
+          <div className="developer-user-badges"><span className={`developer-state ${account.disabled ? 'danger' : 'active'}`}>{account.disabled ? (ru ? 'Заблокирован' : 'Blocked') : (ru ? 'Активен' : 'Active')}</span><span className={`developer-state ${account.emailVerified ? 'active' : 'muted'}`}>{account.emailVerified ? (ru ? 'Email подтверждён' : 'Email verified') : (ru ? 'Email не подтверждён' : 'Email unverified')}</span>{account.developer ? <span className="developer-state active">developer</span> : null}</div>
+          {!account.developer ? <button type="button" className={`secondary-action compact developer-block-action ${account.disabled ? '' : 'danger'}`} disabled={saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Разблокировать аккаунт' : 'Unblock account') : (ru ? 'Заблокировать аккаунт' : 'Block account')}</button> : null}
+        </div>
       </section>
       {accountStatsLoading ? <section className="panel developer-user-loading"><div className="spinner"/><strong>{ru ? 'Собираем статистику…' : 'Loading statistics…'}</strong></section> : null}
       {accountStatsError ? <div className="account-message error">{accountStatsError}</div> : null}
@@ -484,7 +496,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
           <td>{dateTime(account.createdAt, locale)}{account.wfmProfile ? <a className="developer-profile-link" href={`https://warframe.market/profile/${encodeURIComponent(account.wfmProfile)}`} target="_blank" rel="noreferrer">@{account.wfmProfile}</a> : <small>{ru ? 'WFM профиль не указан' : 'No WFM profile'}</small>}</td>
           <td><strong>{account.purchaseCount}</strong><small>{ru ? `${account.purchaseUnits} ед. · вложено ${platinum(account.investedPlatinum)}` : `${account.purchaseUnits} units · ${platinum(account.investedPlatinum)} invested`}</small></td>
           <td><div className="developer-limit"><strong>Smart Buy {account.smartBuy.used}/{account.smartBuy.limit}</strong><small>{ru ? `Осталось: ${account.smartBuy.remaining}` : `Remaining: ${account.smartBuy.remaining}`}{account.smartBuy.lastRunAt ? ` · ${dateTime(account.smartBuy.lastRunAt, locale)}` : ''}</small><button type="button" className="secondary-action compact" disabled={saving === account.id || account.smartBuy.used < 1} onClick={() => void restoreSmartBuyLimit(account)}>{ru ? 'Восстановить лимит' : 'Restore limit'}</button></div></td>
-          <td><label className="access-toggle"><input type="checkbox" checked={account.axiScanner} disabled={account.developer || account.disabled || saving === account.id} onChange={event => void setAxiAccess(account, event.target.checked)}/><span>{account.axiScanner ? (ru ? 'Axi разрешён' : 'Axi allowed') : (ru ? 'Axi закрыт' : 'Axi blocked')}</span></label><small>{ru ? `Запусков Axi: ${account.axiRunCount}` : `Axi runs: ${account.axiRunCount}`}</small><button type="button" className={`secondary-action compact ${account.disabled ? 'danger' : ''}`} disabled={account.developer || saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Восстановить аккаунт' : 'Restore account') : (ru ? 'Приостановить' : 'Suspend')}</button></td>
+          <td><label className="access-toggle"><input type="checkbox" checked={account.axiScanner} disabled={account.developer || account.disabled || saving === account.id} onChange={event => void setAxiAccess(account, event.target.checked)}/><span>{account.axiScanner ? (ru ? 'Axi разрешён' : 'Axi allowed') : (ru ? 'Axi закрыт' : 'Axi blocked')}</span></label><small>{ru ? `Запусков Axi: ${account.axiRunCount}` : `Axi runs: ${account.axiRunCount}`}</small><button type="button" className={`secondary-action compact ${account.disabled ? '' : 'danger'}`} disabled={account.developer || saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Разблокировать' : 'Unblock') : (ru ? 'Заблокировать' : 'Block')}</button></td>
           <td><strong>{account.sessionCount}</strong><small>{account.sessionExpiresAt ? `${ru ? 'до' : 'until'} ${dateTime(account.sessionExpiresAt, locale)}` : (ru ? 'активных сессий нет' : 'no active sessions')}</small><button type="button" className="secondary-action compact" disabled={account.developer || saving === account.id || account.sessionCount < 1} onClick={() => void revokeSessions(account)}>{ru ? 'Выйти везде' : 'Sign out all'}</button></td>
         </tr>)}
       </tbody></table></div>
