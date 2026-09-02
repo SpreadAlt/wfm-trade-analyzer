@@ -672,7 +672,7 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
   }, [categoriesOpen])
   return <main className={`app-shell portfolio-shell ${auth.account ? "" : "portfolio-shell-guest"}`}>
     <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {text.back}</button></div>
-    <div className="portfolio-heading"><div><span>{auth.account ? auth.account.user.email : text.title}</span><h1>{text.title}</h1><p>{auth.account ? (locale === 'ru' ? 'Данные профиля сохраняются в аккаунте FrameAnalytics.' : 'Profile data is saved to your FrameAnalytics account.') : (locale === 'ru' ? 'Войдите или зарегистрируйтесь, чтобы открыть личный кабинет.' : 'Sign in or register to open your profile.')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={() => undefined}/></div></div>
+    <div className="portfolio-heading"><div><h1>{text.title}</h1></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={() => undefined}/></div></div>
     <div className={`portfolio-account-stage ${auth.account ? "signed" : "guest"}`}><AccountPanel locale={locale} auth={auth}/></div>
     {!auth.account ? null : <>
       <nav className="profile-tool-buttons" aria-label={ru ? 'Инструменты' : 'Tools'}>

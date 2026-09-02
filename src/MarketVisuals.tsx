@@ -104,7 +104,8 @@ export const marketEventName = (eventType: MarketEvent['eventType'], locale: Loc
 export const AyaGlyph = ({ x, y, size, className }: { x?: number; y?: number; size?: number; className?: string }) => <svg
   x={x} y={y} width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true"
 >
-  <image href="/assets/aya.png" x="1.2" y="1" width="21.6" height="21.9" preserveAspectRatio="xMidYMid meet"/>
+  <path d="M12 21.2c-3.7 0-6.7-2.8-6.7-6.4 0-3.1 2.1-5.8 3.3-9.5l2.1 4.1 2.5-6.6c.8 3.5 1.4 5.3 3.1 7.5 1.3 1.7 2.4 3.3 2.4 5.1 0 3.3-3 5.8-6.7 5.8Z"/>
+  <path d="M12 20.7c-1.8-2.5-2.5-5.1-1.4-7.5l2.6-5.8M6.3 14.6c2.5.4 4.1 1.8 5.7 5.8M17.9 13.7c-2.5 1.2-4.1 3-5.9 6.7M8.6 5.3l2.1 4.1"/>
 </svg>
 
 export const MarketEventBadge = ({ event, locale, compact = false }: { event: MarketEvent; locale: Locale; compact?: boolean }) => {
