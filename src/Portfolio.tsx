@@ -62,9 +62,10 @@ export const portfolioText = (locale: Locale) => locale === 'ru' ? {
   unavailableMarket: 'Market series is not available yet', profitHint: '(current price − purchase price) × quantity'
 }
 
-export const AccountButton = ({ locale, active, onClick }: { locale: Locale; active: boolean; onClick: () => void }) => {
+export const AccountButton = ({ locale, active, pending = false, onClick }: { locale: Locale; active: boolean; pending?: boolean; onClick: () => void }) => {
   const text = portfolioText(locale)
-  return <button type="button" className={`account-button ${active ? 'active' : ''}`} onClick={onClick} title={text.account} aria-label={text.account}>
+  const state = pending ? 'pending' : active ? 'active' : 'guest'
+  return <button type="button" className={`account-button ${state}`} onClick={onClick} title={text.account} aria-label={text.account} aria-busy={pending || undefined}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.5-4 2.6-6 6.5-6s6 2 6.5 6"/></svg>
     <span>{text.account}</span>
   </button>

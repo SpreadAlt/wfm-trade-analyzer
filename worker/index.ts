@@ -65,7 +65,7 @@ const SMART_BUY_COOLDOWN_MS = 60 * 1000;
 
 const SMART_BUY_START_HEADER = "X-FrameAnalytics-SmartBuy-Token";
 const WFM_GATEWAY_HEADER = "X-FrameAnalytics-Gateway-Token";
-const ANALYTICS_READ_PATHS = new Set([
+const PUBLIC_ANALYTICS_READ_PATHS = new Set([
   "/api/catalog-v3",
   "/api/scanner-v3",
   "/api/item-v3",
@@ -74,9 +74,12 @@ const ANALYTICS_READ_PATHS = new Set([
   "/api/hourly-v1",
   "/api/hourly-index-v1",
   "/api/events-v1",
+]);
+const ACCOUNT_ANALYTICS_READ_PATHS = new Set([
   "/api/smart-buy-v2/status",
   "/api/smart-buy-v2/result",
 ]);
+const ANALYTICS_READ_PATHS = new Set([...PUBLIC_ANALYTICS_READ_PATHS, ...ACCOUNT_ANALYTICS_READ_PATHS]);
 const ANALYTICS_STATUS_PATHS: Record<string, string> = {
   "/api/internal/api-status": "/",
   "/api/internal/hourly-status": "/hourly-v1-status",
@@ -382,10 +385,11 @@ const handleAnalyticsProxy = async (
   if (request.method !== "GET") {
     return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
   }
-  const user = await requireSession(auth, request, env);
-  if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
-
   const sourceUrl = new URL(request.url);
+  if (!PUBLIC_ANALYTICS_READ_PATHS.has(sourceUrl.pathname)) {
+    const user = await requireSession(auth, request, env);
+    if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
+  }
   if (sourceUrl.pathname === "/api/internal/smart-buy-status") {
     if (!env.SMART_BUY_CONSUMER) return json({ ok: false, error: "SMART_BUY_CONSUMER binding is missing" }, 503);
     const targetUrl = new URL("https://frameanalytics-smartbuy.internal/");
@@ -1576,11 +1580,12 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "verified-email-access-1",
+          serviceRevision: "public-analytics-auth-actions-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
           registration: "email-verification",
           emailDelivery: env.RESEND_API_KEY && env.AUTH_EMAIL_FROM ? "configured" : "unavailable",
+          publicAnalytics: true,
           smartBuyStartProxy: true,
           sellAdvisorStartProxy: true,
           developerAccess: "email-owner+D1-permissions",
