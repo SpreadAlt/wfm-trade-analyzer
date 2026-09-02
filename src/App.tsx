@@ -5,7 +5,7 @@ import { getExtraText } from './extraText'
 import { HistoryChart } from './HistoryChart'
 import { INFO_PAGE_PATHS, InfoPage, infoCopy } from './InfoPage'
 import type { InfoPageKind } from './InfoPage'
-import { CATEGORY_IDS, ForecastIndicator, formatDimensions, ItemIcon, MarketEventBadge } from './MarketVisuals'
+import { AyaGlyph, CATEGORY_IDS, ForecastIndicator, formatDimensions, ItemIcon, MarketEventBadge } from './MarketVisuals'
 import type { CategoryId } from './MarketVisuals'
 import { AccountButton, createTemporaryAccount, loadTemporaryAccount, portfolioText, PurchaseDialog, saveTemporaryAccount } from './Portfolio'
 import type { PortfolioPurchase, TemporaryAccount } from './Portfolio'
@@ -325,7 +325,41 @@ const loadRanges = (): TimeRange[] => {
   } catch { return DEFAULT_RANGES }
 }
 const loadRankFilter = (): RankFilter => localStorage.getItem('frameanalytics-rank-filter') === 'all' ? 'all' : 'base'
-const loadBaroOnly = () => localStorage.getItem('frameanalytics-baro-only') === 'true'
+type SpecialEventFilter = 'all' | 'baro' | 'prime_resurgence'
+const loadSpecialEventFilter = (): SpecialEventFilter => {
+  const saved = localStorage.getItem('frameanalytics-event-filter')
+  if (saved === 'baro' || saved === 'prime_resurgence') return saved
+  return localStorage.getItem('frameanalytics-baro-only') === 'true' ? 'baro' : 'all'
+}
+const eventIsActiveNow = (event: MarketEvent, now: number) => {
+  if (event.status !== 'active') return false
+  const start = Date.parse(event.startAt || '')
+  const end = Date.parse(event.endAt || '')
+  return (!Number.isFinite(start) || start <= now) && (!Number.isFinite(end) || end > now)
+}
+const latestEndedEventIds = (events: MarketEvent[], eventType: MarketEvent['eventType'], now: number) => {
+  const rotations = new Map<string, { at: number; ids: Set<string> }>()
+  events.forEach(event => {
+    if (event.eventType !== eventType) return
+    const start = Date.parse(event.startAt || '')
+    const end = Date.parse(event.endAt || '')
+    if (event.status !== 'ended' && (!Number.isFinite(end) || end > now)) return
+    const observed = Date.parse(event.observedAt || '')
+    const at = Number.isFinite(end) ? end : Number.isFinite(start) ? start : Number.isFinite(observed) ? observed : 0
+    const key = `${event.startAt || event.sourceRef || event.observedAt}|${event.endAt || ''}`
+    const rotation = rotations.get(key) || { at, ids: new Set<string>() }
+    rotation.at = Math.max(rotation.at, at)
+    rotation.ids.add(event.itemId)
+    rotations.set(key, rotation)
+  })
+  const latest = [...rotations.values()].sort((left, right) => right.at - left.at)[0]
+  return latest ? [...latest.ids].sort() : []
+}
+const RESURGENCE_EXCLUDED_FAMILIES = /(?:^|_)(?:burston|braton|fang|lex)_prime(?:_|$)/
+const excludedFromResurgence = (event: MarketEvent) => {
+  const slug = event.slug.toLowerCase().replace(/-/g, '_')
+  return RESURGENCE_EXCLUDED_FAMILIES.test(slug) || /\b(?:burston|braton|fang|lex)\s+prime\b/i.test(event.name)
+}
 const loadOptionalColumns = (): OptionalColumn[] => {
   try {
     const parsed = JSON.parse(localStorage.getItem('frameanalytics-table-columns-v2') || 'null')
@@ -673,14 +707,16 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
   return <main className={`app-shell portfolio-shell ${auth.account ? "" : "portfolio-shell-guest"}`}>
     <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><button type="button" className="back-button" onClick={onBack}>← {text.back}</button></div>
     <div className="portfolio-heading"><div><h1>{text.title}</h1></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={Boolean(auth.account)} onClick={() => undefined}/></div></div>
-    <div className={`portfolio-account-stage ${auth.account ? "signed" : "guest"}`}><AccountPanel locale={locale} auth={auth}/></div>
-    {!auth.account ? null : <>
-      <nav className="profile-tool-buttons" aria-label={ru ? 'Инструменты' : 'Tools'}>
+    <div className={`profile-account-layout ${auth.account ? "signed" : "guest"}`}>
+      <div className={`portfolio-account-stage ${auth.account ? "signed" : "guest"}`}><AccountPanel locale={locale} auth={auth}/></div>
+      {!auth.account ? null : <nav className="profile-tool-buttons" aria-label={ru ? 'Инструменты' : 'Tools'}>
         <button type="button" onClick={onOpenSmartBuy}><span aria-hidden="true">⌁</span>{ru ? 'Умная покупка' : 'Smart Buy'}</button>
         <button type="button" onClick={onOpenSellAdvisor}><span aria-hidden="true">↗</span>{ru ? 'Советник по продаже' : 'Sell Advisor'}</button>
         {auth.account.access?.axiScanner ? <button type="button" onClick={onOpenAxiScanner}><span aria-hidden="true">◇</span>{ru ? 'Axi и Prime Set' : 'Axi & Prime Set'}</button> : null}
         {auth.account.access?.developer ? <button type="button" onClick={onOpenDeveloper}><span aria-hidden="true">⚙</span>{ru ? 'Управление доступом' : 'Access management'}</button> : null}
-      </nav>
+      </nav>}
+    </div>
+    {!auth.account ? null : <>
       <section className="portfolio-summary-grid">
         <article className="panel"><span>{text.total}</span><strong>{fmtPlat(invested)}</strong><small>{account?.purchases.length || 0} · {text.purchases.toLowerCase()}</small></article>
         <article className="panel"><span>{text.currentValue}</span><strong>{pricedEntries.length ? fmtPlat(currentValue) : '—'}</strong><small>{pricedEntries.length}/{entries.length}</small></article>
@@ -737,7 +773,7 @@ export default function App() {
   const [categories, setCategories] = useState<CategoryId[]>(loadCategories)
   const [visibleRanges, setVisibleRanges] = useState<TimeRange[]>(loadRanges)
   const [rankFilter, setRankFilter] = useState<RankFilter>(loadRankFilter)
-  const [baroOnly, setBaroOnly] = useState(loadBaroOnly)
+  const [specialEventFilter, setSpecialEventFilter] = useState<SpecialEventFilter>(loadSpecialEventFilter)
   const [visibleColumns, setVisibleColumns] = useState<OptionalColumn[]>(loadOptionalColumns)
   const [period, setPeriod] = useState<AnalysisPeriod>(() => analysisPeriodForRanges(loadRanges()))
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null)
@@ -799,20 +835,23 @@ export default function App() {
   const catalogItem = (id: string) => catalog.get(id)
   const itemName = (item: { id: string; name: string }) => catalogItem(item.id)?.name || item.name
   const dailySalesIndexVisible = visibleColumns.some(column => column === 'sales7d' || column === 'sales30d' || column === 'sales90d' || column === 'sales180d')
-  const hourlySortActive = supportsHourly(platform, crossplay) && (baroOnly || HOURLY_INDEX_SORTS.has(sort) || rankFilter === 'all' || dailySalesIndexVisible)
-  const activeBaroIds = useMemo(() => {
+  const baroOnly = specialEventFilter === 'baro'
+  const resurgenceOnly = specialEventFilter === 'prime_resurgence'
+  const hourlySortActive = supportsHourly(platform, crossplay) && (specialEventFilter !== 'all' || HOURLY_INDEX_SORTS.has(sort) || rankFilter === 'all' || dailySalesIndexVisible)
+  const baroInventory = useMemo(() => {
     const now = Date.now()
-    return [...new Set(marketEvents.filter(event => {
-      if (event.eventType !== 'baro' || event.status !== 'active') return false
-      const start = Date.parse(event.startAt || '')
-      const end = Date.parse(event.endAt || '')
-      return (!Number.isFinite(start) || start <= now) && (!Number.isFinite(end) || end > now)
-    }).map(event => event.itemId))].sort()
+    const activeIds = [...new Set(marketEvents.filter(event => event.eventType === 'baro' && eventIsActiveNow(event, now)).map(event => event.itemId))].sort()
+    return activeIds.length ? { ids: activeIds, isPast: false } : { ids: latestEndedEventIds(marketEvents, 'baro', now), isPast: true }
   }, [marketEvents, hourlyRefresh])
-  const activeBaroKey = activeBaroIds.join(',')
-  const scannerItemIds = baroOnly
-    ? activeBaroIds.length ? activeBaroIds : ['000000000000000000000000']
-    : undefined
+  const activeResurgenceIds = useMemo(() => {
+    const now = Date.now()
+    return [...new Set(marketEvents.filter(event => event.eventType === 'prime_resurgence' && eventIsActiveNow(event, now) && !excludedFromResurgence(event)).map(event => event.itemId))].sort()
+  }, [marketEvents, hourlyRefresh])
+  const selectedEventIds = baroOnly ? baroInventory.ids : resurgenceOnly ? activeResurgenceIds : undefined
+  const selectedEventKey = `${specialEventFilter}:${selectedEventIds?.join(',') || ''}`
+  const scannerItemIds = specialEventFilter === 'all'
+    ? undefined
+    : selectedEventIds?.length ? selectedEventIds : ['000000000000000000000000']
   useEffect(() => {
     if (!auth.account?.access?.developer) return
     let cancelled = false
@@ -884,7 +923,10 @@ export default function App() {
     }
   }, [visibleRanges, period])
   useEffect(() => { localStorage.setItem('frameanalytics-rank-filter', rankFilter) }, [rankFilter])
-  useEffect(() => { localStorage.setItem('frameanalytics-baro-only', String(baroOnly)) }, [baroOnly])
+  useEffect(() => {
+    localStorage.setItem('frameanalytics-event-filter', specialEventFilter)
+    localStorage.setItem('frameanalytics-baro-only', String(baroOnly))
+  }, [specialEventFilter, baroOnly])
   useEffect(() => { localStorage.setItem('frameanalytics-table-columns-v2', JSON.stringify(visibleColumns)) }, [visibleColumns])
   useEffect(() => { saveTemporaryAccount(temporaryAccount) }, [temporaryAccount])
   useEffect(() => {
@@ -997,7 +1039,7 @@ export default function App() {
   }, [auth.account?.user.id, route.kind, temporaryAccount, platform, crossplay, period, mode, locale, portfolioReload, hourlyIndexData, scannerData])
   useEffect(() => {
     setPage(1)
-  }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, baroOnly, activeBaroKey, sort, direction, pageSize])
+  }, [query, minPrice, minPotential, mode, platform, crossplay, period, categories, rankFilter, specialEventFilter, selectedEventKey, sort, direction, pageSize])
   useEffect(() => {
     if (!auth.account) { setScannerLoading(false); setScannerData(null); return }
     if (route.kind !== 'scanner') { setScannerLoading(false); return }
@@ -1013,7 +1055,7 @@ export default function App() {
       setScannerError(error instanceof Error ? error.message : String(error)); setScannerLoading(false)
     })
     return () => controller.abort()
-  }, [auth.account?.user.id, route.kind, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive, baroOnly, activeBaroKey])
+  }, [auth.account?.user.id, route.kind, platform, period, mode, crossplay, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlySortActive, specialEventFilter, selectedEventKey])
   useEffect(() => {
     if (!auth.account) { setHourlyIndexLoading(false); setHourlyIndexData(null); return }
     if (route.kind !== 'scanner') { setHourlyIndexLoading(false); return }
@@ -1034,7 +1076,7 @@ export default function App() {
       setHourlyIndexError(error instanceof Error ? error.message : String(error)); setHourlyIndexLoading(false)
     })
     return () => controller.abort()
-  }, [auth.account?.user.id, route.kind, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh, baroOnly, activeBaroKey])
+  }, [auth.account?.user.id, route.kind, hourlySortActive, platform, crossplay, rankFilter, period, mode, query, categories, minPrice, minPotential, page, pageSize, sort, direction, locale, scannerReload, hourlyRefresh, specialEventFilter, selectedEventKey])
   const selectedSummary = useMemo(() => {
     if (route.kind !== 'item') return null
     const dailyRows = hourlySortActive ? (hourlyIndexData?.items || []).map(item => item.daily).filter((item): item is ScannerItem => Boolean(item)) : scannerData?.items || []
@@ -1435,7 +1477,10 @@ export default function App() {
         <label><span>{x.rankFilter}</span><CustomPicker value={rankFilter} label={x.rankFilter} options={[{ value: 'base', label: x.rankBase }, { value: 'all', label: x.rankAll }]} onChange={value => setRankFilter(value as RankFilter)}/></label>
         <div className="filter-field category-filter"><span>{u.categories}</span><PickerToggleButton label={u.categories} selected={categories.length} total={CATEGORY_IDS.length} open={openPanel === 'categories'} onClick={() => setOpenPanel(value => value === 'categories' ? null : 'categories')}/>{openPanel === 'categories' ? <div className="category-panel picker-popover" role="dialog" aria-label={u.categories}><div className="category-actions"><button type="button" onClick={() => setCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={categories.includes(id)} onChange={() => toggleCategory(id)}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
         <div className="filter-field table-settings-filter"><span>{x.tableSettings}</span><PickerToggleButton label={x.chooseTableSettings} selected={visibleRanges.length + visibleColumns.length} total={TIME_RANGES.length + OPTIONAL_COLUMNS.length} open={openPanel === 'table'} onClick={() => setOpenPanel(value => value === 'table' ? null : 'table')}/>{openPanel === 'table' ? <div className="category-panel picker-popover table-settings-panel" role="dialog" aria-label={x.tableSettings}><div className="category-actions"><button type="button" onClick={() => { setVisibleRanges([...TIME_RANGES]); setVisibleColumns([...OPTIONAL_COLUMNS]) }}>{u.selectAll}</button><button type="button" onClick={() => { setVisibleRanges(DEFAULT_RANGES); setVisibleColumns(DEFAULT_OPTIONAL_COLUMNS) }}>{u.defaults}</button></div><div className="table-settings-section"><strong>{x.priceChangeColumns}</strong><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={`change-${range}`}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div><div className="table-settings-section"><strong>{x.salesColumns}</strong><div className="range-options">{SALES_RANGES.map(range => { const column = `sales${range}` as SalesColumn; return <label className="range-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{rangeLabel(range, x)}</span></label> })}</div></div><div className="table-settings-section"><strong>{x.otherColumns}</strong><div className="table-extra-options">{(['potential', 'score', 'forecast'] as const).map(column => <label className="category-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{column === 'potential' ? x.potentialColumn : column === 'score' ? x.scoreColumn : x.forecastColumn}</span></label>)}</div></div></div> : null}</div>
-        <div className="baro-filter"><button type="button" className={`baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={activeBaroIds.length ? x.currentBaroHint : x.currentBaroEmpty} onClick={() => setBaroOnly(value => !value)}><svg viewBox="0 0 32 38" aria-hidden="true"><path className="baro-glyph-stroke" d="m16 2 4 4-4 4-4-4 4-4ZM7.5 8.5l4 4-4 4-4-4 4-4Zm17 0 4 4-4 4-4-4 4-4ZM16 10l9 9-9 9-9-9 9-9Zm0 5 4 4-4 4-4-4 4-4Z"/><path className="baro-glyph-fill" d="m11 32 5 5 5-5Z"/></svg></button></div>
+        <div className="event-filter-group">
+          <button type="button" className={`event-filter-button baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={baroInventory.ids.length ? baroInventory.isPast ? x.latestBaroHint : x.currentBaroHint : x.currentBaroEmpty} onClick={() => setSpecialEventFilter(current => current === 'baro' ? 'all' : 'baro')}><svg viewBox="0 0 32 38" aria-hidden="true"><path className="baro-glyph-stroke" d="m16 2 4 4-4 4-4-4 4-4ZM7.5 8.5l4 4-4 4-4-4 4-4Zm17 0 4 4-4 4-4-4 4-4ZM16 10l9 9-9 9-9-9 9-9Zm0 5 4 4-4 4-4-4 4-4Z"/><path className="baro-glyph-fill" d="m11 32 5 5 5-5Z"/></svg></button>
+          <button type="button" className={`event-filter-button resurgence-icon-button ${resurgenceOnly ? 'active' : ''}`} aria-pressed={resurgenceOnly} aria-label={x.currentResurgence} title={activeResurgenceIds.length ? x.currentResurgenceHint : x.currentResurgenceEmpty} onClick={() => setSpecialEventFilter(current => current === 'prime_resurgence' ? 'all' : 'prime_resurgence')}><AyaGlyph/></button>
+        </div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className={`panel table-panel ${activeRefreshing ? 'table-refreshing' : ''}`} aria-busy={activeRefreshing}><div className="table-scroll"><table className="market-table"><thead><tr>

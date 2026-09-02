@@ -296,9 +296,9 @@
   align-items:center;
   gap:18px;
   overflow:hidden;
-  min-height:108px;
+  min-height:88px;
   box-sizing:border-box;
-  padding:22px 24px;
+  padding:16px 18px;
   border-color:color-mix(in srgb,var(--accent) 28%,var(--line));
   background:
     radial-gradient(circle at 0% 0%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 36%),
