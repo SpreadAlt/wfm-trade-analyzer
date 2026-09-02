@@ -412,16 +412,16 @@ const PaginationBar = ({ locale, page, pageCount, total, showingStart, showingEn
   const p = paginationText[locale]
   return <nav className="pagination-bar" aria-label={locale === 'ru' ? 'Навигация по страницам' : 'Page navigation'}><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{total}</strong></div><div className="pagination-buttons"><button type="button" disabled={page <= 1} aria-label={p.first} onClick={() => onPage(1)}><PagerIcon direction="previous" edge/><span>{p.first}</span></button><button type="button" disabled={page <= 1} aria-label={p.previous} onClick={() => onPage(Math.max(1, page - 1))}><PagerIcon direction="previous"/><span>{p.previous}</span></button><span className="pagination-current">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button type="button" disabled={page >= pageCount} aria-label={p.next} onClick={() => onPage(Math.min(pageCount, page + 1))}><span>{p.next}</span><PagerIcon direction="next"/></button><button type="button" disabled={page >= pageCount} aria-label={p.last} onClick={() => onPage(pageCount)}><span>{p.last}</span><PagerIcon direction="next" edge/></button></div></nav>
 }
-const ClosedBetaGate = ({ locale, auth }: { locale: Locale; auth: FrameAccountController }) => {
+const AccountGate = ({ locale, auth }: { locale: Locale; auth: FrameAccountController }) => {
   const ru = locale === 'ru'
   return <main className="app-shell closed-beta-shell">
-    <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><span>{ru ? 'Закрытая бета' : 'Closed beta'}</span></header>
+    <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><span>{ru ? 'Безопасный вход' : 'Secure access'}</span></header>
     <section className="closed-beta-layout">
       <div className="closed-beta-copy">
         <span className="eyebrow">FrameAnalytics.trade</span>
-        <h1>{ru ? 'Доступ по приглашению' : 'Invitation-only access'}</h1>
-        <p>{ru ? 'Мы завершаем внутреннюю проверку аналитики, почасовых данных и торговых инструментов. Существующие участники могут войти, новым тестировщикам нужен invite-код.' : 'We are completing internal validation of analytics, hourly data, and trading tools. Existing members can sign in; new testers need an invite code.'}</p>
-        <div className="closed-beta-points"><span>✓ {ru ? 'Существующие аккаунты продолжают работать' : 'Existing accounts keep access'}</span><span>✓ {ru ? 'Регистрация только по приглашениям' : 'Registration requires an invitation'}</span><span>✓ {ru ? 'Ордера WFM не изменяются автоматически' : 'WFM orders are never changed automatically'}</span></div>
+        <h1>{ru ? 'Ваши данные — в одном аккаунте' : 'Your data in one account'}</h1>
+        <p>{ru ? 'Войдите или зарегистрируйтесь, чтобы синхронизировать профиль, покупки и торговые инструменты между устройствами.' : 'Sign in or register to sync your profile, purchases, and trading tools across devices.'}</p>
+        <div className="closed-beta-points"><span>✓ {ru ? 'Подтверждение регистрации по email' : 'Email-confirmed registration'}</span><span>✓ {ru ? 'Восстановление доступа через защищённый код' : 'Account recovery with a secure code'}</span><span>✓ {ru ? 'Ордера WFM не изменяются автоматически' : 'WFM orders are never changed automatically'}</span></div>
       </div>
       <div className="closed-beta-auth"><AccountPanel locale={locale} auth={auth}/></div>
     </section>
@@ -1461,7 +1461,7 @@ export default function App() {
   if (auth.loading || !auth.account) {
     return <>
       <div className="background-layer"/><div className="background-shade"/>
-      <ClosedBetaGate locale={locale} auth={auth}/>
+      <AccountGate locale={locale} auth={auth}/>
       <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
     </>
   }

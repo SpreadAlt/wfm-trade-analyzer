@@ -18,7 +18,7 @@ The Updated column uses the WFM fetch timestamp. The latest non-empty trade buck
 
 Rank 0/no-rank is the default scanner view and all available hourly ranks can be expanded independently. Normalization v3.1 daily analytics still contain only the catalog maximum-rank mod market, so non-canonical ranks deliberately show hourly values only; their daily potential, score, and forecast remain empty rather than borrowing max-rank analytics.
 
-The temporary profile is deliberately local-only. `/profile` is a separate application page and stores manually entered purchases in browser `localStorage`; permanent authentication and server synchronization are not presented as available yet. The legacy `/portfolio` route remains readable for old links. The profile requests purchased item IDs from the finalized Hourly Index/Scanner in batches, shows the statistics columns for the exact purchased market series, and calculates current value, possible profit and return as `(current price − purchase price) × quantity`. It never contacts WFM directly.
+`/profile` is a separate authenticated application page. Profile settings and manually entered purchases are synchronized through the account Worker. Registration uses a six-digit email OTP; password recovery verifies another OTP and emails a generated 12-character password. The legacy `/portfolio` route remains readable for old links. The profile requests purchased item IDs from the finalized Hourly Index/Scanner in batches, shows the statistics columns for the exact purchased market series, and calculates current value, possible profit and return as `(current price − purchase price) × quantity`. It never contacts WFM directly.
 
 Events v1 observes Digital Extremes' first-party World State feed for Baro Ki'Teer and Prime Resurgence inventory. Because the official endpoint rejects some Cloudflare egress IPs, the repository includes an authenticated hourly GitHub Actions relay. The Worker validates the relayed JSON before storing it. It maps normalized game references to market items, expands a matched Prime Set to its tradeable components, adds contextual icons and graph markers, and applies a supply-event downward tendency to the arrow without silently changing the Scanner v3 score. Event history starts when Events v1 is deployed; older events are never fabricated.
 
@@ -40,3 +40,14 @@ The project includes an explicit `wrangler.jsonc` for the existing `wfm-trade-an
 ```bash
 npx wrangler deploy
 ```
+
+### Transactional email
+
+The account Worker sends verification and recovery messages through Resend. Verify the sender domain first, then configure a no-reply sender and the API key before deploying:
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put AUTH_EMAIL_FROM
+```
+
+Use a sender value such as `FrameAnalytics <no-reply@example.com>`. The Worker refuses verification and password recovery requests when email delivery is not configured; it never falls back to logging OTP codes or generated passwords.

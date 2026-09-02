@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
+import { emailOTP } from "better-auth/plugins";
 
 type D1Result = {
   success?: boolean;
@@ -33,8 +34,9 @@ type Env = {
   WFM_GATEWAY_TOKEN?: string;
   DESKTOP_NOTIFY_TOKEN?: string;
   DEVELOPER_EMAIL?: string;
-  BETA_ADMIN_KEY?: string;
   ADMIN_KEY?: string;
+  RESEND_API_KEY?: string;
+  AUTH_EMAIL_FROM?: string;
 };
 
 type SessionUser = {
@@ -56,6 +58,7 @@ const json = (value: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
   });
 
 const nowMs = () => Date.now();
+const AUTH_OTP_EXPIRES_SECONDS = 10 * 60;
 const SMART_BUY_DAILY_LIMIT = 30;
 const SMART_BUY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SMART_BUY_COOLDOWN_MS = 60 * 1000;
@@ -114,6 +117,72 @@ const normalizeWfmProfile = (value: unknown) => {
   }
 };
 
+const escapeEmailHtml = (value: string) => value
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#039;");
+
+const assertEmailDeliveryConfigured = (env: Env) => {
+  const apiKey = String(env.RESEND_API_KEY || "").trim();
+  const from = String(env.AUTH_EMAIL_FROM || "").trim();
+  if (!apiKey || !from) throw new Error("Transactional email is not configured");
+  return { apiKey, from };
+};
+
+const sendAuthEmail = async (
+  env: Env,
+  message: { to: string; subject: string; text: string; html: string },
+) => {
+  const { apiKey, from } = assertEmailDeliveryConfigured(env);
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [message.to],
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    }),
+  });
+  if (!response.ok) {
+    const details = (await response.text()).slice(0, 500);
+    console.error("frameanalytics-email-delivery-error", response.status, details);
+    throw new Error("Email delivery failed");
+  }
+};
+
+const sendOtpEmail = async (
+  env: Env,
+  email: string,
+  otp: string,
+  type: "sign-in" | "email-verification" | "forget-password" | "change-email",
+) => {
+  const code = escapeEmailHtml(otp);
+  const verification = type === "email-verification" || type === "change-email";
+  const subject = verification
+    ? "Код подтверждения FrameAnalytics"
+    : type === "forget-password"
+      ? "Восстановление пароля FrameAnalytics"
+      : "Код входа FrameAnalytics";
+  const purpose = verification
+    ? "подтверждения адреса электронной почты"
+    : type === "forget-password"
+      ? "восстановления пароля"
+      : "входа в аккаунт";
+  await sendAuthEmail(env, {
+    to: email,
+    subject,
+    text: `Код для ${purpose}: ${otp}. Он действует 10 минут. Если вы не запрашивали код, проигнорируйте письмо.`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#102033"><h1 style="font-size:22px;margin:0 0 14px">FrameAnalytics</h1><p>Код для ${purpose}:</p><div style="font:700 30px/1.2 ui-monospace,monospace;letter-spacing:.18em;padding:16px 18px;border-radius:12px;background:#eef8f5;color:#087c64">${code}</div><p style="color:#64748b;font-size:13px;line-height:1.55">Код действует 10 минут. Если вы не запрашивали его, просто проигнорируйте это письмо.</p></div>`,
+  });
+};
+
 const createAuth = (env: Env, request: Request) => {
   const origin = new URL(request.url).origin;
   return betterAuth({
@@ -123,7 +192,26 @@ const createAuth = (env: Env, request: Request) => {
     trustedOrigins: [origin],
     emailAndPassword: {
       enabled: true,
+      requireEmailVerification: true,
+      revokeSessionsOnPasswordReset: true,
     },
+    emailVerification: {
+      autoSignInAfterVerification: true,
+    },
+    plugins: [
+      emailOTP({
+        disableSignUp: true,
+        overrideDefaultEmailVerification: true,
+        otpLength: 6,
+        expiresIn: AUTH_OTP_EXPIRES_SECONDS,
+        allowedAttempts: 5,
+        storeOTP: "hashed",
+        rateLimit: { window: 60, max: 3 },
+        sendVerificationOTP: async ({ email, otp, type }) => {
+          await sendOtpEmail(env, email, otp, type);
+        },
+      }),
+    ],
   });
 };
 
@@ -168,24 +256,6 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_frameanalytics_smart_buy_run_user_time
           ON frameanalytics_smart_buy_run(user_id, created_at DESC)`,
-        `CREATE TABLE IF NOT EXISTS frameanalytics_beta_invite (
-          code_hash TEXT PRIMARY KEY NOT NULL,
-          code_prefix TEXT NOT NULL,
-          label TEXT,
-          max_uses INTEGER NOT NULL DEFAULT 1,
-          uses INTEGER NOT NULL DEFAULT 0,
-          expires_at INTEGER,
-          disabled INTEGER NOT NULL DEFAULT 0,
-          created_at INTEGER NOT NULL
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_beta_invite_created
-          ON frameanalytics_beta_invite(created_at DESC)`,
-        `CREATE TABLE IF NOT EXISTS frameanalytics_beta_access (
-          user_id TEXT PRIMARY KEY NOT NULL,
-          code_hash TEXT,
-          joined_at INTEGER NOT NULL,
-          FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
-        )`,
         `CREATE TABLE IF NOT EXISTS frameanalytics_access (
           user_id TEXT PRIMARY KEY NOT NULL,
           role TEXT NOT NULL DEFAULT 'user',
@@ -289,22 +359,9 @@ const requireDeveloper = async (
   return { user, access, response: null };
 };
 
-const normalizeInviteCode = (value: unknown) =>
-  String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 64);
-
 const sha256 = async (value: string) => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-};
-
-const betaAdminAuthorized = async (request: Request, env: Env) => {
-  const expected = String(env.BETA_ADMIN_KEY || env.ADMIN_KEY || "").trim();
-  const authorization = String(request.headers.get("Authorization") || "");
-  const provided = authorization.toLowerCase().startsWith("bearer ")
-    ? authorization.slice(7).trim()
-    : String(request.headers.get("X-Admin-Key") || "").trim();
-  if (!expected || !provided) return false;
-  return (await sha256(expected)) === (await sha256(provided));
 };
 
 const desktopNotifyAuthorized = async (request: Request, env: Env) => {
@@ -315,181 +372,6 @@ const desktopNotifyAuthorized = async (request: Request, env: Env) => {
     : "";
   if (!expected || !provided) return false;
   return (await sha256(expected)) === (await sha256(provided));
-};
-
-const createInviteCode = () => {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
-  const body = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
-  return `FA-${body.slice(0, 4)}-${body.slice(4, 8)}-${body.slice(8, 12)}`;
-};
-
-const reserveBetaInvite = async (env: Env, inviteCode: unknown) => {
-  const normalized = normalizeInviteCode(inviteCode);
-  if (normalized.length < 10) return null;
-  const codeHash = await sha256(normalized);
-  const result = await env.frameanalytics_auth
-    .prepare(`
-      UPDATE frameanalytics_beta_invite
-      SET uses = uses + 1
-      WHERE code_hash = ?
-        AND disabled = 0
-        AND uses < max_uses
-        AND (expires_at IS NULL OR expires_at > ?)
-    `)
-    .bind(codeHash, nowMs())
-    .run();
-  return Number(result.meta?.changes ?? 0) > 0 ? codeHash : null;
-};
-
-const releaseBetaInvite = async (env: Env, codeHash: string) => {
-  try {
-    await env.frameanalytics_auth
-      .prepare(`UPDATE frameanalytics_beta_invite SET uses = MAX(0, uses - 1) WHERE code_hash = ?`)
-      .bind(codeHash)
-      .run();
-  } catch (error) {
-    console.error("frameanalytics-beta-invite-release-error", error);
-  }
-};
-
-const handleBetaInviteOperations = async (request: Request, env: Env) => {
-  if (request.method === "GET") {
-    const rows = await env.frameanalytics_auth.prepare(`
-      SELECT
-        code_hash AS codeHash,
-        code_prefix AS codePrefix,
-        label,
-        max_uses AS maxUses,
-        uses,
-        expires_at AS expiresAt,
-        disabled,
-        created_at AS createdAt
-      FROM frameanalytics_beta_invite
-      ORDER BY created_at DESC
-      LIMIT 250
-    `).all();
-    return json({ ok: true, closedBeta: true, invites: rows.results ?? [] });
-  }
-
-  if (request.method === "POST") {
-    const body = await readBody<{ label?: unknown; maxUses?: unknown; expiresInDays?: unknown }>(request);
-    const label = String(body.label ?? "").trim().slice(0, 100) || null;
-    const maxUses = Math.max(1, Math.min(100, Math.floor(Number(body.maxUses) || 1)));
-    const expiresInDays = Math.max(1, Math.min(365, Math.floor(Number(body.expiresInDays) || 30)));
-    const code = createInviteCode();
-    const normalized = normalizeInviteCode(code);
-    const codeHash = await sha256(normalized);
-    const createdAt = nowMs();
-    const expiresAt = createdAt + expiresInDays * 24 * 60 * 60 * 1000;
-    await env.frameanalytics_auth.prepare(`
-      INSERT INTO frameanalytics_beta_invite (
-        code_hash, code_prefix, label, max_uses, uses, expires_at, disabled, created_at
-      ) VALUES (?, ?, ?, ?, 0, ?, 0, ?)
-    `).bind(codeHash, code.slice(0, 7), label, maxUses, expiresAt, createdAt).run();
-    return json({
-      ok: true,
-      closedBeta: true,
-      invite: {
-        code,
-        codeHash,
-        codePrefix: code.slice(0, 7),
-        label,
-        maxUses,
-        uses: 0,
-        expiresAt,
-        disabled: false,
-        createdAt,
-      },
-      warning: "The raw invite code is returned only once"
-    }, 201);
-  }
-
-  if (request.method === "DELETE") {
-    const codeHash = String(new URL(request.url).searchParams.get("hash") || "").trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(codeHash)) return json({ ok: false, error: "Invalid invite hash" }, 400);
-    const result = await env.frameanalytics_auth
-      .prepare(`UPDATE frameanalytics_beta_invite SET disabled = 1 WHERE code_hash = ?`)
-      .bind(codeHash)
-      .run();
-    return json({ ok: true, disabled: Number(result.meta?.changes ?? 0) > 0, codeHash });
-  }
-
-  if (request.method === "PATCH") {
-    const body = await readBody<{ codeHash?: unknown; disabled?: unknown }>(request);
-    const codeHash = String(body.codeHash || "").trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(codeHash)) return json({ ok: false, error: "Invalid invite hash" }, 400);
-    const disabled = body.disabled === true;
-    const result = await env.frameanalytics_auth
-      .prepare(`UPDATE frameanalytics_beta_invite SET disabled = ? WHERE code_hash = ?`)
-      .bind(disabled ? 1 : 0, codeHash)
-      .run();
-    return json({ ok: true, updated: Number(result.meta?.changes ?? 0) > 0, disabled, codeHash });
-  }
-
-  return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, POST, PATCH, DELETE" });
-};
-
-const handleBetaInvites = async (request: Request, env: Env) => {
-  if (!(await betaAdminAuthorized(request, env))) {
-    return json({ ok: false, error: "Unauthorized" }, 401);
-  }
-  return handleBetaInviteOperations(request, env);
-};
-
-const handleDeveloperBetaInvites = async (
-  request: Request,
-  env: Env,
-  auth: ReturnType<typeof createAuth>,
-) => {
-  const guard = await requireDeveloper(request, env, auth);
-  if (guard.response || !guard.user) return guard.response!;
-  return handleBetaInviteOperations(request, env);
-};
-
-const handleBetaSignUp = async (
-  request: Request,
-  env: Env,
-  auth: ReturnType<typeof createAuth>,
-) => {
-  if (request.method !== "POST") {
-    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
-  }
-  const body = await readBody<{ name?: unknown; email?: unknown; password?: unknown; inviteCode?: unknown }>(request);
-  const codeHash = await reserveBetaInvite(env, body.inviteCode);
-  if (!codeHash) return json({ ok: false, error: "Invite code is invalid, expired, disabled, or already used" }, 403);
-
-  try {
-    const headers = new Headers(request.headers);
-    headers.set("Content-Type", "application/json");
-    headers.delete("Content-Length");
-    const authRequest = new Request(`${new URL(request.url).origin}/api/auth/sign-up/email`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ name: body.name, email: body.email, password: body.password })
-    });
-    const authResponse = await auth.handler(authRequest);
-    if (!authResponse.ok) {
-      await releaseBetaInvite(env, codeHash);
-      return authResponse;
-    }
-    try {
-      const payload = await authResponse.clone().json() as { user?: { id?: unknown } };
-      const userId = String(payload?.user?.id || "").trim();
-      if (userId) {
-        await env.frameanalytics_auth.prepare(`
-          INSERT OR REPLACE INTO frameanalytics_beta_access (user_id, code_hash, joined_at)
-          VALUES (?, ?, ?)
-        `).bind(userId, codeHash, nowMs()).run();
-      }
-    } catch (error) {
-      console.error("frameanalytics-beta-access-audit-error", error);
-    }
-    return authResponse;
-  } catch (error) {
-    await releaseBetaInvite(env, codeHash);
-    throw error;
-  }
 };
 
 const handleAnalyticsProxy = async (
@@ -642,6 +524,74 @@ const readBody = async <T,>(request: Request): Promise<T> => {
   }
 };
 
+const secureRandomIndex = (length: number) => {
+  const cutoff = Math.floor(256 / length) * length;
+  while (true) {
+    const value = crypto.getRandomValues(new Uint8Array(1))[0];
+    if (value < cutoff) return value % length;
+  }
+};
+
+const generateTemporaryPassword = () => {
+  const groups = [
+    "ABCDEFGHJKLMNPQRSTUVWXYZ",
+    "abcdefghijkmnopqrstuvwxyz",
+    "23456789",
+    "!@#$%*-_",
+  ];
+  const all = groups.join("");
+  const chars = groups.map((group) => group[secureRandomIndex(group.length)]);
+  while (chars.length < 12) chars.push(all[secureRandomIndex(all.length)]);
+  for (let index = chars.length - 1; index > 0; index -= 1) {
+    const swap = secureRandomIndex(index + 1);
+    [chars[index], chars[swap]] = [chars[swap], chars[index]];
+  }
+  return chars.join("");
+};
+
+const handlePasswordRecoveryConfirm = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+  }
+  assertEmailDeliveryConfigured(env);
+  const body = await readBody<{ email?: unknown; otp?: unknown }>(request);
+  const email = String(body.email || "").trim().toLowerCase();
+  const otp = String(body.otp || "").trim();
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) {
+    return json({ ok: false, error: "Invalid email" }, 400);
+  }
+  if (!/^\d{6}$/.test(otp)) {
+    return json({ ok: false, error: "Invalid verification code" }, 400);
+  }
+
+  const password = generateTemporaryPassword();
+  const headers = new Headers(request.headers);
+  headers.set("Content-Type", "application/json");
+  headers.delete("Content-Length");
+  const resetResponse = await auth.handler(new Request(
+    `${new URL(request.url).origin}/api/auth/email-otp/reset-password`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email, otp, password }),
+    },
+  ));
+  if (!resetResponse.ok) return resetResponse;
+
+  const safePassword = escapeEmailHtml(password);
+  await sendAuthEmail(env, {
+    to: email,
+    subject: "Новый пароль FrameAnalytics",
+    text: `Новый пароль FrameAnalytics: ${password}. Все прежние сессии завершены.`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#102033"><h1 style="font-size:22px;margin:0 0 14px">FrameAnalytics</h1><p>Для аккаунта создан новый пароль:</p><div style="font:700 24px/1.2 ui-monospace,monospace;letter-spacing:.08em;padding:16px 18px;border-radius:12px;background:#eef8f5;color:#087c64">${safePassword}</div><p style="color:#64748b;font-size:13px;line-height:1.55">Все прежние сессии завершены. Если вы не восстанавливали доступ, обратитесь к администратору.</p></div>`,
+  });
+  return json({ ok: true, passwordSent: true });
+};
+
 const handleAccount = async (
   request: Request,
   env: Env,
@@ -709,16 +659,11 @@ const handleDeveloperAccounts = async (
         COALESCE(smart.smartBuyUsed, 0) AS smartBuyUsed,
         smart.smartBuyLastRunAt AS smartBuyLastRunAt,
         COALESCE(axi.axiRunCount, 0) AS axiRunCount,
-        axi.axiLastRunAt AS axiLastRunAt,
-        beta.joined_at AS betaJoinedAt,
-        invite.code_prefix AS inviteCodePrefix,
-        invite.label AS inviteLabel
+        axi.axiLastRunAt AS axiLastRunAt
       FROM user u
       LEFT JOIN frameanalytics_access a ON a.user_id = u.id
       LEFT JOIN frameanalytics_account_state s ON s.user_id = u.id
       LEFT JOIN frameanalytics_profile profile ON profile.user_id = u.id
-      LEFT JOIN frameanalytics_beta_access beta ON beta.user_id = u.id
-      LEFT JOIN frameanalytics_beta_invite invite ON invite.code_hash = beta.code_hash
       LEFT JOIN (
         SELECT user_id, COUNT(*) AS purchaseCount, SUM(quantity) AS purchaseUnits, SUM(purchase_price * quantity) AS investedPlatinum
         FROM frameanalytics_purchase
@@ -764,9 +709,6 @@ const handleDeveloperAccounts = async (
       smartBuyLastRunAt: number | null;
       axiRunCount: number;
       axiLastRunAt: number | null;
-      betaJoinedAt: number | null;
-      inviteCodePrefix: string | null;
-      inviteLabel: string | null;
     }>();
     return json({
       ok: true,
@@ -862,6 +804,164 @@ const handleDeveloperAccounts = async (
   }
 
   return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, PATCH, POST" });
+};
+
+const handleDeveloperAccountStats = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+  userId: string,
+) => {
+  const guard = await requireDeveloper(request, env, auth);
+  if (guard.response || !guard.user) return guard.response!;
+  if (request.method !== "GET") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
+  }
+
+  const account = await env.frameanalytics_auth.prepare(`
+    SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.emailVerified AS emailVerified,
+      u.createdAt AS createdAt,
+      u.updatedAt AS updatedAt,
+      COALESCE(a.axi_scanner, 0) AS axiScanner,
+      a.updated_at AS accessUpdatedAt,
+      COALESCE(state.disabled, 0) AS disabled,
+      state.updated_at AS stateUpdatedAt,
+      profile.wfm_profile AS wfmProfile,
+      profile.created_at AS profileCreatedAt,
+      profile.updated_at AS profileUpdatedAt
+    FROM user u
+    LEFT JOIN frameanalytics_access a ON a.user_id = u.id
+    LEFT JOIN frameanalytics_account_state state ON state.user_id = u.id
+    LEFT JOIN frameanalytics_profile profile ON profile.user_id = u.id
+    WHERE u.id = ?
+  `).bind(userId).first<{
+    id: string;
+    name: string;
+    email: string;
+    emailVerified: number;
+    createdAt: string;
+    updatedAt: string;
+    axiScanner: number;
+    accessUpdatedAt: number | null;
+    disabled: number;
+    stateUpdatedAt: number | null;
+    wfmProfile: string | null;
+    profileCreatedAt: number | null;
+    profileUpdatedAt: number | null;
+  }>();
+  if (!account) return json({ ok: false, error: "Account not found" }, 404);
+
+  const now = nowMs();
+  const dayAgo = now - 24 * 60 * 60 * 1000;
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
+  const [purchaseSummary, purchases, smartSummary, axiSummary, sessions] = await Promise.all([
+    env.frameanalytics_auth.prepare(`
+      SELECT
+        COUNT(*) AS records,
+        COALESCE(SUM(quantity), 0) AS units,
+        COALESCE(SUM(purchase_price * quantity), 0) AS invested,
+        COALESCE(SUM(purchase_price * quantity) / NULLIF(SUM(quantity), 0), 0) AS averageUnitPrice,
+        MIN(purchase_date) AS firstPurchaseDate,
+        MAX(purchase_date) AS lastPurchaseDate,
+        MIN(created_at) AS firstRecordedAt,
+        MAX(updated_at) AS lastUpdatedAt
+      FROM frameanalytics_purchase
+      WHERE user_id = ?
+    `).bind(userId).first<{
+      records: number; units: number; invested: number; averageUnitPrice: number;
+      firstPurchaseDate: string | null; lastPurchaseDate: string | null;
+      firstRecordedAt: string | null; lastUpdatedAt: number | null;
+    }>(),
+    env.frameanalytics_auth.prepare(`
+      SELECT
+        id,
+        item_id AS itemId,
+        slug,
+        name,
+        market_key AS marketKey,
+        selected_mod_rank AS selectedModRank,
+        purchase_price AS purchasePrice,
+        quantity,
+        purchase_date AS purchaseDate,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM frameanalytics_purchase
+      WHERE user_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 100
+    `).bind(userId).all(),
+    env.frameanalytics_auth.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS last24h,
+        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS last7d,
+        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS last30d,
+        MIN(created_at) AS firstRunAt,
+        MAX(created_at) AS lastRunAt
+      FROM frameanalytics_smart_buy_run
+      WHERE user_id = ?
+    `).bind(dayAgo, weekAgo, monthAgo, userId).first(),
+    env.frameanalytics_auth.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS last24h,
+        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS last7d,
+        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS last30d,
+        MIN(created_at) AS firstRunAt,
+        MAX(created_at) AS lastRunAt
+      FROM frameanalytics_axi_run
+      WHERE requested_by = ?
+    `).bind(dayAgo, weekAgo, monthAgo, userId).first(),
+    env.frameanalytics_auth.prepare(`
+      SELECT id, createdAt, updatedAt, expiresAt, userAgent
+      FROM "session"
+      WHERE userId = ? AND expiresAt > ?
+      ORDER BY updatedAt DESC
+      LIMIT 20
+    `).bind(userId, now).all(),
+  ]);
+
+  const owner = account.email.trim().toLowerCase() === developerEmail(env);
+  const numberSummary = (value: Record<string, unknown> | null) => ({
+    total: Number(value?.total ?? 0),
+    last24h: Number(value?.last24h ?? 0),
+    last7d: Number(value?.last7d ?? 0),
+    last30d: Number(value?.last30d ?? 0),
+    firstRunAt: Number(value?.firstRunAt ?? 0) || null,
+    lastRunAt: Number(value?.lastRunAt ?? 0) || null,
+  });
+  return json({
+    ok: true,
+    account: {
+      ...account,
+      emailVerified: Boolean(account.emailVerified),
+      developer: owner,
+      axiScanner: owner || Number(account.axiScanner) === 1,
+      disabled: owner ? false : Number(account.disabled) === 1,
+    },
+    portfolio: {
+      records: Number(purchaseSummary?.records ?? 0),
+      units: Number(purchaseSummary?.units ?? 0),
+      invested: Number(purchaseSummary?.invested ?? 0),
+      averageUnitPrice: Number(purchaseSummary?.averageUnitPrice ?? 0),
+      firstPurchaseDate: purchaseSummary?.firstPurchaseDate ?? null,
+      lastPurchaseDate: purchaseSummary?.lastPurchaseDate ?? null,
+      firstRecordedAt: purchaseSummary?.firstRecordedAt ?? null,
+      lastUpdatedAt: Number(purchaseSummary?.lastUpdatedAt ?? 0) || null,
+      recent: purchases.results ?? [],
+    },
+    smartBuy: {
+      ...numberSummary(smartSummary as Record<string, unknown> | null),
+      current: await readSmartBuyUsage(env, userId),
+    },
+    axi: numberSummary(axiSummary as Record<string, unknown> | null),
+    sessions: sessions.results ?? [],
+  });
 };
 
 const handleDeveloperResaleScanner = async (
@@ -1476,11 +1576,11 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "developer-wfm-safety-tray-1",
+          serviceRevision: "verified-email-access-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
-          closedBeta: true,
-          registration: "invite-only",
+          registration: "email-verification",
+          emailDelivery: env.RESEND_API_KEY && env.AUTH_EMAIL_FROM ? "configured" : "unavailable",
           smartBuyStartProxy: true,
           sellAdvisorStartProxy: true,
           developerAccess: "email-owner+D1-permissions",
@@ -1505,21 +1605,24 @@ export default {
         return handleDesktopNotificationFeed(request, env);
       }
 
-      if (url.pathname === "/api/beta/status") {
-        if (request.method !== "GET") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET" });
-        return json({ ok: true, closedBeta: true, registration: "invite-only", existingAccountsAllowed: true });
+      if (url.pathname === "/api/auth/password-recovery/confirm") {
+        return handlePasswordRecoveryConfirm(request, env, auth);
       }
 
-      if (url.pathname === "/api/beta/invites") {
-        return handleBetaInvites(request, env);
+      if (new Set([
+        "/api/auth/sign-up/email",
+        "/api/auth/email-otp/send-verification-otp",
+        "/api/auth/email-otp/request-password-reset",
+      ]).has(url.pathname.replace(/\/$/, ""))) {
+        try {
+          assertEmailDeliveryConfigured(env);
+        } catch {
+          return json({ ok: false, error: "Email delivery is not configured" }, 503);
+        }
       }
 
-      if (url.pathname === "/api/beta/sign-up") {
-        return handleBetaSignUp(request, env, auth);
-      }
-
-      if (/^\/api\/auth\/sign-up\/email\/?$/.test(url.pathname)) {
-        return json({ ok: false, error: "Closed beta: an invite code is required" }, 403);
+      if (/^\/api\/auth\/email-otp\/reset-password\/?$/.test(url.pathname)) {
+        return json({ ok: false, error: "Use the password recovery confirmation endpoint" }, 404);
       }
 
       if (url.pathname.startsWith("/api/auth/")) {
@@ -1530,12 +1633,13 @@ export default {
         return handleAccount(request, env, auth);
       }
 
-      if (url.pathname === "/api/developer/accounts") {
-        return handleDeveloperAccounts(request, env, auth);
+      const accountStatsMatch = url.pathname.match(/^\/api\/developer\/accounts\/([^/]+)\/stats$/);
+      if (accountStatsMatch) {
+        return handleDeveloperAccountStats(request, env, auth, decodeURIComponent(accountStatsMatch[1]));
       }
 
-      if (url.pathname === "/api/developer/beta-invites") {
-        return handleDeveloperBetaInvites(request, env, auth);
+      if (url.pathname === "/api/developer/accounts") {
+        return handleDeveloperAccounts(request, env, auth);
       }
 
       if (url.pathname === "/api/developer/resale-scanner-v1") {

@@ -24,26 +24,54 @@ type ManagedAccount = {
   smartBuy: { limit: number; used: number; remaining: number; cooldownSeconds: number; lastRunAt: string | null }
   axiRunCount: number
   axiLastRunAt: number | null
-  betaJoinedAt: number | null
-  inviteCodePrefix: string | null
-  inviteLabel: string | null
 }
 
 type AccountsResponse = { ok: true; accounts: ManagedAccount[] }
 
-type BetaInvite = {
-  codeHash: string
-  codePrefix: string
-  label: string | null
-  maxUses: number
-  uses: number
-  expiresAt: number | null
-  disabled: number | boolean
-  createdAt: number
+type UserActivitySummary = {
+  total: number
+  last24h: number
+  last7d: number
+  last30d: number
+  firstRunAt: number | null
+  lastRunAt: number | null
 }
 
-type BetaInvitesResponse = { ok: true; invites: BetaInvite[] }
-type CreatedBetaInviteResponse = { ok: true; invite: BetaInvite & { code: string } }
+type AccountStatsResponse = {
+  ok: true
+  account: ManagedAccount & {
+    updatedAt: string
+    accessUpdatedAt: number | null
+    stateUpdatedAt: number | null
+    profileCreatedAt: number | null
+  }
+  portfolio: {
+    records: number
+    units: number
+    invested: number
+    averageUnitPrice: number
+    firstPurchaseDate: string | null
+    lastPurchaseDate: string | null
+    firstRecordedAt: string | null
+    lastUpdatedAt: number | null
+    recent: Array<{
+      id: string
+      itemId: string
+      slug: string
+      name: string
+      marketKey: string
+      selectedModRank: number | null
+      purchasePrice: number
+      quantity: number
+      purchaseDate: string
+      createdAt: string
+      updatedAt: number
+    }>
+  }
+  smartBuy: UserActivitySummary & { current: ManagedAccount['smartBuy'] }
+  axi: UserActivitySummary
+  sessions: Array<{ id: string; createdAt: string; updatedAt: string; expiresAt: string; userAgent: string | null }>
+}
 
 type ResaleOpportunity = {
   rowId: string
@@ -139,7 +167,7 @@ type ProcessQueues = {
   }
 }
 
-type DeveloperCategory = 'overview' | 'scanners' | 'accounts' | 'access'
+type DeveloperCategory = 'overview' | 'scanners' | 'accounts'
 
 const platinum = (value: number) => `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)}p`
 
@@ -157,14 +185,10 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [invites, setInvites] = useState<BetaInvite[]>([])
-  const [invitesLoading, setInvitesLoading] = useState(true)
-  const [inviteSaving, setInviteSaving] = useState<string | null>(null)
-  const [inviteError, setInviteError] = useState<string | null>(null)
-  const [inviteLabel, setInviteLabel] = useState('beta-tester')
-  const [inviteMaxUses, setInviteMaxUses] = useState(1)
-  const [inviteExpiresDays, setInviteExpiresDays] = useState(30)
-  const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null)
+  const [selectedAccount, setSelectedAccount] = useState<ManagedAccount | null>(null)
+  const [accountStats, setAccountStats] = useState<AccountStatsResponse | null>(null)
+  const [accountStatsLoading, setAccountStatsLoading] = useState(false)
+  const [accountStatsError, setAccountStatsError] = useState<string | null>(null)
   const [resale, setResale] = useState<ResaleScannerResponse | null>(null)
   const [resaleLoading, setResaleLoading] = useState(true)
   const [resaleError, setResaleError] = useState<string | null>(null)
@@ -191,21 +215,6 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     const timer = window.setTimeout(() => { void load() }, 250)
     return () => window.clearTimeout(timer)
   }, [category, load])
-
-  const loadInvites = useCallback(async () => {
-    setInvitesLoading(true)
-    setInviteError(null)
-    try {
-      const result = await accountRequestJson<BetaInvitesResponse>('/api/developer/beta-invites')
-      setInvites(result.invites || [])
-    } catch (value) {
-      setInviteError(value instanceof Error ? value.message : String(value))
-    } finally {
-      setInvitesLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { if (category === 'access') void loadInvites() }, [category, loadInvites])
 
   const loadResale = useCallback(async () => {
     try {
@@ -331,51 +340,56 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     }
   }
 
-  const createInvite = async () => {
-    setInviteSaving('create')
-    setInviteError(null)
-    setCreatedInviteCode(null)
+  const openAccountStats = async (account: ManagedAccount) => {
+    setSelectedAccount(account)
+    setAccountStats(null)
+    setAccountStatsError(null)
+    setAccountStatsLoading(true)
     try {
-      const result = await accountRequestJson<CreatedBetaInviteResponse>('/api/developer/beta-invites', {
-        method: 'POST',
-        body: JSON.stringify({
-          label: inviteLabel,
-          maxUses: inviteMaxUses,
-          expiresInDays: inviteExpiresDays
-        })
-      })
-      setCreatedInviteCode(result.invite.code)
-      setInvites(current => [result.invite, ...current])
+      setAccountStats(await accountRequestJson<AccountStatsResponse>(`/api/developer/accounts/${encodeURIComponent(account.id)}/stats`))
     } catch (value) {
-      setInviteError(value instanceof Error ? value.message : String(value))
+      setAccountStatsError(value instanceof Error ? value.message : String(value))
     } finally {
-      setInviteSaving(null)
+      setAccountStatsLoading(false)
     }
   }
 
-  const setInviteDisabled = async (invite: BetaInvite, disabled: boolean) => {
-    setInviteSaving(invite.codeHash)
-    setInviteError(null)
-    try {
-      await accountRequestJson('/api/developer/beta-invites', {
-        method: 'PATCH',
-        body: JSON.stringify({ codeHash: invite.codeHash, disabled })
-      })
-      setInvites(current => current.map(item => item.codeHash === invite.codeHash ? { ...item, disabled } : item))
-    } catch (value) {
-      setInviteError(value instanceof Error ? value.message : String(value))
-    } finally {
-      setInviteSaving(null)
-    }
+  const closeAccountStats = () => {
+    setSelectedAccount(null)
+    setAccountStats(null)
+    setAccountStatsError(null)
   }
 
-  const copyInvite = async () => {
-    if (!createdInviteCode) return
-    try {
-      await navigator.clipboard.writeText(createdInviteCode)
-    } catch {
-      setInviteError(ru ? 'Не удалось скопировать код автоматически.' : 'Could not copy the code automatically.')
-    }
+  if (selectedAccount) {
+    const stats = accountStats
+    const account = stats?.account || selectedAccount
+    return <main className="app-shell developer-shell developer-user-page">
+      <div className="detail-navigation">
+        <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
+        <button type="button" className="back-button" onClick={closeAccountStats}>← {ru ? 'К списку аккаунтов' : 'Back to accounts'}</button>
+      </div>
+      <section className="panel developer-user-hero">
+        <div><span className="eyebrow">{ru ? 'Статистика пользователя' : 'User statistics'}</span><h1>{account.name || '—'}</h1><p>{account.email}</p></div>
+        <div className="developer-user-badges"><span className={`developer-state ${account.disabled ? 'danger' : 'active'}`}>{account.disabled ? (ru ? 'Приостановлен' : 'Suspended') : (ru ? 'Активен' : 'Active')}</span><span className={`developer-state ${account.emailVerified ? 'active' : 'muted'}`}>{account.emailVerified ? (ru ? 'Email подтверждён' : 'Email verified') : (ru ? 'Email не подтверждён' : 'Email unverified')}</span>{account.developer ? <span className="developer-state active">developer</span> : null}</div>
+      </section>
+      {accountStatsLoading ? <section className="panel developer-user-loading"><div className="spinner"/><strong>{ru ? 'Собираем статистику…' : 'Loading statistics…'}</strong></section> : null}
+      {accountStatsError ? <div className="account-message error">{accountStatsError}</div> : null}
+      {stats ? <>
+        <section className="developer-user-metrics">
+          <article className="panel"><span>{ru ? 'Записей в портфеле' : 'Portfolio records'}</span><strong>{stats.portfolio.records}</strong><small>{stats.portfolio.units} {ru ? 'единиц' : 'units'}</small></article>
+          <article className="panel"><span>{ru ? 'Вложено' : 'Invested'}</span><strong>{platinum(stats.portfolio.invested)}</strong><small>{ru ? `Средняя цена ${platinum(stats.portfolio.averageUnitPrice)}` : `Average ${platinum(stats.portfolio.averageUnitPrice)}`}</small></article>
+          <article className="panel"><span>Smart Buy</span><strong>{stats.smartBuy.total}</strong><small>{ru ? `${stats.smartBuy.last7d} за 7 дней` : `${stats.smartBuy.last7d} in 7 days`}</small></article>
+          <article className="panel"><span>Axi / Prime Set</span><strong>{stats.axi.total}</strong><small>{ru ? `${stats.axi.last30d} за 30 дней` : `${stats.axi.last30d} in 30 days`}</small></article>
+          <article className="panel"><span>{ru ? 'Активные сессии' : 'Active sessions'}</span><strong>{stats.sessions.length}</strong><small>{stats.sessions[0]?.updatedAt ? dateTime(stats.sessions[0].updatedAt, locale) : (ru ? 'нет активности' : 'no activity')}</small></article>
+        </section>
+        <section className="developer-user-grid">
+          <article className="panel developer-user-info"><span className="eyebrow">{ru ? 'Аккаунт и доступ' : 'Account & access'}</span><dl><div><dt>{ru ? 'Создан' : 'Created'}</dt><dd>{dateTime(stats.account.createdAt, locale)}</dd></div><div><dt>{ru ? 'Обновлён' : 'Updated'}</dt><dd>{dateTime(stats.account.updatedAt, locale)}</dd></div><div><dt>WFM</dt><dd>{stats.account.wfmProfile ? <a href={`https://warframe.market/profile/${encodeURIComponent(stats.account.wfmProfile)}`} target="_blank" rel="noreferrer">@{stats.account.wfmProfile}</a> : '—'}</dd></div><div><dt>Axi / Prime Set</dt><dd>{stats.account.axiScanner ? (ru ? 'Разрешён' : 'Allowed') : (ru ? 'Закрыт' : 'Blocked')}</dd></div><div><dt>{ru ? 'Доступ изменён' : 'Access updated'}</dt><dd>{dateTime(stats.account.accessUpdatedAt, locale)}</dd></div><div><dt>ID</dt><dd><code>{stats.account.id}</code></dd></div></dl></article>
+          <article className="panel developer-user-activity"><span className="eyebrow">{ru ? 'Активность инструментов' : 'Tool activity'}</span><div className="developer-user-activity-row"><strong>Smart Buy</strong><span>24h: {stats.smartBuy.last24h}</span><span>7d: {stats.smartBuy.last7d}</span><span>30d: {stats.smartBuy.last30d}</span><small>{ru ? 'Последний запуск' : 'Last run'}: {dateTime(stats.smartBuy.lastRunAt, locale)}</small></div><div className="developer-user-activity-row"><strong>Axi / Prime Set</strong><span>24h: {stats.axi.last24h}</span><span>7d: {stats.axi.last7d}</span><span>30d: {stats.axi.last30d}</span><small>{ru ? 'Последний запуск' : 'Last run'}: {dateTime(stats.axi.lastRunAt, locale)}</small></div></article>
+        </section>
+        <section className="panel developer-user-section"><header className="developer-section-heading"><div><span className="eyebrow">Sessions</span><h2>{ru ? 'Активные устройства' : 'Active devices'}</h2><p>{ru ? 'Показаны активные сессии без IP-адресов и токенов.' : 'Active sessions are shown without IP addresses or tokens.'}</p></div></header><div className="table-scroll"><table className="developer-table"><thead><tr><th>{ru ? 'Устройство' : 'Device'}</th><th>{ru ? 'Создана' : 'Created'}</th><th>{ru ? 'Активность' : 'Activity'}</th><th>{ru ? 'Истекает' : 'Expires'}</th></tr></thead><tbody>{!stats.sessions.length ? <tr><td colSpan={4} className="state-cell">{ru ? 'Активных сессий нет.' : 'No active sessions.'}</td></tr> : stats.sessions.map(session => <tr key={session.id}><td className="developer-user-agent">{session.userAgent || (ru ? 'Неизвестное устройство' : 'Unknown device')}</td><td>{dateTime(session.createdAt, locale)}</td><td>{dateTime(session.updatedAt, locale)}</td><td>{dateTime(session.expiresAt, locale)}</td></tr>)}</tbody></table></div></section>
+        <section className="panel developer-user-section"><header className="developer-section-heading"><div><span className="eyebrow">Portfolio</span><h2>{ru ? 'Последние позиции' : 'Recent positions'}</h2><p>{ru ? 'До 100 последних обновлённых записей портфеля.' : 'Up to 100 most recently updated portfolio records.'}</p></div></header><div className="table-scroll"><table className="developer-table developer-user-purchases"><thead><tr><th>{ru ? 'Предмет' : 'Item'}</th><th>{ru ? 'Цена' : 'Price'}</th><th>{ru ? 'Количество' : 'Quantity'}</th><th>{ru ? 'Сумма' : 'Total'}</th><th>{ru ? 'Дата покупки' : 'Purchase date'}</th><th>{ru ? 'Обновлено' : 'Updated'}</th></tr></thead><tbody>{!stats.portfolio.recent.length ? <tr><td colSpan={6} className="state-cell">{ru ? 'Портфель пуст.' : 'Portfolio is empty.'}</td></tr> : stats.portfolio.recent.map(row => <tr key={row.id}><td><strong>{row.name}</strong><small>{row.marketKey}{row.selectedModRank === null ? '' : ` · rank ${row.selectedModRank}`}</small></td><td>{platinum(row.purchasePrice)}</td><td>{row.quantity}</td><td>{platinum(row.purchasePrice * row.quantity)}</td><td>{dateTime(row.purchaseDate, locale)}</td><td>{dateTime(row.updatedAt, locale)}</td></tr>)}</tbody></table></div></section>
+      </> : null}
+    </main>
   }
 
   return <main className="app-shell developer-shell">
@@ -391,8 +405,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       {([
         ['overview', ru ? 'Обзор и очереди' : 'Overview & queues'],
         ['scanners', ru ? 'Сканеры' : 'Scanners'],
-        ['accounts', ru ? 'Аккаунты и лимиты' : 'Accounts & limits'],
-        ['access', ru ? 'Доступ и приглашения' : 'Access & invites']
+        ['accounts', ru ? 'Аккаунты и лимиты' : 'Accounts & limits']
       ] as Array<[DeveloperCategory, string]>).map(([value, label]) => <button type="button" key={value} className={category === value ? 'active' : ''} onClick={() => setCategory(value)}>{label}</button>)}
     </nav>
     <section className="panel developer-process-panel" hidden={category !== 'overview'}>
@@ -437,35 +450,6 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         </tbody></table></div>
       </details>
     </section>
-    <section className="panel developer-invites-panel" hidden={category !== 'access'}>
-      <header className="developer-section-heading">
-        <div><span className="eyebrow">Closed beta</span><h2>{ru ? 'Приглашения на бета-тест' : 'Beta invitations'}</h2><p>{ru ? 'Код показывается только один раз сразу после создания. В базе хранится только его хеш.' : 'The code is shown only once after creation. Only its hash is stored.'}</p></div>
-        <button type="button" className="secondary-action" disabled={invitesLoading} onClick={() => void loadInvites()}>{ru ? 'Обновить список' : 'Refresh list'}</button>
-      </header>
-      <div className="developer-invite-form">
-        <label><span>{ru ? 'Метка' : 'Label'}</span><input maxLength={100} value={inviteLabel} onChange={event => setInviteLabel(event.target.value)} /></label>
-        <label><span>{ru ? 'Использований' : 'Uses'}</span><input type="number" min={1} max={100} value={inviteMaxUses} onChange={event => setInviteMaxUses(Math.max(1, Math.min(100, Number(event.target.value) || 1)))} /></label>
-        <label><span>{ru ? 'Действует, дней' : 'Expires, days'}</span><input type="number" min={1} max={365} value={inviteExpiresDays} onChange={event => setInviteExpiresDays(Math.max(1, Math.min(365, Number(event.target.value) || 1)))} /></label>
-        <button type="button" className="primary-action developer-create-invite" disabled={inviteSaving === 'create'} onClick={() => void createInvite()}>{inviteSaving === 'create' ? (ru ? 'Создание…' : 'Creating…') : (ru ? 'Создать ключ' : 'Create key')}</button>
-      </div>
-      {createdInviteCode ? <div className="developer-created-invite"><div><span>{ru ? 'Новый ключ — сохраните сейчас' : 'New key — save it now'}</span><strong>{createdInviteCode}</strong></div><button type="button" className="secondary-action" onClick={() => void copyInvite()}>{ru ? 'Копировать' : 'Copy'}</button></div> : null}
-      {inviteError ? <div className="account-message error">{inviteError}</div> : null}
-      <div className="table-scroll"><table className="developer-table developer-invites-table"><thead><tr><th>{ru ? 'Приглашение' : 'Invite'}</th><th>{ru ? 'Использовано' : 'Used'}</th><th>{ru ? 'Истекает' : 'Expires'}</th><th>{ru ? 'Состояние' : 'State'}</th><th>{ru ? 'Действие' : 'Action'}</th></tr></thead><tbody>
-        {invitesLoading ? <tr><td colSpan={5} className="state-cell"><div className="spinner"/>{ru ? 'Загрузка приглашений…' : 'Loading invitations…'}</td></tr> : !invites.length ? <tr><td colSpan={5} className="state-cell">{ru ? 'Приглашений пока нет.' : 'No invitations yet.'}</td></tr> : invites.map(invite => {
-          const disabled = Boolean(invite.disabled)
-          const expired = Boolean(invite.expiresAt && invite.expiresAt <= Date.now())
-          const exhausted = invite.uses >= invite.maxUses
-          const state = disabled ? (ru ? 'Отключён' : 'Disabled') : expired ? (ru ? 'Истёк' : 'Expired') : exhausted ? (ru ? 'Использован' : 'Used') : (ru ? 'Активен' : 'Active')
-          return <tr key={invite.codeHash}>
-            <td><strong>{invite.label || '—'}</strong><small>{invite.codePrefix}…</small></td>
-            <td>{invite.uses} / {invite.maxUses}</td>
-            <td>{invite.expiresAt ? dateTime(invite.expiresAt, locale) : '—'}</td>
-            <td><span className={`developer-state ${disabled || expired || exhausted ? 'muted' : 'active'}`}>{state}</span></td>
-            <td><button type="button" className="secondary-action compact" disabled={inviteSaving === invite.codeHash || expired || exhausted} onClick={() => void setInviteDisabled(invite, !disabled)}>{disabled ? (ru ? 'Включить' : 'Enable') : (ru ? 'Отключить' : 'Disable')}</button></td>
-          </tr>
-        })}
-      </tbody></table></div>
-    </section>
     <section className="panel developer-resale-panel" hidden={category !== 'scanners'}>
       <header className="developer-resale-heading">
         <div><span className="eyebrow">Hourly resale</span><h2>{ru ? 'Перепродажа с прибылью от 20p' : 'Resale opportunities from 20p'}</h2><p>{ru ? 'Без модов и мистификаторов: от 30 закрытых продаж за 24 часа, средняя цена от 45p и свежие sell-orders игроков online/ingame.' : 'Excludes mods and arcanes: at least 30 closed sales in 24h, average price from 45p, and fresh online/ingame sell-orders.'}</p></div>
@@ -496,8 +480,8 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     <section className="panel table-panel developer-table-panel" hidden={category !== 'accounts'}>
       <div className="table-scroll"><table className="developer-table developer-accounts-table"><thead><tr><th>{ru ? 'Аккаунт' : 'Account'}</th><th>{ru ? 'Регистрация и WFM' : 'Registration & WFM'}</th><th>{ru ? 'Портфель' : 'Portfolio'}</th><th>{ru ? 'Лимиты' : 'Limits'}</th><th>{ru ? 'Доступ' : 'Access'}</th><th>{ru ? 'Сессии' : 'Sessions'}</th></tr></thead><tbody>
         {loading ? <tr><td colSpan={6} className="state-cell"><div className="spinner"/>{ru ? 'Загрузка аккаунтов…' : 'Loading accounts…'}</td></tr> : !accounts.length ? <tr><td colSpan={6} className="state-cell">{ru ? 'Аккаунты не найдены.' : 'No accounts found.'}</td></tr> : accounts.map(account => <tr key={account.id} className={account.disabled ? 'developer-account-disabled' : ''}>
-          <td><strong>{account.name || '—'}</strong><span className="developer-email">{account.email}</span>{account.developer ? <small className="developer-role">developer</small> : account.emailVerified ? <small>{ru ? 'Email подтверждён' : 'Email verified'}</small> : null}</td>
-          <td>{dateTime(account.createdAt, locale)}{account.wfmProfile ? <a className="developer-profile-link" href={`https://warframe.market/profile/${encodeURIComponent(account.wfmProfile)}`} target="_blank" rel="noreferrer">@{account.wfmProfile}</a> : <small>{ru ? 'WFM профиль не указан' : 'No WFM profile'}</small>}{account.inviteLabel || account.inviteCodePrefix ? <small>{ru ? 'Приглашение' : 'Invite'}: {account.inviteLabel || account.inviteCodePrefix}</small> : null}</td>
+          <td><strong>{account.name || '—'}</strong><span className="developer-email">{account.email}</span>{account.developer ? <small className="developer-role">developer</small> : account.emailVerified ? <small>{ru ? 'Email подтверждён' : 'Email verified'}</small> : null}<button type="button" className="secondary-action compact developer-stats-button" onClick={() => void openAccountStats(account)}>{ru ? 'Подробная статистика' : 'Detailed statistics'}</button></td>
+          <td>{dateTime(account.createdAt, locale)}{account.wfmProfile ? <a className="developer-profile-link" href={`https://warframe.market/profile/${encodeURIComponent(account.wfmProfile)}`} target="_blank" rel="noreferrer">@{account.wfmProfile}</a> : <small>{ru ? 'WFM профиль не указан' : 'No WFM profile'}</small>}</td>
           <td><strong>{account.purchaseCount}</strong><small>{ru ? `${account.purchaseUnits} ед. · вложено ${platinum(account.investedPlatinum)}` : `${account.purchaseUnits} units · ${platinum(account.investedPlatinum)} invested`}</small></td>
           <td><div className="developer-limit"><strong>Smart Buy {account.smartBuy.used}/{account.smartBuy.limit}</strong><small>{ru ? `Осталось: ${account.smartBuy.remaining}` : `Remaining: ${account.smartBuy.remaining}`}{account.smartBuy.lastRunAt ? ` · ${dateTime(account.smartBuy.lastRunAt, locale)}` : ''}</small><button type="button" className="secondary-action compact" disabled={saving === account.id || account.smartBuy.used < 1} onClick={() => void restoreSmartBuyLimit(account)}>{ru ? 'Восстановить лимит' : 'Restore limit'}</button></div></td>
           <td><label className="access-toggle"><input type="checkbox" checked={account.axiScanner} disabled={account.developer || account.disabled || saving === account.id} onChange={event => void setAxiAccess(account, event.target.checked)}/><span>{account.axiScanner ? (ru ? 'Axi разрешён' : 'Axi allowed') : (ru ? 'Axi закрыт' : 'Axi blocked')}</span></label><small>{ru ? `Запусков Axi: ${account.axiRunCount}` : `Axi runs: ${account.axiRunCount}`}</small><button type="button" className={`secondary-action compact ${account.disabled ? 'danger' : ''}`} disabled={account.developer || saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Восстановить аккаунт' : 'Restore account') : (ru ? 'Приостановить' : 'Suspend')}</button></td>

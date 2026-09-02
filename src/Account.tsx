@@ -85,7 +85,11 @@ export type FrameAccountController = {
   error: string | null
   account: FrameAccountSnapshot | null
   refresh: () => Promise<FrameAccountSnapshot | null>
-  signUp: (name: string, email: string, password: string, inviteCode: string) => Promise<void>
+  signUp: (name: string, email: string, password: string) => Promise<void>
+  verifyEmail: (email: string, otp: string) => Promise<void>
+  resendVerification: (email: string) => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
+  completePasswordReset: (email: string, otp: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   linkWfmProfile: (profile: string) => Promise<void>
@@ -139,15 +143,51 @@ export const useFrameAccount = (): FrameAccountController => {
     }
   }, [])
 
-  const signUp = useCallback(async (name: string, email: string, password: string, inviteCode: string) => {
+  const signUp = useCallback(async (name: string, email: string, password: string) => {
     await action(async () => {
-      await accountRequestJson('/api/beta/sign-up', {
+      await accountRequestJson('/api/auth/sign-up/email', {
         method: 'POST',
-        body: JSON.stringify({ name, email, password, inviteCode })
+        body: JSON.stringify({ name, email, password })
+      })
+    })
+  }, [action])
+
+  const verifyEmail = useCallback(async (email: string, otp: string) => {
+    await action(async () => {
+      await accountRequestJson('/api/auth/email-otp/verify-email', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp })
       })
       await refresh()
     })
   }, [action, refresh])
+
+  const resendVerification = useCallback(async (email: string) => {
+    await action(async () => {
+      await accountRequestJson('/api/auth/email-otp/send-verification-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, type: 'email-verification' })
+      })
+    })
+  }, [action])
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    await action(async () => {
+      await accountRequestJson('/api/auth/email-otp/request-password-reset', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      })
+    })
+  }, [action])
+
+  const completePasswordReset = useCallback(async (email: string, otp: string) => {
+    await action(async () => {
+      await accountRequestJson('/api/auth/password-recovery/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp })
+      })
+    })
+  }, [action])
 
   const signIn = useCallback(async (email: string, password: string) => {
     await action(async () => {
@@ -219,12 +259,14 @@ export const useFrameAccount = (): FrameAccountController => {
   }, [])
 
   return useMemo(() => ({
-    loading, busy, error, account, refresh, signUp, signIn, signOut,
+    loading, busy, error, account, refresh, signUp, verifyEmail, resendVerification,
+    requestPasswordReset, completePasswordReset, signIn, signOut,
     linkWfmProfile, unlinkWfmProfile, startSmartBuy, startSellAdvisor,
     loadPurchases, upsertPurchases, deletePurchase,
     clearError: () => setError(null)
   }), [
-    loading, busy, error, account, refresh, signUp, signIn, signOut,
+    loading, busy, error, account, refresh, signUp, verifyEmail, resendVerification,
+    requestPasswordReset, completePasswordReset, signIn, signOut,
     linkWfmProfile, unlinkWfmProfile, startSmartBuy, startSellAdvisor,
     loadPurchases, upsertPurchases, deletePurchase
   ])
@@ -239,12 +281,23 @@ const copy = (locale: Locale) => locale === 'ru' ? {
   name: 'Имя',
   email: 'Email',
   password: 'Пароль',
-  inviteCode: 'Код приглашения',
-  invitePlaceholder: 'FA-XXXX-XXXX-XXXX',
   create: 'Создать аккаунт',
   enter: 'Войти',
   logout: 'Выйти',
-  needAccount: 'FrameAnalytics работает в режиме закрытой беты. Войдите или зарегистрируйтесь по приглашению.',
+  needAccount: 'Войдите в аккаунт или создайте новый. Регистрация подтверждается кодом из письма.',
+  forgot: 'Забыли пароль?',
+  verifyTitle: 'Подтверждение почты',
+  verifyCopy: 'Мы отправили шестизначный код на указанный email.',
+  verificationCode: 'Код из письма',
+  verify: 'Подтвердить email',
+  resend: 'Отправить код повторно',
+  resetTitle: 'Восстановление пароля',
+  resetCopy: 'Сначала подтвердите почту. После проверки кода мы отправим новый пароль из 12 символов.',
+  sendCode: 'Отправить код',
+  resetConfirm: 'Подтвердить и создать пароль',
+  resetDoneTitle: 'Новый пароль отправлен',
+  resetDoneCopy: 'Проверьте почту и войдите с новым автоматически сгенерированным паролем.',
+  backToSignIn: 'Вернуться ко входу',
   loading: 'Проверяем сессию…'
 } : {
   title: 'FrameAnalytics account',
@@ -255,12 +308,23 @@ const copy = (locale: Locale) => locale === 'ru' ? {
   name: 'Name',
   email: 'Email',
   password: 'Password',
-  inviteCode: 'Invite code',
-  invitePlaceholder: 'FA-XXXX-XXXX-XXXX',
   create: 'Create account',
   enter: 'Sign in',
   logout: 'Sign out',
-  needAccount: 'FrameAnalytics is in closed beta. Sign in or register with an invitation.',
+  needAccount: 'Sign in or create an account. Registration is confirmed with a code sent by email.',
+  forgot: 'Forgot password?',
+  verifyTitle: 'Verify your email',
+  verifyCopy: 'We sent a six-digit code to your email address.',
+  verificationCode: 'Email code',
+  verify: 'Verify email',
+  resend: 'Send a new code',
+  resetTitle: 'Password recovery',
+  resetCopy: 'First verify your email. After the code is accepted, we will email a new 12-character password.',
+  sendCode: 'Send code',
+  resetConfirm: 'Verify and create password',
+  resetDoneTitle: 'New password sent',
+  resetDoneCopy: 'Check your inbox and sign in with the new automatically generated password.',
+  backToSignIn: 'Back to sign in',
   loading: 'Checking session…'
 }
 
@@ -276,11 +340,11 @@ const maskAccountEmail = (value: string) => {
 
 export const AccountPanel = ({ locale, auth }: { locale: Locale; auth: FrameAccountController }) => {
   const t = copy(locale)
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [mode, setMode] = useState<'signin' | 'signup' | 'verify' | 'reset-email' | 'reset-code' | 'reset-done'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
+  const [otp, setOtp] = useState('')
 
   if (auth.loading) {
     return <section className="panel account-panel account-loading"><div className="spinner"/><strong>{t.loading}</strong></section>
@@ -296,33 +360,66 @@ export const AccountPanel = ({ locale, auth }: { locale: Locale; auth: FrameAcco
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (!email.trim() || !password) return
+    const normalizedEmail = email.trim().toLowerCase()
     try {
       if (mode === 'signup') {
-        if (!name.trim()) return
-        if (!inviteCode.trim()) return
-        await auth.signUp(name.trim(), email.trim(), password, inviteCode.trim())
-      } else {
-        await auth.signIn(email.trim(), password)
+        if (!name.trim() || !normalizedEmail || !password) return
+        await auth.signUp(name.trim(), normalizedEmail, password)
+        setMode('verify')
+        setOtp('')
+      } else if (mode === 'verify') {
+        if (!normalizedEmail || otp.length !== 6) return
+        await auth.verifyEmail(normalizedEmail, otp)
+      } else if (mode === 'reset-email') {
+        if (!normalizedEmail) return
+        await auth.requestPasswordReset(normalizedEmail)
+        setMode('reset-code')
+        setOtp('')
+      } else if (mode === 'reset-code') {
+        if (!normalizedEmail || otp.length !== 6) return
+        await auth.completePasswordReset(normalizedEmail, otp)
+        setMode('reset-done')
+        setOtp('')
+      } else if (mode === 'signin') {
+        if (!normalizedEmail || !password) return
+        await auth.signIn(normalizedEmail, password)
       }
       setPassword('')
-      setInviteCode('')
     } catch { /* error is rendered from controller */ }
   }
 
+  const selectMode = (next: typeof mode) => {
+    setMode(next)
+    setOtp('')
+    setPassword('')
+    auth.clearError()
+  }
+
+  const isRegistration = mode === 'signup' || mode === 'verify'
+  const heading = mode === 'verify' ? t.verifyTitle
+    : mode === 'reset-email' || mode === 'reset-code' ? t.resetTitle
+      : mode === 'reset-done' ? t.resetDoneTitle
+        : mode === 'signup' ? t.signUp : t.signIn
+  const explanation = mode === 'verify' ? t.verifyCopy
+    : mode === 'reset-email' || mode === 'reset-code' ? t.resetCopy
+      : mode === 'reset-done' ? t.resetDoneCopy : t.needAccount
+
   return <section className="panel account-panel">
-    <div className="account-auth-copy"><span className="eyebrow">{t.title}</span><h2>{mode === 'signup' ? t.signUp : t.signIn}</h2><p>{t.needAccount}</p></div>
-    <div className="account-tabs">
-      <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); auth.clearError() }}>{t.signIn}</button>
-      <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); auth.clearError() }}>{t.signUp}</button>
-    </div>
-    <form className="account-form" onSubmit={submit}>
+    <div className="account-auth-copy"><span className="eyebrow">{t.title}</span><h2>{heading}</h2><p>{explanation}</p></div>
+    {mode === 'signin' || mode === 'signup' ? <div className="account-tabs">
+      <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => selectMode('signin')}>{t.signIn}</button>
+      <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => selectMode('signup')}>{t.signUp}</button>
+    </div> : null}
+    {mode === 'reset-done' ? <button type="button" className="primary-action account-submit" onClick={() => selectMode('signin')}>{t.backToSignIn}</button> : <form className="account-form" onSubmit={submit}>
       {mode === 'signup' ? <label><span>{t.name}</span><input autoComplete="name" value={name} onChange={event => setName(event.target.value)} required/></label> : null}
-      {mode === 'signup' ? <label><span>{t.inviteCode}</span><input autoComplete="one-time-code" maxLength={32} placeholder={t.invitePlaceholder} value={inviteCode} onChange={event => setInviteCode(event.target.value.toUpperCase())} required/></label> : null}
-      <label><span>{t.email}</span><input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required/></label>
-      <label><span>{t.password}</span><input type="password" minLength={8} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} required/></label>
-      <button type="submit" className="primary-action" disabled={auth.busy}>{mode === 'signup' ? t.create : t.enter}</button>
+      <label><span>{t.email}</span><input type="email" autoComplete="email" readOnly={mode === 'verify' || mode === 'reset-code'} value={email} onChange={event => setEmail(event.target.value)} required/></label>
+      {mode === 'verify' || mode === 'reset-code' ? <label><span>{t.verificationCode}</span><input className="account-otp-input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} required/></label> : null}
+      {mode === 'signin' || mode === 'signup' ? <label><span>{t.password}</span><input type="password" minLength={8} autoComplete={isRegistration ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} required/></label> : null}
+      <button type="submit" className="primary-action account-submit" disabled={auth.busy}>{auth.busy ? <span className="account-submit-spinner"/> : null}{mode === 'signup' ? t.create : mode === 'verify' ? t.verify : mode === 'reset-email' ? t.sendCode : mode === 'reset-code' ? t.resetConfirm : t.enter}</button>
+      {mode === 'signin' ? <button type="button" className="account-text-action" onClick={() => selectMode('reset-email')}>{t.forgot}</button> : null}
+      {mode === 'verify' ? <button type="button" className="account-text-action" disabled={auth.busy} onClick={() => void auth.resendVerification(email.trim().toLowerCase())}>{t.resend}</button> : null}
+      {mode === 'reset-email' || mode === 'reset-code' || mode === 'verify' ? <button type="button" className="account-text-action muted" onClick={() => selectMode('signin')}>{t.backToSignIn}</button> : null}
       {auth.error ? <small className="account-error">{auth.error}</small> : null}
-    </form>
+    </form>}
   </section>
 }

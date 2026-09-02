@@ -1602,13 +1602,12 @@ html[data-theme="light"] .pagination-buttons strong {
 .portfolio-summary-grid small { color:#718aa6; font-size:10px; }
 .portfolio-summary-grid article.positive strong { color:#4ee7b0; }
 .portfolio-summary-grid article.negative strong { color:#ff7479; }
-.profile-account-layout.signed { display:grid; grid-template-columns:minmax(260px,380px) minmax(420px,1fr); align-items:stretch; gap:10px; margin:0 0 10px; }
-.profile-account-layout.signed .portfolio-account-stage,
-.profile-account-layout.signed .account-panel { height:100%; }
+.profile-account-layout.signed { display:grid; grid-template-columns:max-content max-content; align-items:start; justify-content:start; gap:10px; margin:0 0 10px; }
+.profile-account-layout.signed .portfolio-account-stage { width:auto; }
 .profile-account-layout.signed .account-panel { margin-bottom:0; }
-.profile-tool-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; gap:8px; margin:0; }
-.profile-tool-buttons button { min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:9px; padding:9px 14px; color:#9fb4cc; background:rgba(8,17,29,.9); border:1px solid #2a3d55; border-radius:11px; font-weight:850; transition:color .16s ease,border-color .16s ease,background .16s ease,transform .16s ease; }
-.profile-tool-buttons button span { width:23px; height:23px; display:inline-grid; place-items:center; color:#55e0ac; background:rgba(78,231,176,.09); border-radius:7px; font-size:15px; }
+.profile-tool-buttons { display:grid; grid-template-columns:max-content max-content; align-items:start; justify-content:start; gap:7px; margin:0; }
+.profile-tool-buttons button { width:max-content; min-height:34px; display:inline-flex; align-items:center; justify-content:flex-start; gap:7px; padding:6px 10px 6px 7px; color:#9fb4cc; background:rgba(8,17,29,.9); border:1px solid #2a3d55; border-radius:10px; font-size:12px; font-weight:850; white-space:nowrap; transition:color .16s ease,border-color .16s ease,background .16s ease,transform .16s ease; }
+.profile-tool-buttons button span { width:21px; height:21px; display:inline-grid; place-items:center; color:#55e0ac; background:rgba(78,231,176,.09); border-radius:6px; font-size:13px; }
 .profile-tool-buttons button:hover,
 .profile-tool-buttons button:focus-visible { color:#eff7ff; background:#11243a; border-color:#42617f; transform:translateY(-1px); outline:none; }
 .portfolio-filters { position:relative; z-index:120; display:grid; grid-template-columns:minmax(280px,1.5fr) repeat(2,minmax(160px,.65fr)) minmax(190px,.75fr); gap:12px; padding:14px; }
@@ -1927,8 +1926,8 @@ html[data-theme="light"] .admin-items-form input { color:#243943; background:#ff
   .detail-hero .price-big { font-size:48px; }
   .detail-navigation { align-items:flex-start; flex-direction:column; gap:4px; }
   .detail-navigation .detail-brand { width:min(280px,90vw); }
-  .profile-tool-buttons { display:grid; grid-template-columns:1fr 1fr; }
-  .profile-tool-buttons button { min-width:0; padding-left:9px; padding-right:9px; font-size:11px; }
+  .profile-tool-buttons { display:grid; grid-template-columns:max-content max-content; max-width:100%; }
+  .profile-tool-buttons button { min-width:0; max-width:calc(50vw - 24px); padding-left:7px; padding-right:9px; font-size:11px; white-space:normal; }
   .portfolio-filters { grid-template-columns:1fr; }
   .portfolio-filters .search-field,
   .portfolio-filters .category-filter { grid-column:auto; }

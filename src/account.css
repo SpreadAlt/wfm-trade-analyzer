@@ -251,6 +251,21 @@
   opacity:1;
 }
 
+.account-form input[readonly]{
+  color:color-mix(in srgb,var(--text) 78%,var(--muted));
+  background:color-mix(in srgb,var(--surface-2) 82%,var(--line));
+  cursor:default;
+}
+
+.account-form .account-otp-input{
+  text-align:center;
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:1.2rem;
+  font-weight:850;
+  letter-spacing:.42em;
+  padding-left:calc(14px + .42em);
+}
+
 .account-submit{
   width:100%;
   min-height:49px;
@@ -289,21 +304,50 @@
   line-height:1.4;
 }
 
+.account-text-action{
+  justify-self:center;
+  border:0;
+  padding:3px 5px;
+  color:var(--accent);
+  background:transparent;
+  font:inherit;
+  font-size:.78rem;
+  font-weight:750;
+  cursor:pointer;
+}
+
+.account-text-action:hover:not(:disabled),
+.account-text-action:focus-visible{
+  color:color-mix(in srgb,var(--accent) 78%,white);
+  text-decoration:underline;
+  outline:none;
+}
+
+.account-text-action.muted{
+  color:var(--muted);
+}
+
+.account-text-action:disabled{
+  cursor:wait;
+  opacity:.5;
+}
+
 /* Signed-in account card */
 .account-signed{
   position:relative;
   grid-template-columns:minmax(0,1fr) auto;
   align-items:center;
-  gap:18px;
+  gap:16px;
   overflow:hidden;
-  min-height:88px;
+  width:min(100%,350px);
+  min-height:70px;
   box-sizing:border-box;
-  padding:16px 18px;
+  padding:12px 13px 12px 16px;
   border-color:color-mix(in srgb,var(--accent) 28%,var(--line));
   background:
-    radial-gradient(circle at 0% 0%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 36%),
-    linear-gradient(135deg,color-mix(in srgb,var(--surface-2) 96%,transparent),color-mix(in srgb,var(--surface-2) 84%,#06111f 16%));
-  box-shadow:0 18px 48px rgba(0,0,0,.18),0 0 0 1px color-mix(in srgb,var(--accent) 6%,transparent) inset;
+    radial-gradient(circle at 5% 0%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 42%),
+    linear-gradient(140deg,color-mix(in srgb,var(--surface-2) 97%,transparent),color-mix(in srgb,var(--surface-2) 82%,#06111f 18%));
+  box-shadow:0 13px 34px rgba(0,0,0,.2),0 0 0 1px color-mix(in srgb,var(--accent) 7%,transparent) inset;
 }
 
 .account-signed::before{
@@ -318,10 +362,10 @@
 .account-signed::after{
   content:"";
   position:absolute;
-  width:170px;
-  height:170px;
-  right:-86px;
-  top:-96px;
+  width:128px;
+  height:128px;
+  right:-70px;
+  top:-78px;
   border:1px solid color-mix(in srgb,var(--accent) 12%,transparent);
   border-radius:50%;
   box-shadow:0 0 0 24px color-mix(in srgb,var(--accent) 3%,transparent);
@@ -332,13 +376,13 @@
   position:relative;
   z-index:1;
   display:grid;
-  gap:5px;
+  gap:4px;
   min-width:0;
 }
 
 .account-identity strong{
   color:var(--text);
-  font-size:1.18rem;
+  font-size:1.02rem;
   line-height:1.2;
 }
 
@@ -346,8 +390,8 @@
   max-width:min(58vw,420px);
   overflow:hidden;
   color:var(--muted);
-  font-size:.82rem;
-  opacity:.76;
+  font-size:.76rem;
+  opacity:.8;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
@@ -355,18 +399,18 @@
 .account-logout{
   position:relative;
   z-index:1;
-  min-height:43px;
+  min-height:36px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
   gap:8px;
-  padding:9px 14px;
+  padding:7px 10px;
   border:1px solid color-mix(in srgb,var(--negative,#e36a6a) 34%,var(--line));
-  border-radius:12px;
+  border-radius:10px;
   color:color-mix(in srgb,var(--negative,#e36a6a) 82%,white 18%);
   background:color-mix(in srgb,var(--negative,#e36a6a) 7%,var(--surface-2));
   font:inherit;
-  font-size:.8rem;
+  font-size:.75rem;
   font-weight:800;
   cursor:pointer;
   transition:border-color .16s ease,background .16s ease,transform .16s ease;
@@ -386,8 +430,8 @@
 }
 
 .account-logout svg{
-  width:18px;
-  height:18px;
+  width:16px;
+  height:16px;
   fill:none;
   stroke:currentColor;
   stroke-width:1.8;
