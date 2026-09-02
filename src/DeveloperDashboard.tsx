@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import type { Locale } from './i18n'
 import { accountRequestJson } from './Account'
 import './developer.css'
@@ -12,6 +13,8 @@ type ManagedAccount = {
   developer: boolean
   axiScanner: boolean
   disabled: boolean
+  deleted: boolean
+  deletedAt: number | null
   purchaseCount: number
   purchaseUnits: number
   investedPlatinum: number
@@ -26,7 +29,7 @@ type ManagedAccount = {
   axiLastRunAt: number | null
 }
 
-type AccountsResponse = { ok: true; accounts: ManagedAccount[] }
+type AccountsResponse = { ok: true; accounts: ManagedAccount[]; page: number; pageSize: number; total: number; pages: number; deleted: boolean }
 
 type UserActivitySummary = {
   total: number
@@ -182,6 +185,10 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   const [category, setCategory] = useState<DeveloperCategory>('overview')
   const [query, setQuery] = useState('')
   const [accounts, setAccounts] = useState<ManagedAccount[]>([])
+  const [accountPage, setAccountPage] = useState(1)
+  const [accountPages, setAccountPages] = useState(1)
+  const [accountTotal, setAccountTotal] = useState(0)
+  const [showDeleted, setShowDeleted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -189,6 +196,9 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
   const [accountStats, setAccountStats] = useState<AccountStatsResponse | null>(null)
   const [accountStatsLoading, setAccountStatsLoading] = useState(false)
   const [accountStatsError, setAccountStatsError] = useState<string | null>(null)
+  const [restoreTarget, setRestoreTarget] = useState<ManagedAccount | null>(null)
+  const [restoreName, setRestoreName] = useState('')
+  const [restoreEmail, setRestoreEmail] = useState('')
   const [resale, setResale] = useState<ResaleScannerResponse | null>(null)
   const [resaleLoading, setResaleLoading] = useState(true)
   const [resaleError, setResaleError] = useState<string | null>(null)
@@ -201,14 +211,19 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     setLoading(true)
     setError(null)
     try {
-      const result = await accountRequestJson<AccountsResponse>(`/api/developer/accounts?limit=250&q=${encodeURIComponent(query.trim())}`)
+      const result = await accountRequestJson<AccountsResponse>(`/api/developer/accounts?page=${accountPage}&deleted=${showDeleted ? '1' : '0'}&q=${encodeURIComponent(query.trim())}`)
       setAccounts(result.accounts || [])
+      setAccountPage(result.page)
+      setAccountPages(result.pages)
+      setAccountTotal(result.total)
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value))
     } finally {
       setLoading(false)
     }
-  }, [query])
+  }, [query, accountPage, showDeleted])
+
+  useEffect(() => { setAccountPage(1) }, [query, showDeleted])
 
   useEffect(() => {
     if (category !== 'accounts') return
@@ -315,6 +330,61 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     }
   }
 
+  const deleteAccount = async (account: ManagedAccount) => {
+    if (!window.confirm(ru
+      ? `Скрыть аккаунт ${account.email}? Его сессии будут завершены, а почта и ник освободятся для новой регистрации.`
+      : `Hide ${account.email}? Its sessions will be revoked and its email and username will become available for registration.`)) return
+    setSaving(account.id)
+    setError(null)
+    setAccountStatsError(null)
+    try {
+      await accountRequestJson('/api/developer/accounts', {
+        method: 'POST',
+        body: JSON.stringify({ userId: account.id, action: 'soft-delete' })
+      })
+      if (selectedAccount?.id === account.id) closeAccountStats()
+      await load()
+    } catch (value) {
+      const message = value instanceof Error ? value.message : String(value)
+      setError(message)
+      setAccountStatsError(message)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const openRestoreDialog = (account: ManagedAccount) => {
+    setRestoreTarget(account)
+    setRestoreName(account.name)
+    setRestoreEmail(account.email)
+    setError(null)
+    setAccountStatsError(null)
+  }
+
+  const restoreAccount = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!restoreTarget) return
+    setSaving(restoreTarget.id)
+    setError(null)
+    setAccountStatsError(null)
+    try {
+      await accountRequestJson('/api/developer/accounts', {
+        method: 'POST',
+        body: JSON.stringify({ userId: restoreTarget.id, action: 'restore', name: restoreName.trim(), email: restoreEmail.trim().toLowerCase() })
+      })
+      const restoredId = restoreTarget.id
+      setRestoreTarget(null)
+      if (selectedAccount?.id === restoredId) closeAccountStats()
+      await load()
+    } catch (value) {
+      const message = value instanceof Error ? value.message : String(value)
+      setError(message)
+      setAccountStatsError(message)
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const revokeSessions = async (account: ManagedAccount) => {
     if (!window.confirm(ru ? `Завершить все сессии ${account.email}?` : `Sign ${account.email} out everywhere?`)) return
     setSaving(account.id)
@@ -369,6 +439,16 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     setAccountStatsError(null)
   }
 
+  const restoreDialog = restoreTarget ? <div className="developer-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && saving !== restoreTarget.id) setRestoreTarget(null) }}>
+    <form className="panel developer-restore-dialog" role="dialog" aria-modal="true" aria-labelledby="developer-restore-title" onSubmit={restoreAccount}>
+      <div><span className="eyebrow">{ru ? 'Восстановление аккаунта' : 'Restore account'}</span><h2 id="developer-restore-title">{restoreTarget.name}</h2><p>{ru ? 'Можно вернуть прежние данные или указать новые свободные ник и email.' : 'Restore the previous details or enter a new available username and email.'}</p></div>
+      <label><span>{ru ? 'Ник' : 'Username'}</span><input minLength={3} maxLength={24} pattern="[A-Za-z][A-Za-z0-9_]{2,23}" value={restoreName} onChange={event => setRestoreName(event.target.value)} required/></label>
+      <label><span>Email</span><input type="email" value={restoreEmail} onChange={event => setRestoreEmail(event.target.value)} required/></label>
+      {error || accountStatsError ? <div className="account-message error">{error || accountStatsError}</div> : null}
+      <div className="developer-restore-actions"><button type="button" className="developer-modal-cancel" disabled={saving === restoreTarget.id} onClick={() => setRestoreTarget(null)}>{ru ? 'Отмена' : 'Cancel'}</button><button type="submit" className="primary-action" disabled={saving === restoreTarget.id}>{saving === restoreTarget.id ? (ru ? 'Восстанавливаем…' : 'Restoring…') : (ru ? 'Восстановить' : 'Restore')}</button></div>
+    </form>
+  </div> : null
+
   if (selectedAccount) {
     const stats = accountStats
     const account = stats?.account || selectedAccount
@@ -380,8 +460,8 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <section className="panel developer-user-hero">
         <div><span className="eyebrow">{ru ? 'Статистика пользователя' : 'User statistics'}</span><h1>{account.name || '—'}</h1><p>{account.email}</p></div>
         <div className="developer-user-actions">
-          <div className="developer-user-badges"><span className={`developer-state ${account.disabled ? 'danger' : 'active'}`}>{account.disabled ? (ru ? 'Заблокирован' : 'Blocked') : (ru ? 'Активен' : 'Active')}</span><span className={`developer-state ${account.emailVerified ? 'active' : 'muted'}`}>{account.emailVerified ? (ru ? 'Email подтверждён' : 'Email verified') : (ru ? 'Email не подтверждён' : 'Email unverified')}</span>{account.developer ? <span className="developer-state active">developer</span> : null}</div>
-          {!account.developer ? <button type="button" className={`secondary-action compact developer-block-action ${account.disabled ? '' : 'danger'}`} disabled={saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Разблокировать аккаунт' : 'Unblock account') : (ru ? 'Заблокировать аккаунт' : 'Block account')}</button> : null}
+          <div className="developer-user-badges"><span className={`developer-state ${account.deleted || account.disabled ? 'danger' : 'active'}`}>{account.deleted ? (ru ? 'Удалён' : 'Deleted') : account.disabled ? (ru ? 'Заблокирован' : 'Blocked') : (ru ? 'Активен' : 'Active')}</span><span className={`developer-state ${account.emailVerified ? 'active' : 'muted'}`}>{account.emailVerified ? (ru ? 'Email подтверждён' : 'Email verified') : (ru ? 'Email не подтверждён' : 'Email unverified')}</span>{account.developer ? <span className="developer-state active">developer</span> : null}</div>
+          {!account.developer ? <div className="developer-account-actions">{account.deleted ? <button type="button" className="secondary-action compact" disabled={saving === account.id} onClick={() => openRestoreDialog(account)}>{ru ? 'Восстановить аккаунт' : 'Restore account'}</button> : <><button type="button" className={`secondary-action compact developer-block-action ${account.disabled ? '' : 'danger'}`} disabled={saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Разблокировать аккаунт' : 'Unblock account') : (ru ? 'Заблокировать аккаунт' : 'Block account')}</button><button type="button" className="secondary-action compact danger" disabled={saving === account.id} onClick={() => void deleteAccount(account)}>{ru ? 'Удалить аккаунт' : 'Delete account'}</button></>}</div> : null}
         </div>
       </section>
       {accountStatsLoading ? <section className="panel developer-user-loading"><div className="spinner"/><strong>{ru ? 'Собираем статистику…' : 'Loading statistics…'}</strong></section> : null}
@@ -401,6 +481,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
         <section className="panel developer-user-section"><header className="developer-section-heading"><div><span className="eyebrow">Sessions</span><h2>{ru ? 'Активные устройства' : 'Active devices'}</h2><p>{ru ? 'Показаны активные сессии без IP-адресов и токенов.' : 'Active sessions are shown without IP addresses or tokens.'}</p></div></header><div className="table-scroll"><table className="developer-table"><thead><tr><th>{ru ? 'Устройство' : 'Device'}</th><th>{ru ? 'Создана' : 'Created'}</th><th>{ru ? 'Активность' : 'Activity'}</th><th>{ru ? 'Истекает' : 'Expires'}</th></tr></thead><tbody>{!stats.sessions.length ? <tr><td colSpan={4} className="state-cell">{ru ? 'Активных сессий нет.' : 'No active sessions.'}</td></tr> : stats.sessions.map(session => <tr key={session.id}><td className="developer-user-agent">{session.userAgent || (ru ? 'Неизвестное устройство' : 'Unknown device')}</td><td>{dateTime(session.createdAt, locale)}</td><td>{dateTime(session.updatedAt, locale)}</td><td>{dateTime(session.expiresAt, locale)}</td></tr>)}</tbody></table></div></section>
         <section className="panel developer-user-section"><header className="developer-section-heading"><div><span className="eyebrow">Portfolio</span><h2>{ru ? 'Последние позиции' : 'Recent positions'}</h2><p>{ru ? 'До 100 последних обновлённых записей портфеля.' : 'Up to 100 most recently updated portfolio records.'}</p></div></header><div className="table-scroll"><table className="developer-table developer-user-purchases"><thead><tr><th>{ru ? 'Предмет' : 'Item'}</th><th>{ru ? 'Цена' : 'Price'}</th><th>{ru ? 'Количество' : 'Quantity'}</th><th>{ru ? 'Сумма' : 'Total'}</th><th>{ru ? 'Дата покупки' : 'Purchase date'}</th><th>{ru ? 'Обновлено' : 'Updated'}</th></tr></thead><tbody>{!stats.portfolio.recent.length ? <tr><td colSpan={6} className="state-cell">{ru ? 'Портфель пуст.' : 'Portfolio is empty.'}</td></tr> : stats.portfolio.recent.map(row => <tr key={row.id}><td><strong>{row.name}</strong><small>{row.marketKey}{row.selectedModRank === null ? '' : ` · rank ${row.selectedModRank}`}</small></td><td>{platinum(row.purchasePrice)}</td><td>{row.quantity}</td><td>{platinum(row.purchasePrice * row.quantity)}</td><td>{dateTime(row.purchaseDate, locale)}</td><td>{dateTime(row.updatedAt, locale)}</td></tr>)}</tbody></table></div></section>
       </> : null}
+      {restoreDialog}
     </main>
   }
 
@@ -486,20 +567,23 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
     </section>
     <section className="panel developer-controls" hidden={category !== 'accounts'}>
       <label><span>{ru ? 'Поиск аккаунта' : 'Search accounts'}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={ru ? 'Имя или email' : 'Name or email'}/></label>
+      <div className="developer-account-view-switch"><button type="button" className={!showDeleted ? 'active' : ''} onClick={() => setShowDeleted(false)}>{ru ? 'Активные' : 'Active'}</button><button type="button" className={showDeleted ? 'active danger' : ''} onClick={() => setShowDeleted(true)}>{ru ? 'Удалённые' : 'Deleted'}</button></div>
       <button type="button" className="secondary-action" disabled={loading} onClick={() => void load()}>{ru ? 'Обновить' : 'Refresh'}</button>
     </section>
     {error && category === 'accounts' ? <div className="account-message error">{error}</div> : null}
     <section className="panel table-panel developer-table-panel" hidden={category !== 'accounts'}>
       <div className="table-scroll"><table className="developer-table developer-accounts-table"><thead><tr><th>{ru ? 'Аккаунт' : 'Account'}</th><th>{ru ? 'Регистрация и WFM' : 'Registration & WFM'}</th><th>{ru ? 'Портфель' : 'Portfolio'}</th><th>{ru ? 'Лимиты' : 'Limits'}</th><th>{ru ? 'Доступ' : 'Access'}</th><th>{ru ? 'Сессии' : 'Sessions'}</th></tr></thead><tbody>
-        {loading ? <tr><td colSpan={6} className="state-cell"><div className="spinner"/>{ru ? 'Загрузка аккаунтов…' : 'Loading accounts…'}</td></tr> : !accounts.length ? <tr><td colSpan={6} className="state-cell">{ru ? 'Аккаунты не найдены.' : 'No accounts found.'}</td></tr> : accounts.map(account => <tr key={account.id} className={account.disabled ? 'developer-account-disabled' : ''}>
+        {loading ? <tr><td colSpan={6} className="state-cell"><div className="spinner"/>{ru ? 'Загрузка аккаунтов…' : 'Loading accounts…'}</td></tr> : !accounts.length ? <tr><td colSpan={6} className="state-cell">{showDeleted ? (ru ? 'Удалённых аккаунтов нет.' : 'No deleted accounts.') : (ru ? 'Аккаунты не найдены.' : 'No accounts found.')}</td></tr> : accounts.map(account => <tr key={account.id} className={account.deleted || account.disabled ? 'developer-account-disabled' : ''}>
           <td><strong>{account.name || '—'}</strong><span className="developer-email">{account.email}</span>{account.developer ? <small className="developer-role">developer</small> : account.emailVerified ? <small>{ru ? 'Email подтверждён' : 'Email verified'}</small> : null}<button type="button" className="secondary-action compact developer-stats-button" onClick={() => void openAccountStats(account)}>{ru ? 'Подробная статистика' : 'Detailed statistics'}</button></td>
-          <td>{dateTime(account.createdAt, locale)}{account.wfmProfile ? <a className="developer-profile-link" href={`https://warframe.market/profile/${encodeURIComponent(account.wfmProfile)}`} target="_blank" rel="noreferrer">@{account.wfmProfile}</a> : <small>{ru ? 'WFM профиль не указан' : 'No WFM profile'}</small>}</td>
+          <td>{account.deleted ? <><strong>{ru ? 'Удалён' : 'Deleted'}</strong><small>{dateTime(account.deletedAt, locale)}</small></> : <>{dateTime(account.createdAt, locale)}{account.wfmProfile ? <a className="developer-profile-link" href={`https://warframe.market/profile/${encodeURIComponent(account.wfmProfile)}`} target="_blank" rel="noreferrer">@{account.wfmProfile}</a> : <small>{ru ? 'WFM профиль не указан' : 'No WFM profile'}</small>}</>}</td>
           <td><strong>{account.purchaseCount}</strong><small>{ru ? `${account.purchaseUnits} ед. · вложено ${platinum(account.investedPlatinum)}` : `${account.purchaseUnits} units · ${platinum(account.investedPlatinum)} invested`}</small></td>
-          <td><div className="developer-limit"><strong>Smart Buy {account.smartBuy.used}/{account.smartBuy.limit}</strong><small>{ru ? `Осталось: ${account.smartBuy.remaining}` : `Remaining: ${account.smartBuy.remaining}`}{account.smartBuy.lastRunAt ? ` · ${dateTime(account.smartBuy.lastRunAt, locale)}` : ''}</small><button type="button" className="secondary-action compact" disabled={saving === account.id || account.smartBuy.used < 1} onClick={() => void restoreSmartBuyLimit(account)}>{ru ? 'Восстановить лимит' : 'Restore limit'}</button></div></td>
-          <td><label className="access-toggle"><input type="checkbox" checked={account.axiScanner} disabled={account.developer || account.disabled || saving === account.id} onChange={event => void setAxiAccess(account, event.target.checked)}/><span>{account.axiScanner ? (ru ? 'Axi разрешён' : 'Axi allowed') : (ru ? 'Axi закрыт' : 'Axi blocked')}</span></label><small>{ru ? `Запусков Axi: ${account.axiRunCount}` : `Axi runs: ${account.axiRunCount}`}</small><button type="button" className={`secondary-action compact ${account.disabled ? '' : 'danger'}`} disabled={account.developer || saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Разблокировать' : 'Unblock') : (ru ? 'Заблокировать' : 'Block')}</button></td>
+          <td><div className="developer-limit"><strong>Smart Buy {account.smartBuy.used}/{account.smartBuy.limit}</strong><small>{ru ? `Осталось: ${account.smartBuy.remaining}` : `Remaining: ${account.smartBuy.remaining}`}{account.smartBuy.lastRunAt ? ` · ${dateTime(account.smartBuy.lastRunAt, locale)}` : ''}</small><button type="button" className="secondary-action compact" disabled={account.deleted || saving === account.id || account.smartBuy.used < 1} onClick={() => void restoreSmartBuyLimit(account)}>{ru ? 'Восстановить лимит' : 'Restore limit'}</button></div></td>
+          <td>{account.deleted ? <button type="button" className="secondary-action compact" disabled={saving === account.id} onClick={() => openRestoreDialog(account)}>{ru ? 'Восстановить аккаунт' : 'Restore account'}</button> : <><label className="access-toggle"><input type="checkbox" checked={account.axiScanner} disabled={account.developer || account.disabled || saving === account.id} onChange={event => void setAxiAccess(account, event.target.checked)}/><span>{account.axiScanner ? (ru ? 'Axi разрешён' : 'Axi allowed') : (ru ? 'Axi закрыт' : 'Axi blocked')}</span></label><small>{ru ? `Запусков Axi: ${account.axiRunCount}` : `Axi runs: ${account.axiRunCount}`}</small><div className="developer-row-actions"><button type="button" className={`secondary-action compact ${account.disabled ? '' : 'danger'}`} disabled={account.developer || saving === account.id} onClick={() => void setAccountDisabled(account, !account.disabled)}>{account.disabled ? (ru ? 'Разблокировать' : 'Unblock') : (ru ? 'Заблокировать' : 'Block')}</button><button type="button" className="secondary-action compact danger" disabled={account.developer || saving === account.id} onClick={() => void deleteAccount(account)}>{ru ? 'Удалить' : 'Delete'}</button></div></>}</td>
           <td><strong>{account.sessionCount}</strong><small>{account.sessionExpiresAt ? `${ru ? 'до' : 'until'} ${dateTime(account.sessionExpiresAt, locale)}` : (ru ? 'активных сессий нет' : 'no active sessions')}</small><button type="button" className="secondary-action compact" disabled={account.developer || saving === account.id || account.sessionCount < 1} onClick={() => void revokeSessions(account)}>{ru ? 'Выйти везде' : 'Sign out all'}</button></td>
         </tr>)}
       </tbody></table></div>
+      <nav className="developer-account-pagination" aria-label={ru ? 'Страницы аккаунтов' : 'Account pages'}><span>{ru ? `Всего: ${accountTotal}` : `Total: ${accountTotal}`}</span><div><button type="button" disabled={accountPage <= 1 || loading} onClick={() => setAccountPage(1)}>«</button><button type="button" disabled={accountPage <= 1 || loading} onClick={() => setAccountPage(page => Math.max(1, page - 1))}>‹</button><strong>{accountPage} / {accountPages}</strong><button type="button" disabled={accountPage >= accountPages || loading} onClick={() => setAccountPage(page => Math.min(accountPages, page + 1))}>›</button><button type="button" disabled={accountPage >= accountPages || loading} onClick={() => setAccountPage(accountPages)}>»</button></div></nav>
     </section>
+    {restoreDialog}
   </main>
 }

@@ -1608,6 +1608,7 @@ html[data-theme="light"] .pagination-buttons strong {
 .profile-account-layout.signed { display:grid; grid-template-columns:max-content max-content; align-items:start; justify-content:start; gap:10px; margin:0 0 10px; }
 .profile-account-layout.signed .portfolio-account-stage { width:auto; }
 .profile-account-layout.signed .account-panel { margin-bottom:0; }
+.profile-account-layout.signed .account-panel.account-signed { width:min(360px,calc(100vw - 28px)); height:auto; min-height:64px; display:grid; flex-direction:initial; padding:9px 10px; border:1px solid color-mix(in srgb,var(--accent) 46%,var(--line)); box-shadow:0 14px 34px rgba(0,0,0,.25),0 0 0 1px color-mix(in srgb,var(--accent) 10%,transparent) inset,0 1px 0 rgba(255,255,255,.035) inset; }
 .profile-tool-buttons { display:grid; grid-template-columns:max-content max-content; align-items:start; justify-content:start; gap:7px; margin:0; }
 .profile-tool-buttons button { width:max-content; min-height:34px; display:inline-flex; align-items:center; justify-content:flex-start; gap:7px; padding:6px 10px 6px 7px; color:#9fb4cc; background:rgba(8,17,29,.9); border:1px solid #2a3d55; border-radius:10px; font-size:12px; font-weight:850; white-space:nowrap; transition:color .16s ease,border-color .16s ease,background .16s ease,transform .16s ease; }
 .profile-tool-buttons button span { width:21px; height:21px; display:inline-grid; place-items:center; color:#55e0ac; background:rgba(78,231,176,.09); border-radius:6px; font-size:13px; }
@@ -1695,6 +1696,8 @@ html[data-theme="light"] .pagination-buttons strong {
 
 .account-backdrop { position:fixed; inset:0; z-index:1000; display:flex; justify-content:flex-end; background:rgba(2,7,12,.58); backdrop-filter:blur(5px); }
 .account-panel { width:min(440px,100%); height:100%; display:flex; flex-direction:column; padding:22px; color:#e9f2ff; background:#091321; border-left:1px solid #2a3d55; box-shadow:-18px 0 50px rgba(0,0,0,.32); }
+main.closed-beta-shell { width:min(520px,calc(100% - 32px)); max-width:520px; margin-inline:auto; }
+.closed-beta-auth .account-panel { width:100%; height:auto; min-height:0; display:grid; padding:clamp(20px,4vw,28px); border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); box-shadow:0 20px 60px rgba(0,0,0,.24); }
 .account-panel header,
 .purchase-dialog header { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
 .account-panel header span,

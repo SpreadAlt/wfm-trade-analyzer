@@ -41,3 +41,28 @@
 @media(max-width:1180px){.developer-user-metrics{grid-template-columns:repeat(3,1fr)}.developer-user-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.developer-user-hero{align-items:flex-start;flex-direction:column}.developer-user-actions{justify-items:start}.developer-user-badges{justify-content:flex-start}.developer-user-metrics{grid-template-columns:1fr 1fr}.developer-user-activity-row{grid-template-columns:1fr 1fr}.developer-user-activity-row strong{grid-column:1/-1}.developer-user-info dl{grid-template-columns:1fr}}
 @media(max-width:480px){.developer-user-metrics{grid-template-columns:1fr}}
+
+.developer-account-view-switch{display:flex;align-self:end;gap:4px;padding:4px;border:1px solid var(--line);border-radius:11px;background:var(--input-bg)}
+.developer-account-view-switch button{min-height:32px;border:0;border-radius:8px;padding:6px 11px;color:var(--text-secondary);background:transparent;font:inherit;font-size:11px;font-weight:850;cursor:pointer}
+.developer-account-view-switch button.active{color:var(--accent);background:color-mix(in srgb,var(--accent) 11%,var(--surface-strong));box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent) inset}
+.developer-account-view-switch button.active.danger{color:var(--danger);background:color-mix(in srgb,var(--danger) 9%,var(--surface-strong));box-shadow:0 0 0 1px color-mix(in srgb,var(--danger) 35%,transparent) inset}
+.developer-row-actions,.developer-account-actions{display:flex;flex-wrap:wrap;gap:6px}
+.developer-account-actions{justify-content:flex-end}
+.developer-account-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-top:1px solid var(--line);color:var(--text-secondary);font-size:11px}
+.developer-account-pagination>div{display:flex;align-items:center;gap:5px}
+.developer-account-pagination button{width:32px;height:30px;border:1px solid var(--line);border-radius:8px;color:var(--text);background:var(--input-bg);font:inherit;font-size:16px;cursor:pointer}
+.developer-account-pagination button:disabled{cursor:not-allowed;opacity:.38}
+.developer-account-pagination strong{min-width:68px;color:var(--text);text-align:center}
+.developer-modal-backdrop{position:fixed;z-index:1200;inset:0;display:grid;place-items:center;padding:18px;background:rgba(2,7,13,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.developer-restore-dialog{width:min(460px,100%);box-sizing:border-box;display:grid;gap:14px;margin:0;padding:22px;border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line));border-radius:18px;background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--accent) 10%,transparent),transparent 48%),var(--surface-strong);box-shadow:0 30px 90px rgba(0,0,0,.45)}
+.developer-restore-dialog h2{margin:4px 0;color:var(--text)}
+.developer-restore-dialog p{margin:0;color:var(--text-secondary);font-size:12px;line-height:1.5}
+.developer-restore-dialog label{display:grid;gap:6px}
+.developer-restore-dialog label span{color:var(--text-secondary);font-size:10px;font-weight:850;text-transform:uppercase}
+.developer-restore-dialog input{width:100%;height:42px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:0 12px;color:var(--text);background:var(--input-bg);font:inherit;outline:none}
+.developer-restore-dialog input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+.developer-restore-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.developer-restore-actions button{min-height:40px;border-radius:10px}
+.developer-modal-cancel{border:1px solid var(--line);color:var(--text);background:var(--input-bg);font:inherit;font-weight:800;cursor:pointer}
+.developer-modal-cancel:hover{border-color:color-mix(in srgb,var(--accent) 42%,var(--line));background:color-mix(in srgb,var(--accent) 7%,var(--input-bg))}
+@media(max-width:760px){.developer-account-view-switch{width:100%;box-sizing:border-box}.developer-account-view-switch button{flex:1}.developer-account-pagination{align-items:flex-start;flex-direction:column}.developer-account-actions{justify-content:flex-start}}

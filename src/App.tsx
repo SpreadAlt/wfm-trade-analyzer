@@ -413,9 +413,9 @@ const PaginationBar = ({ locale, page, pageCount, total, showingStart, showingEn
   const p = paginationText[locale]
   return <nav className="pagination-bar" aria-label={locale === 'ru' ? 'Навигация по страницам' : 'Page navigation'}><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{total}</strong></div><div className="pagination-buttons"><button type="button" disabled={page <= 1} aria-label={p.first} onClick={() => onPage(1)}><PagerIcon direction="previous" edge/><span>{p.first}</span></button><button type="button" disabled={page <= 1} aria-label={p.previous} onClick={() => onPage(Math.max(1, page - 1))}><PagerIcon direction="previous"/><span>{p.previous}</span></button><span className="pagination-current">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button type="button" disabled={page >= pageCount} aria-label={p.next} onClick={() => onPage(Math.min(pageCount, page + 1))}><span>{p.next}</span><PagerIcon direction="next"/></button><button type="button" disabled={page >= pageCount} aria-label={p.last} onClick={() => onPage(pageCount)}><span>{p.last}</span><PagerIcon direction="next" edge/></button></div></nav>
 }
-const AccountGate = ({ locale, auth }: { locale: Locale; auth: FrameAccountController }) => {
+const AccountGate = ({ locale, setLocale, auth }: { locale: Locale; setLocale: (value: Locale) => void; auth: FrameAccountController }) => {
   return <main className="app-shell closed-beta-shell">
-    <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a></header>
+    <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><div className="account-language-control"><span>{translations[locale].language}</span><CustomPicker compact value={locale} label={translations[locale].language} options={Object.entries(localeNames).map(([value, label]) => ({ value, label }))} onChange={value => setLocale(value as Locale)}/></div></header>
     <section className="closed-beta-layout">
       <div className="closed-beta-auth"><AccountPanel locale={locale} auth={auth}/></div>
     </section>
@@ -1458,7 +1458,7 @@ export default function App() {
   if (ACCOUNT_REQUIRED_ROUTES.has(route.kind) && (auth.loading || !auth.account)) {
     return <>
       <div className="background-layer"/><div className="background-shade"/>
-      <AccountGate locale={locale} auth={auth}/>
+      <AccountGate locale={locale} setLocale={setLocale} auth={auth}/>
       <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
     </>
   }

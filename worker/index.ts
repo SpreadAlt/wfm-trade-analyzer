@@ -16,6 +16,7 @@ type D1PreparedStatement = {
 
 type D1DatabaseLike = {
   prepare(query: string): D1PreparedStatement;
+  batch<T = D1Result>(statements: D1PreparedStatement[]): Promise<T[]>;
 };
 
 type FetcherLike = {
@@ -235,6 +236,7 @@ const createAuth = (env: Env, request: Request) => {
     },
     emailVerification: {
       autoSignInAfterVerification: true,
+      sendOnSignUp: false,
     },
     plugins: [
       emailOTP({
@@ -320,6 +322,35 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_frameanalytics_email_cooldown_next
           ON frameanalytics_email_cooldown(next_allowed_at)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_username (
+          username_key TEXT PRIMARY KEY NOT NULL,
+          user_id TEXT NOT NULL UNIQUE,
+          updated_at INTEGER NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_pending_registration (
+          email_key TEXT PRIMARY KEY NOT NULL,
+          email TEXT NOT NULL,
+          username TEXT NOT NULL,
+          username_key TEXT NOT NULL UNIQUE,
+          otp_hash TEXT NOT NULL,
+          expires_at INTEGER NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_pending_registration_expiry
+          ON frameanalytics_pending_registration(expires_at)`,
+        `CREATE TABLE IF NOT EXISTS frameanalytics_deleted_account (
+          user_id TEXT PRIMARY KEY NOT NULL,
+          original_name TEXT NOT NULL,
+          original_email TEXT NOT NULL,
+          original_email_verified INTEGER NOT NULL DEFAULT 0,
+          deleted_at INTEGER NOT NULL,
+          deleted_by TEXT,
+          FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_frameanalytics_deleted_account_deleted_at
+          ON frameanalytics_deleted_account(deleted_at DESC)`,
         `CREATE TABLE IF NOT EXISTS frameanalytics_axi_run (
           job_id TEXT PRIMARY KEY NOT NULL,
           requested_by TEXT NOT NULL,
@@ -334,6 +365,13 @@ const ensureSchema = async (auth: ReturnType<typeof createAuth>, env: Env) => {
       for (const statement of schemaStatements) {
         await env.frameanalytics_auth.prepare(statement).run();
       }
+      await env.frameanalytics_auth.prepare(`
+        INSERT OR IGNORE INTO frameanalytics_username (username_key, user_id, updated_at)
+        SELECT LOWER(TRIM(u.name)), u.id, ?
+        FROM user u
+        LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
+        WHERE deleted.user_id IS NULL AND TRIM(COALESCE(u.name, '')) <> ''
+      `).bind(nowMs()).run();
     })().catch((error) => {
       schemaReady = null;
       throw error;
@@ -635,6 +673,224 @@ const generateTemporaryPassword = () => {
   return chars.join("");
 };
 
+const generateRegistrationOtp = () => {
+  let value = "";
+  while (value.length < 6) value += String(secureRandomIndex(10));
+  return value;
+};
+
+const registrationOtpHash = (env: Env, email: string, otp: string) =>
+  sha256(`${env.BETTER_AUTH_SECRET}\u0000${email}\u0000${otp}`);
+
+const registrationErrorCopy = (request: Request) => authMailLocale(request) === "ru" ? {
+  invalidEmail: "Укажите корректный email.",
+  emailTaken: "Аккаунт с такой почтой уже существует.",
+  nameTaken: "Этот ник уже занят.",
+  invalidCode: "Неверный или уже использованный код подтверждения.",
+  expiredCode: "Срок действия кода истёк. Запросите новый код.",
+  invalidPassword: "Пароль должен содержать от 8 до 128 символов.",
+} : {
+  invalidEmail: "Enter a valid email address.",
+  emailTaken: "An account with this email already exists.",
+  nameTaken: "This username is already taken.",
+  invalidCode: "The verification code is invalid or has already been used.",
+  expiredCode: "The verification code has expired. Request a new code.",
+  invalidPassword: "The password must contain 8 to 128 characters.",
+};
+
+const handleRegistrationRequest = async (request: Request, env: Env) => {
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+  }
+  try {
+    assertEmailDeliveryConfigured(env);
+  } catch {
+    return json({ ok: false, error: "Email delivery is not configured" }, 503);
+  }
+  const body = await readBody<{ name?: unknown; email?: unknown }>(request);
+  const name = String(body.name || "").trim();
+  const usernameKey = name.toLowerCase();
+  const email = String(body.email || "").trim().toLowerCase();
+  const copy = registrationErrorCopy(request);
+  if (!ACCOUNT_LOGIN_PATTERN.test(name)) {
+    return json({ ok: false, error: AUTH_MAIL_COPY[authMailLocale(request)].invalidName }, 400);
+  }
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) {
+    return json({ ok: false, error: copy.invalidEmail }, 400);
+  }
+
+  const now = nowMs();
+  await env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE expires_at <= ?`).bind(now).run();
+  const [existingEmail, existingName, pendingName] = await Promise.all([
+    env.frameanalytics_auth.prepare(`SELECT id FROM user WHERE LOWER(email) = ? LIMIT 1`).bind(email).first<{ id: string }>(),
+    env.frameanalytics_auth.prepare(`
+      SELECT u.id
+      FROM user u
+      LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
+      WHERE deleted.user_id IS NULL AND LOWER(TRIM(u.name)) = ?
+      LIMIT 1
+    `).bind(usernameKey).first<{ id: string }>(),
+    env.frameanalytics_auth.prepare(`
+      SELECT email_key AS emailKey
+      FROM frameanalytics_pending_registration
+      WHERE username_key = ? AND email_key <> ? AND expires_at > ?
+      LIMIT 1
+    `).bind(usernameKey, email, now).first<{ emailKey: string }>(),
+  ]);
+  if (existingEmail) return json({ ok: false, error: copy.emailTaken }, 409);
+  if (existingName || pendingName) return json({ ok: false, error: copy.nameTaken }, 409);
+
+  const cooldown = await claimEmailCodeCooldown(env, email);
+  if (!cooldown.allowed) {
+    const mailCopy = AUTH_MAIL_COPY[authMailLocale(request)];
+    return json({
+      ok: false,
+      error: mailCopy.cooldown.replace("{seconds}", String(cooldown.retryAfterSeconds)),
+      retryAfterSeconds: cooldown.retryAfterSeconds,
+    }, 429, { "Retry-After": String(cooldown.retryAfterSeconds) });
+  }
+
+  const otp = generateRegistrationOtp();
+  const otpHash = await registrationOtpHash(env, email, otp);
+  const expiresAt = now + AUTH_OTP_EXPIRES_SECONDS * 1000;
+  try {
+    await env.frameanalytics_auth.prepare(`
+      INSERT INTO frameanalytics_pending_registration (
+        email_key, email, username, username_key, otp_hash, expires_at, attempts, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+      ON CONFLICT(email_key) DO UPDATE SET
+        email = excluded.email,
+        username = excluded.username,
+        username_key = excluded.username_key,
+        otp_hash = excluded.otp_hash,
+        expires_at = excluded.expires_at,
+        attempts = 0,
+        updated_at = excluded.updated_at
+    `).bind(email, email, name, usernameKey, otpHash, expiresAt, now, now).run();
+  } catch {
+    return json({ ok: false, error: copy.nameTaken }, 409);
+  }
+  try {
+    await sendOtpEmail(env, email, otp, "email-verification", authMailLocale(request));
+  } catch (error) {
+    await env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE email_key = ?`).bind(email).run();
+    throw error;
+  }
+  return json({ ok: true, expiresInSeconds: AUTH_OTP_EXPIRES_SECONDS });
+};
+
+const handleRegistrationConfirm = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+  }
+  const body = await readBody<{ name?: unknown; email?: unknown; password?: unknown; otp?: unknown }>(request);
+  const name = String(body.name || "").trim();
+  const usernameKey = name.toLowerCase();
+  const email = String(body.email || "").trim().toLowerCase();
+  const password = String(body.password || "");
+  const otp = String(body.otp || "").trim();
+  const copy = registrationErrorCopy(request);
+  if (!ACCOUNT_LOGIN_PATTERN.test(name)) return json({ ok: false, error: AUTH_MAIL_COPY[authMailLocale(request)].invalidName }, 400);
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) return json({ ok: false, error: copy.invalidEmail }, 400);
+  if (password.length < 8 || password.length > 128) return json({ ok: false, error: copy.invalidPassword }, 400);
+  if (!/^\d{6}$/.test(otp)) return json({ ok: false, error: copy.invalidCode }, 400);
+
+  const pending = await env.frameanalytics_auth.prepare(`
+    SELECT username, username_key AS usernameKey, otp_hash AS otpHash, expires_at AS expiresAt, attempts
+    FROM frameanalytics_pending_registration
+    WHERE email_key = ?
+  `).bind(email).first<{ username: string; usernameKey: string; otpHash: string; expiresAt: number; attempts: number }>();
+  if (!pending || pending.usernameKey !== usernameKey || pending.username !== name) {
+    return json({ ok: false, error: copy.invalidCode }, 400);
+  }
+  if (Number(pending.expiresAt) <= nowMs()) {
+    await env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE email_key = ?`).bind(email).run();
+    return json({ ok: false, error: copy.expiredCode }, 410);
+  }
+  const otpHash = await registrationOtpHash(env, email, otp);
+  if (Number(pending.attempts) >= 5 || otpHash !== pending.otpHash) {
+    await env.frameanalytics_auth.prepare(`
+      UPDATE frameanalytics_pending_registration
+      SET attempts = attempts + 1, updated_at = ?
+      WHERE email_key = ? AND attempts < 5
+    `).bind(nowMs(), email).run();
+    return json({ ok: false, error: copy.invalidCode }, 400);
+  }
+  const claim = await env.frameanalytics_auth.prepare(`
+    UPDATE frameanalytics_pending_registration
+    SET attempts = 5, updated_at = ?
+    WHERE email_key = ? AND otp_hash = ? AND attempts < 5 AND expires_at > ?
+  `).bind(nowMs(), email, otpHash, nowMs()).run();
+  if (Number(claim.meta?.changes ?? 0) < 1) return json({ ok: false, error: copy.invalidCode }, 409);
+
+  const existingEmail = await env.frameanalytics_auth.prepare(`SELECT id FROM user WHERE LOWER(email) = ? LIMIT 1`).bind(email).first<{ id: string }>();
+  const existingName = await env.frameanalytics_auth.prepare(`
+    SELECT u.id
+    FROM user u
+    LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
+    WHERE deleted.user_id IS NULL AND LOWER(TRIM(u.name)) = ?
+    LIMIT 1
+  `).bind(usernameKey).first<{ id: string }>();
+  if (existingEmail || existingName) {
+    await env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE email_key = ?`).bind(email).run();
+    return json({ ok: false, error: existingEmail ? copy.emailTaken : copy.nameTaken }, 409);
+  }
+
+  const reservationId = `pending:${crypto.randomUUID()}`;
+  try {
+    await env.frameanalytics_auth.prepare(`
+      INSERT INTO frameanalytics_username (username_key, user_id, updated_at)
+      VALUES (?, ?, ?)
+    `).bind(usernameKey, reservationId, nowMs()).run();
+  } catch {
+    await env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE email_key = ?`).bind(email).run();
+    return json({ ok: false, error: copy.nameTaken }, 409);
+  }
+
+  const headers = new Headers(request.headers);
+  headers.set("Content-Type", "application/json");
+  headers.delete("Content-Length");
+  let signUpResponse: Response;
+  try {
+    signUpResponse = await auth.handler(new Request(`${new URL(request.url).origin}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name, email, password }),
+    }));
+  } catch (error) {
+    await env.frameanalytics_auth.batch([
+      env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_username WHERE user_id = ?`).bind(reservationId),
+      env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE email_key = ?`).bind(email),
+    ]);
+    throw error;
+  }
+  const signUpPayload = await signUpResponse.clone().json().catch(() => null) as { user?: { id?: unknown } } | null;
+  const userId = String(signUpPayload?.user?.id || "").trim();
+  const created = userId ? await env.frameanalytics_auth.prepare(`SELECT id FROM user WHERE id = ? AND LOWER(email) = ?`).bind(userId, email).first<{ id: string }>() : null;
+  if (!signUpResponse.ok || !created) {
+    await env.frameanalytics_auth.batch([
+      env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_username WHERE user_id = ?`).bind(reservationId),
+      env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE email_key = ?`).bind(email),
+    ]);
+    return signUpResponse.ok ? json({ ok: false, error: copy.emailTaken }, 409) : signUpResponse;
+  }
+
+  await env.frameanalytics_auth.batch([
+    env.frameanalytics_auth.prepare(`UPDATE user SET emailVerified = 1 WHERE id = ?`).bind(userId),
+    env.frameanalytics_auth.prepare(`UPDATE frameanalytics_username SET user_id = ?, updated_at = ? WHERE user_id = ?`).bind(userId, nowMs(), reservationId),
+    env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_pending_registration WHERE email_key = ?`).bind(email),
+  ]);
+  return auth.handler(new Request(`${new URL(request.url).origin}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email, password }),
+  }));
+};
+
 const handlePasswordRecoveryConfirm = async (
   request: Request,
   env: Env,
@@ -724,15 +980,30 @@ const handleDeveloperAccounts = async (
   if (request.method === "GET") {
     const url = new URL(request.url);
     const search = String(url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 100);
-    const limit = Math.max(1, Math.min(250, Math.floor(Number(url.searchParams.get("limit")) || 100)));
+    const requestedPage = Math.max(1, Math.floor(Number(url.searchParams.get("page")) || 1));
+    const pageSize = 25;
+    const deletedOnly = url.searchParams.get("deleted") === "1";
+    const deletedClause = deletedOnly ? "deleted.user_id IS NOT NULL" : "deleted.user_id IS NULL";
     const pattern = `%${search}%`;
+    const countRow = await env.frameanalytics_auth.prepare(`
+      SELECT COUNT(*) AS total
+      FROM user u
+      LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
+      WHERE ${deletedClause}
+        AND (? = '' OR LOWER(COALESCE(deleted.original_email, u.email)) LIKE ? OR LOWER(COALESCE(deleted.original_name, u.name)) LIKE ?)
+    `).bind(search, pattern, pattern).first<{ total: number }>();
+    const total = Number(countRow?.total ?? 0);
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pages);
+    const offset = (page - 1) * pageSize;
     const rows = await env.frameanalytics_auth.prepare(`
       SELECT
         u.id,
-        u.name,
-        u.email,
-        u.emailVerified AS emailVerified,
+        COALESCE(deleted.original_name, u.name) AS name,
+        COALESCE(deleted.original_email, u.email) AS email,
+        COALESCE(deleted.original_email_verified, u.emailVerified) AS emailVerified,
         u.createdAt AS createdAt,
+        deleted.deleted_at AS deletedAt,
         COALESCE(a.axi_scanner, 0) AS axiScanner,
         COALESCE(s.disabled, 0) AS disabled,
         a.updated_at AS accessUpdatedAt,
@@ -749,6 +1020,7 @@ const handleDeveloperAccounts = async (
         COALESCE(axi.axiRunCount, 0) AS axiRunCount,
         axi.axiLastRunAt AS axiLastRunAt
       FROM user u
+      LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
       LEFT JOIN frameanalytics_access a ON a.user_id = u.id
       LEFT JOIN frameanalytics_account_state s ON s.user_id = u.id
       LEFT JOIN frameanalytics_profile profile ON profile.user_id = u.id
@@ -773,15 +1045,20 @@ const handleDeveloperAccounts = async (
         WHERE expiresAt > ?
         GROUP BY userId
       ) sess ON sess.user_id = u.id
-      WHERE (? = '' OR LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)
-      ORDER BY CASE WHEN LOWER(u.email) = ? THEN 0 ELSE 1 END, u.createdAt DESC
-      LIMIT ?
-    `).bind(nowMs() - SMART_BUY_WINDOW_MS, nowMs(), search, pattern, pattern, ownerEmail, limit).all<{
+      WHERE ${deletedClause}
+        AND (? = '' OR LOWER(COALESCE(deleted.original_email, u.email)) LIKE ? OR LOWER(COALESCE(deleted.original_name, u.name)) LIKE ?)
+      ORDER BY
+        CASE WHEN deleted.user_id IS NULL AND LOWER(u.email) = ? THEN 0 ELSE 1 END,
+        CASE WHEN deleted.user_id IS NOT NULL THEN deleted.deleted_at END DESC,
+        u.createdAt DESC
+      LIMIT ? OFFSET ?
+    `).bind(nowMs() - SMART_BUY_WINDOW_MS, nowMs(), search, pattern, pattern, ownerEmail, pageSize, offset).all<{
       id: string;
       name: string;
       email: string;
       emailVerified: number;
       createdAt: string;
+      deletedAt: number | null;
       axiScanner: number;
       disabled: number;
       accessUpdatedAt: number | null;
@@ -803,9 +1080,10 @@ const handleDeveloperAccounts = async (
       accounts: (rows.results ?? []).map((row) => ({
         ...row,
         emailVerified: Boolean(row.emailVerified),
-        developer: row.email.trim().toLowerCase() === ownerEmail,
-        axiScanner: row.email.trim().toLowerCase() === ownerEmail || Number(row.axiScanner) === 1,
-        disabled: row.email.trim().toLowerCase() === ownerEmail ? false : Number(row.disabled) === 1,
+        deleted: Boolean(row.deletedAt),
+        developer: !row.deletedAt && row.email.trim().toLowerCase() === ownerEmail,
+        axiScanner: (!row.deletedAt && row.email.trim().toLowerCase() === ownerEmail) || Number(row.axiScanner) === 1,
+        disabled: row.deletedAt ? true : row.email.trim().toLowerCase() === ownerEmail ? false : Number(row.disabled) === 1,
         purchaseCount: Number(row.purchaseCount) || 0,
         purchaseUnits: Number(row.purchaseUnits) || 0,
         investedPlatinum: Number(row.investedPlatinum) || 0,
@@ -819,6 +1097,11 @@ const handleDeveloperAccounts = async (
         },
         axiRunCount: Number(row.axiRunCount) || 0,
       })),
+      page,
+      pageSize,
+      total,
+      pages,
+      deleted: deletedOnly,
     });
   }
 
@@ -826,8 +1109,14 @@ const handleDeveloperAccounts = async (
     const body = await readBody<{ userId?: unknown; axiScanner?: unknown; disabled?: unknown }>(request);
     const userId = String(body.userId || "").trim();
     if (!userId) return json({ ok: false, error: "userId is required" }, 400);
-    const target = await env.frameanalytics_auth.prepare(`SELECT id, email FROM user WHERE id = ?`).bind(userId).first<{ id: string; email: string }>();
+    const target = await env.frameanalytics_auth.prepare(`
+      SELECT u.id, u.email, deleted.user_id AS deletedId
+      FROM user u
+      LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
+      WHERE u.id = ?
+    `).bind(userId).first<{ id: string; email: string; deletedId: string | null }>();
     if (!target) return json({ ok: false, error: "Account not found" }, 404);
+    if (target.deletedId) return json({ ok: false, error: "Deleted accounts must be restored before access can be changed" }, 409);
     const targetIsOwner = target.email.trim().toLowerCase() === ownerEmail;
     const currentAccess = await env.frameanalytics_auth.prepare(`
       SELECT axi_scanner AS axiScanner
@@ -873,18 +1162,117 @@ const handleDeveloperAccounts = async (
   }
 
   if (request.method === "POST") {
-    const body = await readBody<{ userId?: unknown; action?: unknown }>(request);
+    const body = await readBody<{ userId?: unknown; action?: unknown; name?: unknown; email?: unknown }>(request);
     const userId = String(body.userId || "").trim();
     const action = String(body.action || "").trim();
     if (!userId) return json({ ok: false, error: "userId is required" }, 400);
-    if (!new Set(["revoke-sessions", "reset-smart-buy-limit"]).has(action)) return json({ ok: false, error: "Unsupported account action" }, 400);
-    const target = await env.frameanalytics_auth.prepare(`SELECT id, email FROM user WHERE id = ?`).bind(userId).first<{ id: string; email: string }>();
+    if (!new Set(["revoke-sessions", "reset-smart-buy-limit", "soft-delete", "restore"]).has(action)) return json({ ok: false, error: "Unsupported account action" }, 400);
+    const target = await env.frameanalytics_auth.prepare(`
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.emailVerified AS emailVerified,
+        deleted.original_name AS originalName,
+        deleted.original_email AS originalEmail,
+        deleted.original_email_verified AS originalEmailVerified,
+        deleted.deleted_at AS deletedAt
+      FROM user u
+      LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
+      WHERE u.id = ?
+    `).bind(userId).first<{
+      id: string;
+      name: string;
+      email: string;
+      emailVerified: number;
+      originalName: string | null;
+      originalEmail: string | null;
+      originalEmailVerified: number | null;
+      deletedAt: number | null;
+    }>();
     if (!target) return json({ ok: false, error: "Account not found" }, 404);
+    const targetIsOwner = [target.email, target.originalEmail].some((value) => String(value || "").trim().toLowerCase() === ownerEmail);
+
+    if (action === "soft-delete") {
+      if (targetIsOwner) return json({ ok: false, error: "The owner account cannot be deleted" }, 409);
+      if (target.deletedAt) return json({ ok: true, userId, deleted: true, deletedAt: target.deletedAt });
+      const deletedAt = nowMs();
+      const tombstoneId = crypto.randomUUID().replace(/-/g, "");
+      const tombstoneName = `deleted_${tombstoneId.slice(0, 16)}`;
+      const tombstoneEmail = `deleted+${tombstoneId}@deleted.frameanalytics.invalid`;
+      await env.frameanalytics_auth.batch([
+        env.frameanalytics_auth.prepare(`
+          INSERT INTO frameanalytics_deleted_account (
+            user_id, original_name, original_email, original_email_verified, deleted_at, deleted_by
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(userId, target.name, target.email, Number(target.emailVerified) === 1 ? 1 : 0, deletedAt, guard.user.id),
+        env.frameanalytics_auth.prepare(`
+          UPDATE user
+          SET name = ?, email = ?, emailVerified = 0, updatedAt = ?
+          WHERE id = ?
+        `).bind(tombstoneName, tombstoneEmail, deletedAt, userId),
+        env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_username WHERE user_id = ?`).bind(userId),
+        env.frameanalytics_auth.prepare(`
+          INSERT INTO frameanalytics_account_state (user_id, disabled, updated_at, updated_by)
+          VALUES (?, 1, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET disabled = 1, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+        `).bind(userId, deletedAt, guard.user.id),
+        env.frameanalytics_auth.prepare(`DELETE FROM "session" WHERE userId = ?`).bind(userId),
+      ]);
+      return json({ ok: true, userId, deleted: true, deletedAt });
+    }
+
+    if (action === "restore") {
+      if (!target.deletedAt || !target.originalName || !target.originalEmail) {
+        return json({ ok: false, error: "Account is not deleted" }, 409);
+      }
+      const name = String(body.name || target.originalName).trim();
+      const usernameKey = name.toLowerCase();
+      const email = String(body.email || target.originalEmail).trim().toLowerCase();
+      if (!ACCOUNT_LOGIN_PATTERN.test(name)) return json({ ok: false, error: "Username must contain 3–24 Latin characters, digits or _ and begin with a letter" }, 400);
+      if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) return json({ ok: false, error: "Invalid email" }, 400);
+      const [emailConflict, nameConflict] = await Promise.all([
+        env.frameanalytics_auth.prepare(`SELECT id FROM user WHERE LOWER(email) = ? AND id <> ? LIMIT 1`).bind(email, userId).first<{ id: string }>(),
+        env.frameanalytics_auth.prepare(`
+          SELECT u.id
+          FROM user u
+          LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
+          WHERE deleted.user_id IS NULL AND u.id <> ? AND LOWER(TRIM(u.name)) = ?
+          LIMIT 1
+        `).bind(userId, usernameKey).first<{ id: string }>(),
+      ]);
+      if (emailConflict) return json({ ok: false, error: "An account with this email already exists" }, 409);
+      if (nameConflict) return json({ ok: false, error: "This username is already taken" }, 409);
+      try {
+        await env.frameanalytics_auth.batch([
+          env.frameanalytics_auth.prepare(`
+            INSERT INTO frameanalytics_username (username_key, user_id, updated_at)
+            VALUES (?, ?, ?)
+          `).bind(usernameKey, userId, nowMs()),
+          env.frameanalytics_auth.prepare(`
+            UPDATE user
+            SET name = ?, email = ?, emailVerified = 1, updatedAt = ?
+            WHERE id = ?
+          `).bind(name, email, nowMs(), userId),
+          env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_deleted_account WHERE user_id = ?`).bind(userId),
+          env.frameanalytics_auth.prepare(`
+            INSERT INTO frameanalytics_account_state (user_id, disabled, updated_at, updated_by)
+            VALUES (?, 0, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET disabled = 0, updated_at = excluded.updated_at, updated_by = excluded.updated_by
+          `).bind(userId, nowMs(), guard.user.id),
+        ]);
+      } catch {
+        return json({ ok: false, error: "The selected email or username is no longer available" }, 409);
+      }
+      return json({ ok: true, userId, deleted: false, name, email, emailVerified: true });
+    }
+
     if (action === "reset-smart-buy-limit") {
+      if (target.deletedAt) return json({ ok: false, error: "Deleted accounts cannot use limits" }, 409);
       const result = await env.frameanalytics_auth.prepare(`DELETE FROM frameanalytics_smart_buy_run WHERE user_id = ?`).bind(userId).run();
       return json({ ok: true, userId, restoredRuns: Number(result.meta?.changes ?? 0), smartBuy: await readSmartBuyUsage(env, userId) });
     }
-    if (target.email.trim().toLowerCase() === ownerEmail) {
+    if (targetIsOwner) {
       return json({ ok: false, error: "Owner sessions cannot be revoked here" }, 409);
     }
     const result = await env.frameanalytics_auth.prepare(`DELETE FROM "session" WHERE userId = ?`).bind(userId).run();
@@ -909,11 +1297,12 @@ const handleDeveloperAccountStats = async (
   const account = await env.frameanalytics_auth.prepare(`
     SELECT
       u.id,
-      u.name,
-      u.email,
-      u.emailVerified AS emailVerified,
+      COALESCE(deleted.original_name, u.name) AS name,
+      COALESCE(deleted.original_email, u.email) AS email,
+      COALESCE(deleted.original_email_verified, u.emailVerified) AS emailVerified,
       u.createdAt AS createdAt,
       u.updatedAt AS updatedAt,
+      deleted.deleted_at AS deletedAt,
       COALESCE(a.axi_scanner, 0) AS axiScanner,
       a.updated_at AS accessUpdatedAt,
       COALESCE(state.disabled, 0) AS disabled,
@@ -922,6 +1311,7 @@ const handleDeveloperAccountStats = async (
       profile.created_at AS profileCreatedAt,
       profile.updated_at AS profileUpdatedAt
     FROM user u
+    LEFT JOIN frameanalytics_deleted_account deleted ON deleted.user_id = u.id
     LEFT JOIN frameanalytics_access a ON a.user_id = u.id
     LEFT JOIN frameanalytics_account_state state ON state.user_id = u.id
     LEFT JOIN frameanalytics_profile profile ON profile.user_id = u.id
@@ -933,6 +1323,7 @@ const handleDeveloperAccountStats = async (
     emailVerified: number;
     createdAt: string;
     updatedAt: string;
+    deletedAt: number | null;
     axiScanner: number;
     accessUpdatedAt: number | null;
     disabled: number;
@@ -1014,7 +1405,7 @@ const handleDeveloperAccountStats = async (
     `).bind(userId, now).all(),
   ]);
 
-  const owner = account.email.trim().toLowerCase() === developerEmail(env);
+  const owner = !account.deletedAt && account.email.trim().toLowerCase() === developerEmail(env);
   const numberSummary = (value: Record<string, unknown> | null) => ({
     total: Number(value?.total ?? 0),
     last24h: Number(value?.last24h ?? 0),
@@ -1029,8 +1420,9 @@ const handleDeveloperAccountStats = async (
       ...account,
       emailVerified: Boolean(account.emailVerified),
       developer: owner,
+      deleted: Boolean(account.deletedAt),
       axiScanner: owner || Number(account.axiScanner) === 1,
-      disabled: owner ? false : Number(account.disabled) === 1,
+      disabled: account.deletedAt ? true : owner ? false : Number(account.disabled) === 1,
     },
     portfolio: {
       records: Number(purchaseSummary?.records ?? 0),
@@ -1664,10 +2056,10 @@ export default {
         return json({
           ok: true,
           service: "frameanalytics-account",
-          serviceRevision: "localized-auth-cooldown-access-1",
+          serviceRevision: "verified-registration-soft-delete-1",
           auth: "better-auth",
           database: "frameanalytics-auth",
-          registration: "email-verification",
+          registration: "verify-before-create",
           emailDelivery: env.RESEND_API_KEY && env.AUTH_EMAIL_FROM ? "configured" : "unavailable",
           publicAnalytics: true,
           otpCooldownSeconds: EMAIL_CODE_COOLDOWN_MS / 1000,
@@ -1697,12 +2089,23 @@ export default {
         return handleDesktopNotificationFeed(request, env);
       }
 
+      if (authPath === "/api/auth/registration/request") {
+        return handleRegistrationRequest(request, env);
+      }
+
+      if (authPath === "/api/auth/registration/confirm") {
+        return handleRegistrationConfirm(request, env, auth);
+      }
+
+      if (authPath === "/api/auth/sign-up/email") {
+        return json({ ok: false, error: "Use the verified registration flow" }, 404);
+      }
+
       if (url.pathname === "/api/auth/password-recovery/confirm") {
         return handlePasswordRecoveryConfirm(request, env, auth);
       }
 
       const codeSendPaths = new Set([
-        "/api/auth/sign-up/email",
         "/api/auth/email-otp/send-verification-otp",
         "/api/auth/email-otp/request-password-reset",
       ]);
@@ -1719,9 +2122,6 @@ export default {
           const copy = AUTH_MAIL_COPY[locale];
           if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) {
             return json({ ok: false, error: "Invalid email" }, 400);
-          }
-          if (authPath === "/api/auth/sign-up/email" && !ACCOUNT_LOGIN_PATTERN.test(String(body.name || "").trim())) {
-            return json({ ok: false, error: copy.invalidName }, 400);
           }
           const cooldown = await claimEmailCodeCooldown(env, email);
           if (!cooldown.allowed) {
