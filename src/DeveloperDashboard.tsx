@@ -116,7 +116,7 @@ type WfmTelemetry = {
   gatewayRevision: string
   generatedAt: string
   configured: { intervalMs: number; targetRps: number; hardMinimumIntervalMs?: number; hardMaximumRps?: number; belowThreeRps?: boolean; maxInFlight: number; warningDay: number; limitDay: number }
-  current: { rps10s: number; rps60s: number; requests10s: number; requests60s: number; pending: number; pendingClients?: Record<string, number>; running: boolean; inFlight: number; inFlightClients?: Record<string, number> }
+  current: { rps10s: number; rps60s: number; requests10s: number; requests60s: number; pending: number; pendingClients?: Record<string, number>; running: boolean; inFlight: number; inFlightClients?: Record<string, number>; coalescedKeys?: number; coalescedWaiters?: number; coalescedClients?: Record<string, number>; activeQueueClients?: string[] }
   daily: {
     day: string
     requests: number
@@ -135,12 +135,14 @@ type WfmTelemetry = {
     cooldownActive: boolean
     cooldownUntil: string | null
     consecutiveThrottles: number
+    lastThrottleAt?: string | null
     rateLimitEvents?: Array<{
       timestamp: string
       status: number
       client: string
       route: string
       endpoint: string
+      targetPath?: string
       method: string
       platform: string | null
       crossplay: string | null
@@ -151,12 +153,25 @@ type WfmTelemetry = {
       inFlight: number
       pending: number
       retryAfter: string | null
+      retryAfterParsedSeconds?: number
+      fallbackCooldownSeconds?: number
       appliedCooldownSeconds: number
+      throttleLevel?: number
+      sameThrottleWave?: boolean
       durationMs: number
       cfRay: string | null
+      cfMitigated?: string | null
+      server?: string | null
+      contentType?: string | null
+      rateLimitLimit?: string | null
+      rateLimitRemaining?: string | null
+      rateLimitReset?: string | null
+      bodyPreview?: string | null
     }>
   }
   totalRequests: number
+  deduplicatedRequests?: number
+  scheduling?: { mode: string; fairAcrossClients?: boolean; activeQueueClients?: string[] }
 }
 
 type ProcessQueues = {
@@ -502,7 +517,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       ] as Array<[DeveloperCategory, string]>).map(([value, label]) => <button type="button" key={value} className={category === value ? 'active' : ''} onClick={() => setCategory(value)}>{label}</button>)}
     </nav>
     <section className="panel developer-process-panel" hidden={category !== 'overview'}>
-      <header className="developer-section-heading"><div><span className="eyebrow">Runtime</span><h2>{ru ? 'Процессы в очереди' : 'Queued processes'}</h2><p>{ru ? 'Очереди Cloudflare и процессы, ожидающие общий WFM Gateway.' : 'Cloudflare queues and processes waiting for the shared WFM Gateway.'}</p></div><button type="button" className="secondary-action" onClick={() => void Promise.all([loadProcessQueues(), loadTelemetry()])}>{ru ? 'Обновить' : 'Refresh'}</button></header>
+      <header className="developer-section-heading"><div><span className="eyebrow">Runtime</span><h2>{ru ? 'Процессы в очереди' : 'Queued processes'}</h2><p>{ru ? 'Очереди Cloudflare и общий WFM Gateway. Gateway распределяет допуски между разными процессами по кругу, поэтому большой Hourly backlog не должен блокировать Smart Buy, Axi или API.' : 'Cloudflare queues and the shared WFM Gateway. Gateway admissions are round-robin across processes so a large Hourly backlog does not block Smart Buy, Axi or API.'}</p></div><button type="button" className="secondary-action" onClick={() => void Promise.all([loadProcessQueues(), loadTelemetry()])}>{ru ? 'Обновить' : 'Refresh'}</button></header>
       {processQueuesError ? <div className="developer-inline-warning" role="status"><div><strong>{ru ? 'Метрики очередей временно недоступны' : 'Queue metrics are temporarily unavailable'}</strong><span>{ru ? 'Gateway продолжает работать. Обновите блок через несколько секунд.' : 'The Gateway is still running. Refresh this section in a few seconds.'}</span></div><button type="button" className="secondary-action compact" onClick={() => void loadProcessQueues()}>{ru ? 'Повторить' : 'Retry'}</button><code title={processQueuesError}>{processQueuesError}</code></div> : null}
       {processQueues?.warnings?.length ? <details className="developer-metric-warnings"><summary>{ru ? 'Часть данных ещё загружается' : 'Some metrics are still loading'}</summary><code>{processQueues.warnings.join(' · ')}</code></details> : null}
       <div className="developer-process-grid">
@@ -513,6 +528,8 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <div className="developer-live-processes">
         <div><span>{ru ? 'Ожидают Gateway' : 'Waiting in Gateway'}</span><p>{telemetry && Object.keys(telemetry.current.pendingClients || {}).length ? Object.entries(telemetry.current.pendingClients || {}).map(([name, count]) => `${name}: ${count}`).join(' · ') : '—'}</p></div>
         <div><span>{ru ? 'Выполняются через Gateway' : 'Running through Gateway'}</span><p>{telemetry && Object.keys(telemetry.current.inFlightClients || {}).length ? Object.entries(telemetry.current.inFlightClients || {}).map(([name, count]) => `${name}: ${count}`).join(' · ') : '—'}</p></div>
+        <div><span>{ru ? 'Совмещённые одинаковые запросы' : 'Coalesced identical requests'}</span><p>{telemetry?.current.coalescedWaiters ? `${telemetry.current.coalescedWaiters} · ${Object.entries(telemetry.current.coalescedClients || {}).map(([name, count]) => `${name}: ${count}`).join(' · ')}` : (ru ? 'нет ожидающих общего ответа' : 'no shared-response waiters')}</p></div>
+        <div><span>{ru ? 'Справедливый планировщик' : 'Fair scheduler'}</span><p>{telemetry?.scheduling?.mode === 'round-robin-by-client' ? `${ru ? 'по процессам' : 'by process'}${telemetry.current.activeQueueClients?.length ? ` · ${telemetry.current.activeQueueClients.join(' → ')}` : ''}` : (telemetry?.scheduling?.mode || '—')}</p></div>
         <div><span>Axi / Prime Set</span><p>{processQueues?.active.axiScanner ? `${processQueues.active.axiScanner.scanType} · ${processQueues.active.axiScanner.state} · ${processQueues.active.axiScanner.progress?.processed ?? 0}/${processQueues.active.axiScanner.progress?.total ?? '—'}` : (ru ? 'не запущен' : 'not running')}</p></div>
         <div><span>{ru ? 'Перепродажа' : 'Resale'}</span><p>{processQueues?.active.resaleScanner ? `${processQueues.active.resaleScanner.state} · ${processQueues.active.resaleScanner.processedItems}/${processQueues.active.resaleScanner.totalItems || '—'}` : '—'}</p></div>
       </div>
@@ -526,7 +543,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <div className="developer-telemetry-summary">
         <div><span>{ru ? 'Скорость 10с' : '10s rate'}</span><strong>{telemetry ? `${telemetry.current.rps10s.toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.current.requests10s} / 10s` : '—'}</small></div>
         <div><span>{ru ? 'Скорость 60с' : '60s rate'}</span><strong>{telemetry ? `${telemetry.current.rps60s.toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.current.requests60s} / 60s` : '—'}</small></div>
-        <div><span>{ru ? 'Очередь шлюза' : 'Gateway queue'}</span><strong>{telemetry ? telemetry.current.pending : '—'}</strong><small>{telemetry?.current.running ? (ru ? 'запрос выполняется' : 'request running') : (ru ? 'свободен' : 'idle')}</small></div>
+        <div><span>{ru ? 'Очередь шлюза' : 'Gateway queue'}</span><strong>{telemetry ? telemetry.current.pending : '—'}</strong><small>{telemetry ? `${telemetry.current.running ? (ru ? 'в работе' : 'running') : (ru ? 'свободен' : 'idle')} · ${ru ? 'дубли' : 'dedup'} ${new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US').format(telemetry.deduplicatedRequests ?? 0)}` : '—'}</small></div>
         <div><span>{ru ? 'Сегодня' : 'Today'}</span><strong>{telemetry ? new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US').format(telemetry.daily.requests) : '—'}</strong><small>{telemetry ? `${new Intl.NumberFormat(locale === 'ru' ? 'ru-RU' : 'en-US').format(telemetry.daily.remaining)} ${ru ? 'осталось' : 'remaining'}` : '—'}</small></div>
         <div><span>{ru ? 'Жёсткий максимум' : 'Hard ceiling'}</span><strong>{telemetry ? `${(telemetry.configured.hardMaximumRps ?? telemetry.configured.targetRps).toFixed(2)} req/s` : '—'}</strong><small>{telemetry ? `${telemetry.configured.intervalMs} ms · ${telemetry.configured.belowThreeRps === false ? '⚠' : '< 3 req/s'}` : '—'}</small></div>
         <div><span>{ru ? 'Ответ WFM' : 'WFM response'}</span><strong>{telemetry?.upstream.lastStatus ?? '—'}</strong><small>{telemetry?.upstream.lastRequestAt ? dateTime(telemetry.upstream.lastRequestAt, locale) : '—'}</small></div>
@@ -539,7 +556,7 @@ export const DeveloperDashboard = ({ locale, onBack }: { locale: Locale; onBack:
       <details className="developer-rate-limit-log">
         <summary className="developer-rate-limit-heading"><span>{ru ? 'Настоящие ответы WFM 429/509' : 'Upstream WFM 429/509 responses'} <b>{telemetry?.upstream.rateLimitEvents?.length ?? 0}</b></span><small>{ru ? 'Нажмите, чтобы показать последние 50 событий. Локальная пауза Gateway сюда не входит.' : 'Click to show the last 50 events. Local Gateway cooldown responses are excluded.'}</small></summary>
         <div className="table-scroll"><table className="developer-table developer-rate-limit-table"><thead><tr><th>{ru ? 'Время' : 'Time'}</th><th>Endpoint</th><th>{ru ? 'Процесс' : 'Process'}</th><th>{ru ? 'Скорость' : 'Rate'}</th><th>{ru ? 'Параллельно' : 'Concurrent'}</th><th>Retry-After</th><th>CF-Ray</th></tr></thead><tbody>
-          {!telemetry?.upstream.rateLimitEvents?.length ? <tr><td colSpan={7} className="state-cell">{ru ? 'Зафиксированных upstream 429/509 пока нет.' : 'No upstream 429/509 events have been recorded yet.'}</td></tr> : telemetry.upstream.rateLimitEvents.map((event, index) => <tr key={`${event.timestamp}-${event.client}-${index}`}><td>{dateTime(event.timestamp, locale)}<small>HTTP {event.status}</small></td><td><code>{event.endpoint}</code><small>{event.platform ? `${event.platform}${event.crossplay ? ` · crossplay=${event.crossplay}` : ''}` : event.route}</small></td><td>{event.client}</td><td>{event.rps10s.toFixed(2)} req/s<small>{event.requests10s}/10s · {event.requests60s}/60s</small></td><td>{event.inFlight}<small>{ru ? `ожидает: ${event.pending}` : `pending: ${event.pending}`}</small></td><td>{event.retryAfter || '—'}<small>{ru ? `применено ${event.appliedCooldownSeconds}с` : `applied ${event.appliedCooldownSeconds}s`}</small></td><td><code>{event.cfRay || '—'}</code></td></tr>)}
+          {!telemetry?.upstream.rateLimitEvents?.length ? <tr><td colSpan={7} className="state-cell">{ru ? 'Зафиксированных upstream 429/509 пока нет.' : 'No upstream 429/509 events have been recorded yet.'}</td></tr> : telemetry.upstream.rateLimitEvents.map((event, index) => <tr key={`${event.timestamp}-${event.client}-${index}`}><td>{dateTime(event.timestamp, locale)}<small>HTTP {event.status}{event.throttleLevel ? ` · L${event.throttleLevel}` : ''}{event.sameThrottleWave ? ` · ${ru ? 'та же волна' : 'same wave'}` : ''}</small></td><td><code>{event.endpoint}</code><small>{event.platform ? `${event.platform}${event.crossplay ? ` · crossplay=${event.crossplay}` : ''}` : event.route}{event.targetPath ? ` · ${event.targetPath}` : ''}</small>{event.bodyPreview ? <details><summary>{ru ? 'Ответ WFM' : 'WFM response'}</summary><code title={event.bodyPreview}>{event.bodyPreview}</code></details> : null}</td><td>{event.client}</td><td>{event.rps10s.toFixed(2)} req/s<small>{event.requests10s}/10s · {event.requests60s}/60s</small></td><td>{event.inFlight}<small>{ru ? `ожидает: ${event.pending}` : `pending: ${event.pending}`}</small></td><td>{event.retryAfter || '—'}<small>{ru ? `применено ${event.appliedCooldownSeconds}с` : `applied ${event.appliedCooldownSeconds}s`}{event.retryAfterParsedSeconds != null ? ` · parsed ${event.retryAfterParsedSeconds}s` : ''}{!event.retryAfter && event.fallbackCooldownSeconds ? ` · fallback ${event.fallbackCooldownSeconds}s` : ''}</small></td><td><code>{event.cfRay || '—'}</code><small>{[event.server, event.cfMitigated ? `mitigated=${event.cfMitigated}` : null, event.rateLimitRemaining != null ? `remaining=${event.rateLimitRemaining}` : null, event.rateLimitLimit != null ? `limit=${event.rateLimitLimit}` : null, event.rateLimitReset != null ? `reset=${event.rateLimitReset}` : null].filter(Boolean).join(' · ') || '—'}</small></td></tr>)}
         </tbody></table></div>
       </details>
     </section>
