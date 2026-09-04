@@ -1,14 +1,19 @@
-FrameAnalytics — GitHub replacement overlay
+FrameAnalytics — AdSense index replacement
 
-Скопируйте содержимое этой папки в корень репозитория с заменой файлов.
+Copy the contents of this folder into the ROOT of the GitHub repository
+and replace files with the same names.
 
-Файлы:
+Files:
+- index.html
 - src/App.tsx
-- src/AdSense.tsx
 - public/ads.txt
 
-AdSense publisher: ca-pub-2843566361106419
+AdSense client:
+ca-pub-2843566361106419
 
-Важно: не добавляйте второй AdSense <script> в index.html, потому что src/AdSense.tsx уже загружает его один раз.
+The AdSense script is loaded ONLY from index.html.
+The React AdSenseLoader import/usages were removed from App.tsx.
 
-Prime Resurgence исправляется отдельно в Cloudflare API Worker / UpCloud relay и не является файлом GitHub-сайта.
+If src/AdSense.tsx exists from the previous overlay, it is now unused and may
+be deleted later, but leaving the unused file in the repository does not load
+AdSense twice.
