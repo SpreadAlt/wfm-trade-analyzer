@@ -13,6 +13,7 @@ import { localeNames, translations } from './i18n'
 import type { Locale, Theme, TranslationKey } from './i18n'
 import { paginationText } from './paginationText'
 import { accountRequestJson, AccountPanel, useFrameAccount } from './Account'
+import { AdSenseLoader } from './AdSense'
 import type { FrameAccountController } from './Account'
 import { uiText } from './uiText'
 import type { UiText } from './uiText'
@@ -1450,6 +1451,7 @@ export default function App() {
   }, [platform, period, crossplay, route.kind, route.slug, route.id, route.variant, route.rank])
   if (route.kind === 'info' && route.slug && route.slug in INFO_PAGE_PATHS) {
     return <>
+      <AdSenseLoader/>
       <div className="background-layer"/><div className="background-shade"/>
       <InfoPage kind={route.slug as InfoPageKind} locale={locale}/>
       <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
@@ -1457,12 +1459,14 @@ export default function App() {
   }
   if (ACCOUNT_REQUIRED_ROUTES.has(route.kind) && (auth.loading || !auth.account)) {
     return <>
+      <AdSenseLoader/>
       <div className="background-layer"/><div className="background-shade"/>
       <AccountGate locale={locale} setLocale={setLocale} auth={auth}/>
       <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
     </>
   }
   return <>
+    <AdSenseLoader/>
     <div className="background-layer"/><div className="background-shade"/>
     <Suspense fallback={<main className="app-shell"><section className="panel smart-buy-state"><div className="spinner"/></section></main>}>
     {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} accountLoading={auth.loading} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
