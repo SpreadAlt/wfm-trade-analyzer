@@ -60,6 +60,10 @@ const json = (value: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
 
 const nowMs = () => Date.now();
 const AUTH_OTP_EXPIRES_SECONDS = 10 * 60;
+// Keep an account signed in until it has been inactive for roughly 30 days.
+// Better Auth refreshes expiresAt when the session is used after updateAge.
+const AUTH_SESSION_IDLE_SECONDS = 30 * 24 * 60 * 60;
+const AUTH_SESSION_REFRESH_SECONDS = 60 * 60;
 const EMAIL_CODE_COOLDOWN_MS = 60 * 1000;
 const ACCOUNT_LOGIN_PATTERN = /^[A-Za-z][A-Za-z0-9_]{2,23}$/;
 const SMART_BUY_DAILY_LIMIT = 30;
@@ -229,6 +233,10 @@ const createAuth = (env: Env, request: Request) => {
     secret: env.BETTER_AUTH_SECRET,
     baseURL: origin,
     trustedOrigins: [origin],
+    session: {
+      expiresIn: AUTH_SESSION_IDLE_SECONDS,
+      updateAge: AUTH_SESSION_REFRESH_SECONDS,
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
