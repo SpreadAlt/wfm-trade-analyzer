@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { fetchCatalog, fetchEvents, fetchHourly, fetchHourlyIndex, fetchItem, fetchMetrics, fetchMetricsBatch, fetchScanner } from './api'
 import { CustomPicker, PickerChevron } from './CustomPicker'
 import { getExtraText } from './extraText'
@@ -31,10 +32,16 @@ type OpenPanel = 'categories' | 'table' | null
 type PageSize = 25 | 50 | 100 | 200
 type RankFilter = 'base' | 'all'
 type SalesColumn = `sales${SalesRange}`
-type OptionalColumn = SalesColumn | 'potential' | 'score' | 'forecast'
+type OptionalColumn = SalesColumn | 'score' | 'forecast'
 type DeveloperResaleAlert = { name: string; theoreticalProfit: number; minimumOnlineSell: number; averagePrice24h: number; wfmUrl: string | null }
 type DeveloperResaleAlertResponse = { generatedAt: string | null; alerts: DeveloperResaleAlert[] }
 type PurchaseTarget = { itemId: string; slug: string; name: string; marketKey: string; selectedModRank: number | null; currentPrice: number | null }
+const ADSENSE_CLIENT = 'ca-pub-2843566361106419'
+const DEFAULT_ADSENSE_SLOT = (import.meta as any).env?.VITE_ADSENSE_SLOT_DEFAULT || ''
+const ADSENSE_SLOTS = {
+  scannerRail: (import.meta as any).env?.VITE_ADSENSE_SLOT_SCANNER_RAIL || DEFAULT_ADSENSE_SLOT,
+  detailRail: (import.meta as any).env?.VITE_ADSENSE_SLOT_DETAIL_RAIL || DEFAULT_ADSENSE_SLOT
+}
 const RESALE_NOTIFY_KEY = 'frameanalytics.resale-v1.notifications'
 const RESALE_NOTIFIED_SCAN_KEY = 'frameanalytics.resale-v1.notified-scan'
 type DisplayMarketRow = {
@@ -47,12 +54,41 @@ type DisplayMarketRow = {
   hourlyFetchedAt: string | null
 }
 const PLATFORM_NAMES: Record<Platform, string> = { pc: 'PC', ps4: 'PlayStation', xbox: 'Xbox', switch: 'Nintendo Switch' }
+
+const AdPlacement = ({ slot, className = '', format = 'auto', style }: {
+  slot: string
+  className?: string
+  format?: 'auto' | 'horizontal' | 'vertical' | 'rectangle'
+  style?: CSSProperties
+}) => {
+  const insRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!slot || !insRef.current) return
+    try {
+      ;((window as Window & { adsbygoogle?: unknown[] }).adsbygoogle = (window as Window & { adsbygoogle?: unknown[] }).adsbygoogle || []).push({})
+    } catch (error) {
+      console.debug('AdSense slot init skipped', error)
+    }
+  }, [slot])
+  if (!slot) return null
+  return <div className={`adsense-slot ${className}`.trim()}>
+    <ins
+      ref={insRef as any}
+      className="adsbygoogle"
+      style={{ display: 'block', width: '100%', ...style }}
+      data-ad-client={ADSENSE_CLIENT}
+      data-ad-slot={slot}
+      data-ad-format={format}
+      data-full-width-responsive="false"
+    />
+  </div>
+}
 const PAGE_SIZES: PageSize[] = [25, 50, 100, 200]
 const TIME_RANGES: TimeRange[] = ['1h', '4h', '12h', '24h', '7d', '30d', '90d', '180d']
 const DEFAULT_RANGES: TimeRange[] = ['24h', '7d', '30d']
 const SALES_RANGES: SalesRange[] = ['1h', '4h', '12h', '24h', '7d', '30d', '90d', '180d']
 const SALES_COLUMNS: SalesColumn[] = SALES_RANGES.map(range => `sales${range}` as SalesColumn)
-const OPTIONAL_COLUMNS: OptionalColumn[] = [...SALES_COLUMNS, 'potential', 'score', 'forecast']
+const OPTIONAL_COLUMNS: OptionalColumn[] = [...SALES_COLUMNS, 'score', 'forecast']
 const DEFAULT_OPTIONAL_COLUMNS: OptionalColumn[] = ['sales24h']
 const HOURLY_RANGES = new Set<TimeRange>(['1h', '4h', '12h', '24h'])
 const HOURLY_INDEX_SORTS = new Set<ScannerSort>(['currentPrice', 'change1h', 'change4h', 'change12h', 'change24h', 'sales1h', 'sales4h', 'sales12h', 'sales24h', 'sales7d', 'sales30d', 'sales90d', 'sales180d', 'updatedDate'])
@@ -533,7 +569,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
   }
   const hourlyChart = HOURLY_RANGES.has(chartRange) && hourlySeries
   const chartHistory = hourlyChart
-    ? hourlySeries.history.map(point => ({ date: point.timestamp, min: point.min, median: point.median, max: point.max, sales: point.volume }))
+    ? hourlySeries.history.map(point => ({ date: point.timestamp, min: point.min, median: point.median, average: (point as any).average ?? (point as any).avg ?? null, max: point.max, sales: point.volume }))
     : mergedDailyHistory
   const chartLatest = hourlyChart ? hourlySeries.latestAt || hourly?.fetchedAt || '' : hourlySeries?.dailyLatestDate || mergedDailyHistory[mergedDailyHistory.length - 1]?.date || series?.updatedDate || ''
   useEffect(() => { setChartRange(periodRange(period)) }, [period])
@@ -546,12 +582,13 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
       </section>
       <section className="detail-dashboard panel">
         <div className="range-strip">{visibleRanges.map(range => <div className={`${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</div>
-        <div className="insight-row"><div><span>{mode === 'buy' ? t('buyPotential') : t('sellPotential')}</span><strong>{analytics?.[mode].potential != null && analytics[mode].potential! > 0 ? `+${fmtPlat(analytics[mode].potential)}` : '—'}<small>{analytics?.[mode].potentialPct != null && analytics[mode].potentialPct! > 0 ? fmtPlainPercent(analytics[mode].potentialPct) : ''}</small></strong></div><div><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div><div className="insight-forecast"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={currentEvent ? 'down' : consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</div><a className="insight-market-link" href={`https://warframe.market/items/${encodeURIComponent(detail.slug)}`} target="_blank" rel="noopener noreferrer" title={x.wfmItemHint}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"/></svg><span>{x.openOnWfm}</span></a></div>
+        <div className="insight-row"><div><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div><div className="insight-forecast"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={currentEvent ? 'down' : consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</div><a className="insight-market-link" href={`https://warframe.market/items/${encodeURIComponent(detail.slug)}`} target="_blank" rel="noopener noreferrer" title={x.wfmItemHint}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"/></svg><span>{x.openOnWfm}</span></a></div>
         {analytics ? <div className="analysis-strip"><span className="analysis-item"><small>{x.typicalPrice}</small><strong>{fmtPlat(analytics.baseline)}</strong></span><span className="analysis-item"><small>{x.lowerPrice}</small><strong>{fmtPlat(analytics.q25)}</strong></span><span className="analysis-item"><small>{x.upperPrice}</small><strong>{fmtPlat(analytics.q75)}</strong></span><span className="analysis-item"><small>{x.priceFluctuation}</small><strong>{fmtPlainPercent(analytics.volatility)}</strong></span></div> : null}
       </section>
+      <div className="page-ad-slot detail-ad-rail"><AdPlacement slot={ADSENSE_SLOTS.detailRail} format="vertical" style={{ minHeight: 600 }}/></div>
       <section className="panel chart-panel">
         <div className="panel-title-row"><div><div className="eyebrow">{t('closedSales')} · {u.analysisWindow}: {rangeLabel(chartRange, x)}</div><h2>{u.priceHistory}</h2></div><div className="time-tabs time-tabs-all">{TIME_RANGES.map(range => { const unavailable = HOURLY_RANGES.has(range) && range !== '24h' && !hourlySeries; return <button key={range} disabled={unavailable} title={unavailable ? x.hourlyUnavailable : undefined} className={chartRange === range ? 'time-tab active' : 'time-tab'} onClick={() => !unavailable && setChartRange(range)}>{rangeLabel(range, x)}</button> })}</div></div>
-        <HistoryChart history={chartHistory} latestDate={chartLatest} range={chartRange} locale={locale} events={events} labels={{ empty: u.noData, chart: u.priceHistory, min: t('min'), median: t('median'), max: t('max'), sales: t('sales') }}/>
+        <HistoryChart history={chartHistory} latestDate={chartLatest} range={chartRange} locale={locale} events={events} labels={{ empty: u.noData, chart: u.priceHistory, min: t('min'), median: t('median'), average: locale === 'ru' ? 'Среднее' : 'Average', max: t('max'), sales: t('sales') }}/>
       </section>
       <PurchaseDialog locale={locale} name={name} currentPrice={currentPrice} open={purchaseOpen} onClose={() => setPurchaseOpen(false)} onSave={value => { onAddPurchase({ itemId: detail.id, slug: detail.slug, name, marketKey, selectedModRank: selectedRank ?? canonicalRank, ...value }); setPurchaseOpen(false) }}/>
     </>}
@@ -587,7 +624,7 @@ type PortfolioMarketEntry = {
   purchase: PortfolioPurchase
   row: DisplayMarketRow | null
 }
-type PortfolioSort = 'name' | 'purchasePrice' | 'quantity' | 'currentPrice' | 'sales24h' | 'potential' | 'score' | 'profit' | 'return' | 'updated' | `range:${TimeRange}`
+type PortfolioSort = 'name' | 'purchasePrice' | 'quantity' | 'currentPrice' | 'sales24h' | 'score' | 'profit' | 'return' | 'updated' | `range:${TimeRange}`
 const PortfolioPage = ({ account, auth, entries, loading, error, platform, crossplay, visibleRanges, locale, catalog, events, onBack, onRetry, onOpenSmartBuy, onOpenSellAdvisor, onOpenDeveloper, onOpenAxiScanner, onRemove, onOpenItem, onPlatform, onCrossplay, currentPriceFor, rangeValueFor, rangePlatinumFor, t }: {
   account: TemporaryAccount | null
   auth: FrameAccountController
@@ -663,7 +700,6 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
       if (sort === 'quantity') return entry.purchase.quantity
       if (sort === 'currentPrice') return values.currentPrice
       if (sort === 'sales24h') return entry.row?.canonical ? values.item?.sales24h ?? null : null
-      if (sort === 'potential') return entry.row?.canonical ? values.item?.sell.potential ?? null : null
       if (sort === 'score') return entry.row?.canonical ? values.item?.sell.score ?? null : null
       if (sort === 'profit') return values.rowProfit
       if (sort === 'return') return values.rowReturn
@@ -731,9 +767,9 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
         <th><button className="sort-button" onClick={() => changeSort('quantity')}><span>{text.quantity}</span><span className="sort-indicator">{indicator('quantity')}</span></button></th>
         <th><button className="sort-button" onClick={() => changeSort('currentPrice')}><span>{t('current')}</span><span className="sort-indicator">{indicator('currentPrice')}</span></button></th>
         {visibleRanges.map(range => <th key={range} className={HOURLY_RANGES.has(range) ? 'hourly-column' : ''}><button className="sort-button" onClick={() => changeSort(`range:${range}`)}><span>{rangeLabel(range, x)}</span><span className="sort-indicator">{indicator(`range:${range}`)}</span></button></th>)}
-        <th><button className="sort-button" onClick={() => changeSort('sales24h')}><span>{t('sales24h')}</span><span className="sort-indicator">{indicator('sales24h')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('potential')}><span>{t('potential')}</span><span className="sort-indicator">{indicator('potential')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('score')}><span>{t('score')}</span><span className="sort-indicator">{indicator('score')}</span></button></th><th>{x.forecast}</th><th><button className="sort-button" onClick={() => changeSort('profit')}><span>{text.possibleProfit}</span><span className="sort-indicator">{indicator('profit')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('updated')}><span>{t('updated')}</span><span className="sort-indicator">{indicator('updated')}</span></button></th><th aria-label={text.remove}/>
+        <th><button className="sort-button" onClick={() => changeSort('sales24h')}><span>{t('sales24h')}</span><span className="sort-indicator">{indicator('sales24h')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('score')}><span>{t('score')}</span><span className="sort-indicator">{indicator('score')}</span></button></th><th>{x.forecast}</th><th><button className="sort-button" onClick={() => changeSort('profit')}><span>{text.possibleProfit}</span><span className="sort-indicator">{indicator('profit')}</span></button></th><th><button className="sort-button" onClick={() => changeSort('updated')}><span>{t('updated')}</span><span className="sort-indicator">{indicator('updated')}</span></button></th><th aria-label={text.remove}/>
       </tr></thead><tbody>
-        {blockingLoading ? <tr><td colSpan={11 + visibleRanges.length} className="state-cell"><div className="spinner"/><strong>{text.loading}</strong></td></tr> : error && !entries.some(entry => entry.row) ? <tr><td colSpan={11 + visibleRanges.length} className="state-cell error-state"><strong>{text.loadError}</strong><button className="retry-button" onClick={onRetry}>{text.retry}</button></td></tr> : !pageEntries.length ? <tr><td colSpan={11 + visibleRanges.length} className="state-cell"><strong>{u.noData}</strong></td></tr> : pageEntries.map(({ purchase, row }) => {
+        {blockingLoading ? <tr><td colSpan={10 + visibleRanges.length} className="state-cell"><div className="spinner"/><strong>{text.loading}</strong></td></tr> : error && !entries.some(entry => entry.row) ? <tr><td colSpan={10 + visibleRanges.length} className="state-cell error-state"><strong>{text.loadError}</strong><button className="retry-button" onClick={onRetry}>{text.retry}</button></td></tr> : !pageEntries.length ? <tr><td colSpan={10 + visibleRanges.length} className="state-cell"><strong>{u.noData}</strong></td></tr> : pageEntries.map(({ purchase, row }) => {
           const item = row?.item || null
           const signal = row?.canonical && item ? item.sell : emptySignal()
           const currentPrice = row ? currentPriceFor(row) : null
@@ -748,7 +784,7 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
             <td><button type="button" className="item-link item-link-v3 portfolio-item-link" onClick={() => onOpenItem(purchase)}><ItemIcon item={catalogItem} name={name}/><span><span className="item-name" title={name}><span className="item-name-text">{name}</span>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</span><span className="item-category">{item ? categoryLabel(item.category, locale, u, x.prime) : text.unavailableMarket}{variant ? ` · ${variant}` : ''}{purchase.selectedModRank != null ? ` · ${x.rank} ${purchase.selectedModRank}` : ''}<br/>{formatDate(purchase.purchaseDate, locale)}</span></span></button></td>
             <td>{fmtPlat(purchase.purchasePrice)}</td><td>{purchase.quantity}</td><td className="price-cell">{fmtPlat(currentPrice)}</td>
             {visibleRanges.map(range => <td key={range} className={`${row ? valueClass(rangeValueFor(row, range)) : 'neutral'} ${HOURLY_RANGES.has(range) ? 'hourly-column' : ''}`}><span className="change-cell-values"><strong>{row ? fmtPercent(rangeValueFor(row, range)) : '—'}</strong><small>{row ? fmtPlatDelta(rangePlatinumFor(row, range)) : '—'}</small></span></td>)}
-            <td>{row?.canonical ? item?.sales24h ?? '—' : '—'}</td><td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={item?.change7d ?? null} direction={currentEvent ? 'down' : trend} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td><span className={`portfolio-profit ${valueClass(rowProfit)}`}><strong>{fmtPlatDelta(rowProfit)}</strong><small>{fmtPercent(rowReturn)}</small></span></td><td className="updated-cell">{formatDate(row?.hourlyFetchedAt || item?.updatedDate, locale)}</td><td><button type="button" className="portfolio-remove" onClick={() => onRemove(purchase.id)} title={text.remove} aria-label={`${text.remove}: ${name}`}>×</button></td>
+            <td>{row?.canonical ? item?.sales24h ?? '—' : '—'}</td><td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td><td><ForecastIndicator signal={signal} fallbackChange={item?.change7d ?? null} direction={currentEvent ? 'down' : trend} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td><td><span className={`portfolio-profit ${valueClass(rowProfit)}`}><strong>{fmtPlatDelta(rowProfit)}</strong><small>{fmtPercent(rowReturn)}</small></span></td><td className="updated-cell">{formatDate(row?.hourlyFetchedAt || item?.updatedDate, locale)}</td><td><button type="button" className="portfolio-remove" onClick={() => onRemove(purchase.id)} title={text.remove} aria-label={`${text.remove}: ${name}`}>×</button></td>
           </tr>
         })}
       </tbody></table></div></section>
@@ -881,7 +917,7 @@ export default function App() {
       window.clearInterval(timer)
     }
   }, [auth.account?.access?.developer, locale])
-  useEffect(() => { const timer = setTimeout(() => setQuery(queryInput.trim()), 300); return () => clearTimeout(timer) }, [queryInput])
+  useEffect(() => { const timer = setTimeout(() => setQuery(queryInput.trim()), 500); return () => clearTimeout(timer) }, [queryInput])
   useEffect(() => { const timer = setInterval(() => setHourlyRefresh(value => value + 1), 5 * 60 * 1000); return () => clearInterval(timer) }, [])
   useEffect(() => {
     const listener = () => {
@@ -1280,10 +1316,9 @@ export default function App() {
   }
   const rowTrendDirection = (row: DisplayMarketRow) => consensusDirection(visibleRanges.map(range => rowRangeValue(row, range)))
   const visibleSalesRanges = SALES_RANGES.filter(range => visibleColumns.includes(`sales${range}` as SalesColumn))
-  const showPotentialColumn = visibleColumns.includes('potential')
   const showScoreColumn = visibleColumns.includes('score')
   const showForecastColumn = visibleColumns.includes('forecast')
-  const tableColumnCount = 4 + visibleRanges.length + visibleSalesRanges.length + (showPotentialColumn ? 1 : 0) + (showScoreColumn ? 1 : 0) + (showForecastColumn ? 1 : 0)
+  const tableColumnCount = 4 + visibleRanges.length + visibleSalesRanges.length + (showScoreColumn ? 1 : 0) + (showForecastColumn ? 1 : 0)
   const currentEventFor = (itemId: string) => marketEvents.find(event => event.itemId === itemId && (event.status === 'active' || event.status === 'upcoming')) || null
   const changeSort = (next: ScannerSort, range?: TimeRange) => {
     if (range && !HOURLY_RANGES.has(range)) setPeriod(Number(range.replace('d', '')) as AnalysisPeriod)
@@ -1298,7 +1333,7 @@ export default function App() {
   const toggleOptionalColumn = (column: OptionalColumn) => {
     const removing = visibleColumns.includes(column)
     setVisibleColumns(current => removing ? current.filter(value => value !== column) : OPTIONAL_COLUMNS.filter(value => current.includes(value) || value === column))
-    const hiddenSort = column.startsWith('sales') ? sort === column : column === 'potential' ? (sort === 'potential' || sort === 'potentialPct') : column === 'score' ? sort === 'score' : sort === 'decision'
+    const hiddenSort = column.startsWith('sales') ? sort === column : column === 'score' ? sort === 'score' : sort === 'decision'
     if (removing && hiddenSort) { setSort('updatedDate'); setDirection('desc') }
   }
   const itemHref = (row: DisplayMarketRow) => {
@@ -1470,22 +1505,21 @@ export default function App() {
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
         <label><span>{t('minPrice')}</span><div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={event => setMinPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
-        <label><span>{t('potentialFrom')}</span><div className="input-suffix"><input type="number" min="0" value={minPotential} onChange={event => setMinPotential(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
         <label><span>{x.rankFilter}</span><CustomPicker value={rankFilter} label={x.rankFilter} options={[{ value: 'base', label: x.rankBase }, { value: 'all', label: x.rankAll }]} onChange={value => setRankFilter(value as RankFilter)}/></label>
         <div className="filter-field category-filter"><span>{u.categories}</span><PickerToggleButton label={u.categories} selected={categories.length} total={CATEGORY_IDS.length} open={openPanel === 'categories'} onClick={() => setOpenPanel(value => value === 'categories' ? null : 'categories')}/>{openPanel === 'categories' ? <div className="category-panel picker-popover" role="dialog" aria-label={u.categories}><div className="category-actions"><button type="button" onClick={() => setCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={categories.includes(id)} onChange={() => toggleCategory(id)}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
-        <div className="filter-field table-settings-filter"><span>{x.tableSettings}</span><PickerToggleButton label={x.chooseTableSettings} selected={visibleRanges.length + visibleColumns.length} total={TIME_RANGES.length + OPTIONAL_COLUMNS.length} open={openPanel === 'table'} onClick={() => setOpenPanel(value => value === 'table' ? null : 'table')}/>{openPanel === 'table' ? <div className="category-panel picker-popover table-settings-panel" role="dialog" aria-label={x.tableSettings}><div className="category-actions"><button type="button" onClick={() => { setVisibleRanges([...TIME_RANGES]); setVisibleColumns([...OPTIONAL_COLUMNS]) }}>{u.selectAll}</button><button type="button" onClick={() => { setVisibleRanges(DEFAULT_RANGES); setVisibleColumns(DEFAULT_OPTIONAL_COLUMNS) }}>{u.defaults}</button></div><div className="table-settings-section"><strong>{x.priceChangeColumns}</strong><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={`change-${range}`}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div><div className="table-settings-section"><strong>{x.salesColumns}</strong><div className="range-options">{SALES_RANGES.map(range => { const column = `sales${range}` as SalesColumn; return <label className="range-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{rangeLabel(range, x)}</span></label> })}</div></div><div className="table-settings-section"><strong>{x.otherColumns}</strong><div className="table-extra-options">{(['potential', 'score', 'forecast'] as const).map(column => <label className="category-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{column === 'potential' ? x.potentialColumn : column === 'score' ? x.scoreColumn : x.forecastColumn}</span></label>)}</div></div></div> : null}</div>
+        <div className="filter-field table-settings-filter"><span>{x.tableSettings}</span><PickerToggleButton label={x.chooseTableSettings} selected={visibleRanges.length + visibleColumns.length} total={TIME_RANGES.length + OPTIONAL_COLUMNS.length} open={openPanel === 'table'} onClick={() => setOpenPanel(value => value === 'table' ? null : 'table')}/>{openPanel === 'table' ? <div className="category-panel picker-popover table-settings-panel" role="dialog" aria-label={x.tableSettings}><div className="category-actions"><button type="button" onClick={() => { setVisibleRanges([...TIME_RANGES]); setVisibleColumns([...OPTIONAL_COLUMNS]) }}>{u.selectAll}</button><button type="button" onClick={() => { setVisibleRanges(DEFAULT_RANGES); setVisibleColumns(DEFAULT_OPTIONAL_COLUMNS) }}>{u.defaults}</button></div><div className="table-settings-section"><strong>{x.priceChangeColumns}</strong><div className="range-options">{TIME_RANGES.map(range => <label className="range-option" key={`change-${range}`}><input type="checkbox" checked={visibleRanges.includes(range)} onChange={() => toggleRange(range)}/><span>{rangeLabel(range, x)}</span></label>)}</div></div><div className="table-settings-section"><strong>{x.salesColumns}</strong><div className="range-options">{SALES_RANGES.map(range => { const column = `sales${range}` as SalesColumn; return <label className="range-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{rangeLabel(range, x)}</span></label> })}</div></div><div className="table-settings-section"><strong>{x.otherColumns}</strong><div className="table-extra-options">{(['score', 'forecast'] as const).map(column => <label className="category-option" key={column}><input type="checkbox" checked={visibleColumns.includes(column)} onChange={() => toggleOptionalColumn(column)}/><span>{column === 'score' ? x.scoreColumn : x.forecastColumn}</span></label>)}</div></div></div> : null}</div>
         <div className="event-filter-group">
           <button type="button" className={`event-filter-button baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={baroInventory.ids.length ? baroInventory.isPast ? x.latestBaroHint : x.currentBaroHint : x.currentBaroEmpty} onClick={() => setSpecialEventFilter(current => current === 'baro' ? 'all' : 'baro')}><svg viewBox="0 0 32 38" aria-hidden="true"><path className="baro-glyph-stroke" d="m16 2 4 4-4 4-4-4 4-4ZM7.5 8.5l4 4-4 4-4-4 4-4Zm17 0 4 4-4 4-4-4 4-4ZM16 10l9 9-9 9-9-9 9-9Zm0 5 4 4-4 4-4-4 4-4Z"/><path className="baro-glyph-fill" d="m11 32 5 5 5-5Z"/></svg></button>
           <button type="button" className={`event-filter-button resurgence-icon-button ${resurgenceOnly ? 'active' : ''}`} aria-pressed={resurgenceOnly} aria-label={x.currentResurgence} title={activeResurgenceIds.length ? x.currentResurgenceHint : x.currentResurgenceEmpty} onClick={() => setSpecialEventFilter(current => current === 'prime_resurgence' ? 'all' : 'prime_resurgence')}><AyaGlyph/></button>
         </div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
+      <div className="page-ad-slot scanner-ad-rail"><AdPlacement slot={ADSENSE_SLOTS.scannerRail} format="vertical" style={{ minHeight: 600 }}/></div>
       <section className={`panel table-panel ${activeRefreshing ? 'table-refreshing' : ''}`} aria-busy={activeRefreshing}><div className="table-scroll"><table className="market-table"><thead><tr>
         <th><button className="sort-button" onClick={() => changeSort('name')}><span>{t('item')}</span><span className="sort-indicator">{indicator('name')}</span></button></th>
         <th><button className="sort-button" onClick={() => changeSort('currentPrice')}><span>{t('current')}</span><span className="sort-indicator">{indicator('currentPrice')}</span></button></th>
         {visibleRanges.map(range => { const key = rangeSort(range); return <th key={range} className={HOURLY_RANGES.has(range) ? 'hourly-column' : ''}><button className="sort-button" disabled={!key} title={HOURLY_RANGES.has(range) ? key ? x.hourlyLive : x.hourlyUnavailable : undefined} onClick={() => key && changeSort(key, range)}><span>{rangeLabel(range, x)}</span><span className="sort-indicator">{key && (HOURLY_RANGES.has(range) || range === periodRange(period) || range === '7d') ? indicator(key) : ''}</span></button></th> })}
         {visibleSalesRanges.map(range => { const key = salesSort(range); return <th key={`sales-${range}`} className="sales-column"><button className="sort-button" onClick={() => changeSort(key)}><span>{x.sales} {rangeLabel(range, x)}</span><span className="sort-indicator">{indicator(key)}</span></button></th> })}
-        {showPotentialColumn ? <th><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('potential')}><span>{t('potential')}</span><span className="sort-indicator">{indicator('potential')}</span></button></th> : null}
         {showScoreColumn ? <th><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('score')}><span>{t('score')}</span><span className="sort-indicator">{indicator('score')}</span></button></th> : null}
         {showForecastColumn ? <th title={x.forecastHint}><button className="sort-button" disabled={rankFilter === 'base'} onClick={() => changeSort('decision')}><span>{x.forecast}</span><span className="sort-indicator">{indicator('decision')}</span></button></th> : null}
         <th><button className="sort-button" onClick={() => changeSort('updatedDate')}><span>{t('updated')}</span><span className="sort-indicator">{indicator('updatedDate')}</span></button></th>
@@ -1501,7 +1535,6 @@ export default function App() {
             <td className="price-cell">{fmtPlat(rowCurrentPrice(row))}</td>
             {visibleRanges.map(range => { const live = row.hourly; return <td key={range} className={`${valueClass(rowRangeValue(row, range))} ${HOURLY_RANGES.has(range) ? live ? 'hourly-column hourly-live' : 'hourly-column hourly-missing' : ''}`} title={HOURLY_RANGES.has(range) ? live ? `${x.hourlyLive} · ${formatDate(row.hourlyFetchedAt, locale)}` : x.hourlyUnavailable : !row.canonical ? x.hourlyOnlyRank : undefined}><span className="change-cell-values"><strong>{fmtPercent(rowRangeValue(row, range))}</strong><small>{fmtPlatDelta(rowRangePlatinum(row, range))}</small></span></td> })}
             {visibleSalesRanges.map(range => <td key={`sales-${range}`} className="sales-column">{rowSalesValue(row, range) ?? '—'}</td>)}
-            {showPotentialColumn ? <td><span className={signal.potential != null && signal.potential > 0 ? 'potential-badge' : 'potential-badge muted'}>{signal.potential != null && signal.potential > 0 ? <><strong>+{fmtPlat(signal.potential)}</strong>{signal.potentialPct != null ? <small>{fmtPlainPercent(signal.potentialPct)}</small> : null}</> : '—'}</span></td> : null}
             {showScoreColumn ? <td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td> : null}
             {showForecastColumn ? <td><ForecastIndicator signal={signal} fallbackChange={row.canonical ? item.change7d : null} direction={currentEventFor(item.id) ? 'down' : rowTrendDirection(row)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td> : null}
             <td className="updated-cell">{formatDate(row.hourlyFetchedAt || (row.canonical ? item.updatedDate : null), locale)}</td>
