@@ -341,21 +341,22 @@ const smartBuyDisplayCatalog = (catalog: Map<string, CatalogItem>) => new Map(
   })
 )
 
-const ToolEditorial = ({ locale, kind }: { locale: Locale; kind: 'smartbuy' | 'selladvisor' }) => {
+const ToolInlineIntro = ({ locale, kind }: { locale: Locale; kind: 'smartbuy' | 'selladvisor' }) => {
   const copy = toolGuideCopy(locale)
   const smartBuy = kind === 'smartbuy'
   const title = smartBuy ? copy.smartBuyTitle : copy.sellAdvisorTitle
   const summary = smartBuy ? copy.smartBuySummary : copy.sellAdvisorSummary
   const points = smartBuy ? copy.smartBuyPoints : copy.sellAdvisorPoints
-  return <section className="panel tool-editorial">
-    <div className="tool-editorial-heading">
-      <div><div className="eyebrow">{copy.toolsTitle}</div><h1>{title}</h1></div>
+  return <section className="tool-inline-intro" aria-label={title}>
+    <div className="tool-inline-intro-main">
+      <div className="eyebrow">{copy.toolsTitle}</div>
+      <h1>{title}</h1>
       <p>{summary}</p>
     </div>
-    <div className="tool-method-grid">
-      <article><strong>01</strong><span>{points[0]}</span></article>
-      <article><strong>02</strong><span>{points[1]}</span></article>
-      <article><strong>03</strong><span>{points[2]}</span></article>
+    <div className="tool-inline-points">
+      <span><strong>01</strong>{points[0]}</span>
+      <span><strong>02</strong>{points[1]}</span>
+      <span><strong>03</strong>{points[2]}</span>
     </div>
   </section>
 }
@@ -885,7 +886,7 @@ const SmartBuyPage = ({ auth, locale, catalog, onBack, onSignIn }: {
       <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
       <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'На главную' : 'Back'}</button>
     </div>
-    <ToolEditorial locale={locale} kind="smartbuy"/>
+    <ToolInlineIntro locale={locale} kind="smartbuy"/>
     <div className="tool-page-ad"><AdPlacement slot={ADSENSE_SLOTS.smartBuy} format="horizontal" style={{ minHeight: 180 }}/></div>
     {auth.account
       ? <SmartBuyPanel locale={locale} catalog={compactCatalog} auth={auth} standalone/>
@@ -906,7 +907,7 @@ const SellAdvisorPage = ({ auth, locale, catalog, onBack, onSignIn }: {
       <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
       <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'На главную' : 'Back'}</button>
     </div>
-    <ToolEditorial locale={locale} kind="selladvisor"/>
+    <ToolInlineIntro locale={locale} kind="selladvisor"/>
     <div className="tool-page-ad"><AdPlacement slot={ADSENSE_SLOTS.sellAdvisor} format="horizontal" style={{ minHeight: 180 }}/></div>
     {auth.account
       ? <SellAdvisorPanel locale={locale} catalog={catalog} auth={auth}/>
@@ -1796,7 +1797,7 @@ export default function App() {
     <div className="background-layer"/><div className="background-shade"/>
     <Suspense fallback={<main className="app-shell"><section className="panel smart-buy-state"><div className="spinner"/></section></main>}>
     {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} accountLoading={auth.loading} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy} onSignIn={openPortfolio}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor} onSignIn={openPortfolio}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
-      <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} pending={auth.loading} onClick={openPortfolio}/></div></header>
+      <header className="topbar topbar-home"><div className="topbar-brand"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-side"><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} pending={auth.loading} onClick={openPortfolio}/></div><div className="home-tools-inline" aria-label={toolGuideCopy(locale).toolsTitle}><button type="button" className="home-tool-chip smart-buy-card" onClick={() => auth.account ? openSmartBuy() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">⌁</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span><span className="home-tool-chip-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button><button type="button" className="home-tool-chip sell-advisor-card" onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">↗</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span><span className="home-tool-chip-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button></div></div></header>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
         <label><span>{t('minPrice')}</span><div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={event => setMinPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
@@ -1806,24 +1807,6 @@ export default function App() {
         <div className="event-filter-group">
           <button type="button" className={`event-filter-button baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={baroInventory.ids.length ? baroInventory.isPast ? x.latestBaroHint : x.currentBaroHint : x.currentBaroEmpty} onClick={() => setSpecialEventFilter(current => current === 'baro' ? 'all' : 'baro')}><svg viewBox="0 0 32 38" aria-hidden="true"><path className="baro-glyph-stroke" d="m16 2 4 4-4 4-4-4 4-4ZM7.5 8.5l4 4-4 4-4-4 4-4Zm17 0 4 4-4 4-4-4 4-4ZM16 10l9 9-9 9-9-9 9-9Zm0 5 4 4-4 4-4-4 4-4Z"/><path className="baro-glyph-fill" d="m11 32 5 5 5-5Z"/></svg></button>
           <button type="button" className={`event-filter-button resurgence-icon-button ${resurgenceOnly ? 'active' : ''}`} aria-pressed={resurgenceOnly} aria-label={x.currentResurgence} title={activeResurgenceIds.length ? x.currentResurgenceHint : x.currentResurgenceEmpty} onClick={() => setSpecialEventFilter(current => current === 'prime_resurgence' ? 'all' : 'prime_resurgence')}><AyaGlyph/></button>
-        </div>
-      </section>
-      <section className="home-tools-section" aria-label={toolGuideCopy(locale).toolsTitle}>
-        <div className="home-tools-heading">
-          <div><div className="eyebrow">{toolGuideCopy(locale).toolsTitle}</div><h2>{toolGuideCopy(locale).toolsTitle}</h2></div>
-          <p>{toolGuideCopy(locale).toolsLead}</p>
-        </div>
-        <div className="home-tools-grid">
-          <button type="button" className="home-tool-card smart-buy-card" onClick={() => auth.account ? openSmartBuy() : openPortfolio()}>
-            <span className="home-tool-icon" aria-hidden="true">⌁</span>
-            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span>
-            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
-          </button>
-          <button type="button" className="home-tool-card sell-advisor-card" onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}>
-            <span className="home-tool-icon" aria-hidden="true">↗</span>
-            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span>
-            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
-          </button>
         </div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
