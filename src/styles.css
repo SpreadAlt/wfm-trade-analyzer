@@ -1444,7 +1444,7 @@ html[data-theme="light"] .pagination-buttons strong {
 }
 
 .filters-v3 {
-  grid-template-columns: minmax(250px, 1.5fr) repeat(3, minmax(135px, .62fr)) minmax(155px, .75fr) minmax(205px, .95fr) 92px;
+  grid-template-columns: minmax(250px, 1.5fr) minmax(135px, .62fr) minmax(135px, .62fr) minmax(155px, .75fr) minmax(205px, .95fr) 92px;
 }
 
 .table-settings-filter { z-index: 240; }
