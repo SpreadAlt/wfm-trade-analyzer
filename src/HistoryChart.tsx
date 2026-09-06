@@ -85,17 +85,35 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
   const activePoint = activeIndex == null ? null : visible[activeIndex]
   const activeX = activeIndex == null ? 0 : px(activeIndex)
   const tooltipPosition = activeX < width * .25 ? 'start' : activeX > width * .75 ? 'end' : 'center'
+  const isHourlySeries = visible.some(point => point.date.includes('T'))
   const visibleEvents = events.filter(event => {
     const at = Date.parse(event.startAt || '')
     return Number.isFinite(at) && at >= parsePointDate(visible[0].date) && at <= parsePointDate(visible[visible.length - 1].date)
   }).map(event => {
     const eventAt = Date.parse(event.startAt || '')
-    const firstAt = parsePointDate(visible[0].date)
-    const lastAt = parsePointDate(visible[visible.length - 1].date)
-    const ratio = Math.max(0, Math.min(1, (eventAt - firstAt) / Math.max(1, lastAt - firstAt)))
-    return { event, x: pad.left + ratio * innerW }
+    let x = pad.left
+    if (isHourlySeries) {
+      const firstAt = parsePointDate(visible[0].date)
+      const lastAt = parsePointDate(visible[visible.length - 1].date)
+      const ratio = Math.max(0, Math.min(1, (eventAt - firstAt) / Math.max(1, lastAt - firstAt)))
+      x = pad.left + ratio * innerW
+    } else {
+      const eventDateKey = new Date(eventAt).toISOString().slice(0, 10)
+      let matchedIndex = visible.findIndex(point => point.date.slice(0, 10) === eventDateKey)
+      if (matchedIndex < 0) {
+        let bestDistance = Number.POSITIVE_INFINITY
+        visible.forEach((point, index) => {
+          const distance = Math.abs(parsePointDate(point.date) - eventAt)
+          if (distance < bestDistance) {
+            bestDistance = distance
+            matchedIndex = index
+          }
+        })
+      }
+      x = px(Math.max(0, matchedIndex))
+    }
+    return { event, x }
   })
-  const visibleEventTypes = new Set(visibleEvents.map(({ event }) => event.eventType))
   const hasAverage = visible.some(point => averageValue(point) != null)
   const averageLabel = labels.average || (locale === 'ru' ? 'Среднее' : 'Average')
 
@@ -162,6 +180,5 @@ export const HistoryChart = ({ history, latestDate, range, locale, labels, event
       {visibleSeries.max ? <span><i className="tooltip-dot max-dot"/>{labels.max}<b>{activePoint.max == null ? '—' : fmtNumber(activePoint.max)}p</b></span> : null}
       {visibleSeries.sales ? <span><i className="tooltip-dot volume-dot"/>{labels.sales}<b>{activePoint.sales}</b></span> : null}
     </div> : null}
-    <div className="legend"><span><i className="legend-dot min-dot"/>{labels.min}</span><span><i className="legend-dot median-dot"/>{labels.median}</span>{hasAverage ? <span><i className="legend-dot average-dot"/>{averageLabel}</span> : null}<span><i className="legend-dot max-dot"/>{labels.max}</span><span><i className="legend-dot volume-dot"/>{labels.sales}</span>{visibleEventTypes.has('baro') ? <span><i className="event-legend-symbol baro">B</i>{marketEventName('baro', locale)}</span> : null}{visibleEventTypes.has('prime_resurgence') ? <span><AyaGlyph className="event-legend-aya"/>{marketEventName('prime_resurgence', locale)}</span> : null}</div>
   </div>
 }

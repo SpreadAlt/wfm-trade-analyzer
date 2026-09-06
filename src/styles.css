@@ -1452,8 +1452,8 @@ html[data-theme="light"] .pagination-buttons strong {
 .table-settings-section { padding-top: 11px; }
 .table-settings-section + .table-settings-section { margin-top: 10px; border-top: 1px solid #20324a; }
 .table-settings-section > strong { display: block; color: #8fa9c5; font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-.table-extra-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
-.table-extra-options .category-option { border: 1px solid #263a53; }
+.table-extra-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
+.table-extra-options .category-option { width:100%; border: 1px solid #263a53; }
 .range-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 10px; }
 .range-option { display: grid !important; grid-template-columns: auto 1fr; align-items: center; gap: 6px !important; min-width: 0; padding: 9px; border: 1px solid #263a53; border-radius: 9px; color: #b8cae1 !important; text-transform: none !important; letter-spacing: 0 !important; cursor: pointer; }
 .range-option input { margin: 0; }
