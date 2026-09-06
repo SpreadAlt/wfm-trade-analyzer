@@ -2059,3 +2059,106 @@ html[data-theme="light"] .tool-inline-points strong { color: #1877a8; }
   .home-tool-chip { grid-template-columns: 38px minmax(0,1fr); }
   .home-tool-chip-action { grid-column: 2; justify-self: start; }
 }
+
+/* Layout stability: keep route geometry stable while auth/data/chunks resolve. */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+.account-button { min-width: 112px; }
+.home-tool-chip-action { min-width: 78px; justify-content: flex-end; }
+.home-tool-chip:disabled { cursor: default; opacity: .78; transform: none; }
+
+.route-loading-shell { min-height: 760px; }
+.route-loading-nav { min-height: 90px; }
+.route-loading-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+  background: rgba(9,17,29,.84);
+}
+.route-loading-panel::after,
+.tool-panel-pending::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 20%, rgba(128,171,211,.055) 45%, rgba(128,171,211,.10) 50%, rgba(128,171,211,.055) 55%, transparent 80%);
+  transform: translateX(-100%);
+  animation: frameanalytics-loading-sweep 1.35s ease-in-out infinite;
+}
+.route-loading-hero { min-height: 176px; margin-bottom: 12px; }
+.route-loading-content { min-height: 430px; }
+.route-loading-title {
+  width: min(330px, 58%);
+  height: 30px;
+  margin-bottom: 22px;
+  border-radius: 8px;
+  background: rgba(105,138,174,.15);
+}
+.route-loading-bars { display: grid; gap: 11px; }
+.route-loading-bars i {
+  display: block;
+  width: 100%;
+  height: 15px;
+  border-radius: 7px;
+  background: rgba(105,138,174,.11);
+}
+.route-loading-bars i:nth-child(2n) { width: 82%; }
+.route-loading-bars i:nth-child(3n) { width: 66%; }
+
+.tool-panel-pending {
+  position: relative;
+  min-height: 330px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px;
+  overflow: hidden;
+}
+.tool-panel-pending > strong { color: #8ba4c0; font-size: 12px; }
+.tool-panel-pending .route-loading-bars { width: min(720px, 92%); margin-top: 14px; }
+
+.detail-loading-layout { display: grid; gap: 12px; min-height: 720px; }
+.detail-loading-hero { min-height: 170px; }
+.detail-loading-metrics { min-height: 150px; }
+.detail-loading-chart { min-height: 370px; }
+.detail-error-panel { min-height: 520px; }
+
+/* Prevent the first scanner fetch from collapsing the table and pushing the footer. */
+.table-panel { min-height: 500px; }
+.market-table .state-cell { height: 420px; }
+
+@keyframes frameanalytics-loading-sweep {
+  0% { transform: translateX(-100%); }
+  60%, 100% { transform: translateX(100%); }
+}
+
+html[data-theme="light"] .route-loading-panel,
+html[data-theme="light"] .tool-panel-pending { background: rgba(255,255,255,.92); }
+html[data-theme="light"] .route-loading-title,
+html[data-theme="light"] .route-loading-bars i { background: rgba(67,101,120,.10); }
+html[data-theme="light"] .route-loading-panel::after,
+html[data-theme="light"] .tool-panel-pending::after {
+  background: linear-gradient(100deg, transparent 20%, rgba(89,130,150,.035) 45%, rgba(89,130,150,.08) 50%, rgba(89,130,150,.035) 55%, transparent 80%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-panel::after,
+  .tool-panel-pending::after { animation: none; }
+}
+
+@media (max-width: 900px) {
+  .route-loading-shell { min-height: 680px; }
+  .route-loading-content { min-height: 360px; }
+  .detail-loading-layout { min-height: 640px; }
+  .market-table .state-cell { height: 340px; }
+}

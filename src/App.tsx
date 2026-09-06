@@ -22,11 +22,16 @@ import type {
   MarketEvent, MetricSeries, MetricsItem, PeriodAnalytics, Platform, ScannerItem, ScannerMode, ScannerSignal,
   SalesRange, ScannerSort, SortDirection, TimeRange
 } from './types'
-const SmartBuyPanel = lazy(() => import('./SmartBuy').then(module => ({ default: module.SmartBuyPanel })))
-const SellAdvisorPanel = lazy(() => import('./SellAdvisor').then(module => ({ default: module.SellAdvisorPanel })))
-const AdminItemsPage = lazy(() => import('./AdminItems').then(module => ({ default: module.AdminItemsPage })))
-const DeveloperDashboard = lazy(() => import('./DeveloperDashboard').then(module => ({ default: module.DeveloperDashboard })))
-const AxiScannerPage = lazy(() => import('./AxiScanner').then(module => ({ default: module.AxiScannerPage })))
+const loadSmartBuyModule = () => import('./SmartBuy')
+const loadSellAdvisorModule = () => import('./SellAdvisor')
+const loadAdminItemsModule = () => import('./AdminItems')
+const loadDeveloperModule = () => import('./DeveloperDashboard')
+const loadAxiScannerModule = () => import('./AxiScanner')
+const SmartBuyPanel = lazy(() => loadSmartBuyModule().then(module => ({ default: module.SmartBuyPanel })))
+const SellAdvisorPanel = lazy(() => loadSellAdvisorModule().then(module => ({ default: module.SellAdvisorPanel })))
+const AdminItemsPage = lazy(() => loadAdminItemsModule().then(module => ({ default: module.AdminItemsPage })))
+const DeveloperDashboard = lazy(() => loadDeveloperModule().then(module => ({ default: module.DeveloperDashboard })))
+const AxiScannerPage = lazy(() => loadAxiScannerModule().then(module => ({ default: module.AxiScannerPage })))
 type T = (key: TranslationKey) => string
 type OpenPanel = 'categories' | 'table' | null
 type PageSize = 25 | 50 | 100 | 200
@@ -727,6 +732,15 @@ const PaginationBar = ({ locale, page, pageCount, total, showingStart, showingEn
   const p = paginationText[locale]
   return <nav className="pagination-bar" aria-label={locale === 'ru' ? 'Навигация по страницам' : 'Page navigation'}><div className="pagination-range">{p.showing} <strong>{showingStart}–{showingEnd}</strong> {p.of} <strong>{total}</strong></div><div className="pagination-buttons"><button type="button" disabled={page <= 1} aria-label={p.first} onClick={() => onPage(1)}><PagerIcon direction="previous" edge/><span>{p.first}</span></button><button type="button" disabled={page <= 1} aria-label={p.previous} onClick={() => onPage(Math.max(1, page - 1))}><PagerIcon direction="previous"/><span>{p.previous}</span></button><span className="pagination-current">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></span><button type="button" disabled={page >= pageCount} aria-label={p.next} onClick={() => onPage(Math.min(pageCount, page + 1))}><span>{p.next}</span><PagerIcon direction="next"/></button><button type="button" disabled={page >= pageCount} aria-label={p.last} onClick={() => onPage(pageCount)}><span>{p.last}</span><PagerIcon direction="next" edge/></button></div></nav>
 }
+const LoadingBars = ({ count = 3 }: { count?: number }) => <div className="route-loading-bars" aria-hidden="true">{Array.from({ length: count }, (_, index) => <i key={index}/>)}</div>
+const RouteLoadingShell = ({ locale, kind }: { locale: Locale; kind: RouteState['kind'] }) => <main className={`app-shell route-loading-shell route-loading-${kind}`} aria-busy="true">
+  <div className="detail-navigation route-loading-nav"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a></div>
+  <section className="panel route-loading-panel route-loading-hero"><div className="route-loading-title"/><LoadingBars count={2}/></section>
+  <section className="panel route-loading-panel route-loading-content"><LoadingBars count={5}/></section>
+  <span className="sr-only">{locale === 'ru' ? 'Загрузка страницы' : 'Loading page'}</span>
+</main>
+const ToolPanelPending = ({ locale }: { locale: Locale }) => <section className="panel tool-panel-pending" aria-busy="true"><div className="spinner"/><strong>{locale === 'ru' ? 'Проверяем сессию…' : 'Checking session…'}</strong><LoadingBars count={3}/></section>
+
 const AccountGate = ({ locale, setLocale, auth }: { locale: Locale; setLocale: (value: Locale) => void; auth: FrameAccountController }) => {
   return <main className="app-shell closed-beta-shell">
     <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><div className="account-language-control"><span>{translations[locale].language}</span><CustomPicker compact value={locale} label={translations[locale].language} options={Object.entries(localeNames).map(([value, label]) => ({ value, label }))} onChange={value => setLocale(value as Locale)}/></div></header>
@@ -853,7 +867,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
   useEffect(() => { setChartRange(periodRange(period)) }, [period])
   return <main className="app-shell detail-shell">
     <div className="detail-navigation"><a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><button className="back-button" onClick={onBack}>{t('back')}</button></div>
-    {loading ? <section className="panel state-panel"><div className="spinner"/><strong>{u.loading}</strong></section> : error || !detail ? <section className="panel state-panel error-state"><strong>{u.loadError}</strong><button className="retry-button" onClick={onRetry}>{u.retry}</button></section> : <>
+    {loading ? <div className="detail-loading-layout" aria-busy="true"><section className="panel route-loading-panel detail-loading-hero"><div className="route-loading-title"/><LoadingBars count={2}/></section><section className="panel route-loading-panel detail-loading-metrics"><LoadingBars count={3}/></section><section className="panel route-loading-panel detail-loading-chart"><LoadingBars count={5}/></section></div> : error || !detail ? <section className="panel state-panel error-state detail-error-panel"><strong>{u.loadError}</strong><button className="retry-button" onClick={onRetry}>{u.retry}</button></section> : <>
       <section className="detail-hero panel">
         <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)}</div><h1>{name}{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale}/> : null}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{selectedRank != null || canonicalRank != null ? <span>{x.rank}: {selectedRank ?? canonicalRank}</span> : null}{!series?.hasHistory && !hourlySeries ? <span className="no-history-tag">{x.noHistory}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
         <div className="detail-actions"><div className="detail-action-row"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={hasAccount} pending={accountLoading} onClick={onOpenAccount}/></div>{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><CustomPicker value={variantKey || ''} label={x.variant} options={[{ value: '', label: x.chooseVariant }, ...Object.entries(detail.variants).map(([key, value]) => ({ value: key, label: formatDimensions(value.dimensions, locale) || key }))]} onChange={value => onVariant(value || null)}/></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><CustomPicker value={String(selectedRank ?? canonicalRank ?? '')} label={x.rank} options={rankOptions.map(rank => ({ value: String(rank), label: `${x.rank} ${rank}` }))} onChange={value => onRank(value === '' ? null : Number(value))}/></label> : null}<div className="detail-meta-row"><span>{t('updated')}: <strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong></span><button type="button" className="portfolio-add" onClick={() => hasAccount ? setPurchaseOpen(true) : onOpenAccount()}>{locale === 'ru' ? 'Добавить покупку' : 'Add purchase'}</button></div></div>
@@ -888,9 +902,11 @@ const SmartBuyPage = ({ auth, locale, catalog, onBack, onSignIn }: {
     </div>
     <ToolInlineIntro locale={locale} kind="smartbuy"/>
     <div className="tool-page-ad"><AdPlacement slot={ADSENSE_SLOTS.smartBuy} format="horizontal" style={{ minHeight: 180 }}/></div>
-    {auth.account
-      ? <SmartBuyPanel locale={locale} catalog={compactCatalog} auth={auth} standalone/>
-      : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
+    {auth.loading
+      ? <ToolPanelPending locale={locale}/>
+      : auth.account
+        ? <SmartBuyPanel locale={locale} catalog={compactCatalog} auth={auth} standalone/>
+        : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
   </main>
 }
 
@@ -909,9 +925,11 @@ const SellAdvisorPage = ({ auth, locale, catalog, onBack, onSignIn }: {
     </div>
     <ToolInlineIntro locale={locale} kind="selladvisor"/>
     <div className="tool-page-ad"><AdPlacement slot={ADSENSE_SLOTS.sellAdvisor} format="horizontal" style={{ minHeight: 180 }}/></div>
-    {auth.account
-      ? <SellAdvisorPanel locale={locale} catalog={catalog} auth={auth}/>
-      : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
+    {auth.loading
+      ? <ToolPanelPending locale={locale}/>
+      : auth.account
+        ? <SellAdvisorPanel locale={locale} catalog={catalog} auth={auth}/>
+        : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
   </main>
 }
 
@@ -1152,6 +1170,16 @@ export default function App() {
   })
   const [temporaryAccount, setTemporaryAccount] = useState<TemporaryAccount | null>(loadTemporaryAccount)
   const auth = useFrameAccount()
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadSmartBuyModule()
+      void loadSellAdvisorModule()
+      void loadAdminItemsModule()
+      void loadDeveloperModule()
+      void loadAxiScannerModule()
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [])
   const [marketEvents, setMarketEvents] = useState<MarketEvent[]>([])
   const popoverRef = useRef<HTMLElement | null>(null)
   const hourlyCheckedAt = useRef<Record<string, number>>({})
@@ -1786,7 +1814,14 @@ export default function App() {
       <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
     </>
   }
-  if (ACCOUNT_REQUIRED_ROUTES.has(route.kind) && (auth.loading || !auth.account)) {
+  if (ACCOUNT_REQUIRED_ROUTES.has(route.kind) && auth.loading) {
+    return <>
+      <div className="background-layer"/><div className="background-shade"/>
+      <RouteLoadingShell locale={locale} kind={route.kind}/>
+      <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
+    </>
+  }
+  if (ACCOUNT_REQUIRED_ROUTES.has(route.kind) && !auth.account) {
     return <>
       <div className="background-layer"/><div className="background-shade"/>
       <AccountGate locale={locale} setLocale={setLocale} auth={auth}/>
@@ -1795,9 +1830,9 @@ export default function App() {
   }
   return <>
     <div className="background-layer"/><div className="background-shade"/>
-    <Suspense fallback={<main className="app-shell"><section className="panel smart-buy-state"><div className="spinner"/></section></main>}>
+    <Suspense fallback={<RouteLoadingShell locale={locale} kind={route.kind}/>}>
     {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} accountLoading={auth.loading} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy} onSignIn={openPortfolio}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor} onSignIn={openPortfolio}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
-      <header className="topbar topbar-home"><div className="topbar-brand"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-side"><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} pending={auth.loading} onClick={openPortfolio}/></div><div className="home-tools-inline" aria-label={toolGuideCopy(locale).toolsTitle}><button type="button" className="home-tool-chip smart-buy-card" onClick={() => auth.account ? openSmartBuy() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">⌁</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span><span className="home-tool-chip-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button><button type="button" className="home-tool-chip sell-advisor-card" onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">↗</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span><span className="home-tool-chip-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button></div></div></header>
+      <header className="topbar topbar-home"><div className="topbar-brand"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-side"><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} pending={auth.loading} onClick={openPortfolio}/></div><div className="home-tools-inline" aria-label={toolGuideCopy(locale).toolsTitle}><button type="button" className="home-tool-chip smart-buy-card" disabled={auth.loading} onClick={() => auth.account ? openSmartBuy() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">⌁</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span><span className="home-tool-chip-action">{auth.loading ? '···' : auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button><button type="button" className="home-tool-chip sell-advisor-card" disabled={auth.loading} onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">↗</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span><span className="home-tool-chip-action">{auth.loading ? '···' : auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button></div></div></header>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
         <label><span>{t('minPrice')}</span><div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={event => setMinPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
