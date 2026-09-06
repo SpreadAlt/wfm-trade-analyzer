@@ -1055,24 +1055,6 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
         <div className="filter-field category-filter"><span>{u.categories}</span><PickerToggleButton label={u.categories} selected={selectedCategories.length} total={CATEGORY_IDS.length} open={categoriesOpen} onClick={() => setCategoriesOpen(current => !current)}/>{categoriesOpen ? <div className="category-panel picker-popover" role="dialog" aria-label={u.categories}><div className="category-actions"><button type="button" onClick={() => setSelectedCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setSelectedCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={selectedCategories.includes(id)} onChange={() => setSelectedCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
       </section>
 
-      <section className="home-tools-section" aria-label={toolGuideCopy(locale).toolsTitle}>
-        <div className="home-tools-heading">
-          <div><div className="eyebrow">{toolGuideCopy(locale).toolsTitle}</div><h2>{toolGuideCopy(locale).toolsTitle}</h2></div>
-          <p>{toolGuideCopy(locale).toolsLead}</p>
-        </div>
-        <div className="home-tools-grid">
-          <button type="button" className="home-tool-card smart-buy-card" onClick={() => auth.account ? openSmartBuy() : openPortfolio()}>
-            <span className="home-tool-icon" aria-hidden="true">⌁</span>
-            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span>
-            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
-          </button>
-          <button type="button" className="home-tool-card sell-advisor-card" onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}>
-            <span className="home-tool-icon" aria-hidden="true">↗</span>
-            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span>
-            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
-          </button>
-        </div>
-      </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{filteredEntries.length}</strong>{loading && !blockingLoading ? <em>{ru ? 'обновляем цены…' : 'refreshing prices…'}</em> : null}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className={`panel table-panel portfolio-table-panel ${loading && !blockingLoading ? 'table-refreshing' : ''}`} aria-busy={loading}><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
         <th><button className="sort-button" onClick={() => changeSort('name')}><span>{t('item')}</span><span className="sort-indicator">{indicator('name')}</span></button></th>
@@ -1824,6 +1806,24 @@ export default function App() {
         <div className="event-filter-group">
           <button type="button" className={`event-filter-button baro-icon-button ${baroOnly ? 'active' : ''}`} aria-pressed={baroOnly} aria-label={x.currentBaro} title={baroInventory.ids.length ? baroInventory.isPast ? x.latestBaroHint : x.currentBaroHint : x.currentBaroEmpty} onClick={() => setSpecialEventFilter(current => current === 'baro' ? 'all' : 'baro')}><svg viewBox="0 0 32 38" aria-hidden="true"><path className="baro-glyph-stroke" d="m16 2 4 4-4 4-4-4 4-4ZM7.5 8.5l4 4-4 4-4-4 4-4Zm17 0 4 4-4 4-4-4 4-4ZM16 10l9 9-9 9-9-9 9-9Zm0 5 4 4-4 4-4-4 4-4Z"/><path className="baro-glyph-fill" d="m11 32 5 5 5-5Z"/></svg></button>
           <button type="button" className={`event-filter-button resurgence-icon-button ${resurgenceOnly ? 'active' : ''}`} aria-pressed={resurgenceOnly} aria-label={x.currentResurgence} title={activeResurgenceIds.length ? x.currentResurgenceHint : x.currentResurgenceEmpty} onClick={() => setSpecialEventFilter(current => current === 'prime_resurgence' ? 'all' : 'prime_resurgence')}><AyaGlyph/></button>
+        </div>
+      </section>
+      <section className="home-tools-section" aria-label={toolGuideCopy(locale).toolsTitle}>
+        <div className="home-tools-heading">
+          <div><div className="eyebrow">{toolGuideCopy(locale).toolsTitle}</div><h2>{toolGuideCopy(locale).toolsTitle}</h2></div>
+          <p>{toolGuideCopy(locale).toolsLead}</p>
+        </div>
+        <div className="home-tools-grid">
+          <button type="button" className="home-tool-card smart-buy-card" onClick={() => auth.account ? openSmartBuy() : openPortfolio()}>
+            <span className="home-tool-icon" aria-hidden="true">⌁</span>
+            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span>
+            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
+          </button>
+          <button type="button" className="home-tool-card sell-advisor-card" onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}>
+            <span className="home-tool-icon" aria-hidden="true">↗</span>
+            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span>
+            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
+          </button>
         </div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{activeTotal}</strong>{scannerData || hourlyIndexData ? <em>{(hourlySortActive ? hourlyIndexData?.catalogTotal : scannerData?.catalogTotal) ?? 3837} {x.catalogSummary} · {(hourlySortActive ? hourlyIndexData?.marketSeries : scannerData?.marketSeries ?? scannerData?.totalItems) ?? 0} {x.seriesSummary}</em> : null}</div><div className="range-load-state">{hourlyIndexLoading ? x.loadingHourly : hourlyLoading ? x.loadingHourly : hourlyPartial ? x.hourlyPartial : rangesLoading ? x.loadingRanges : rangesError ? x.rangesError : ''}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
