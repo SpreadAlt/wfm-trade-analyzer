@@ -40,7 +40,9 @@ const ADSENSE_CLIENT = 'ca-pub-2843566361106419'
 const DEFAULT_ADSENSE_SLOT = (import.meta as any).env?.VITE_ADSENSE_SLOT_DEFAULT || ''
 const ADSENSE_SLOTS = {
   scannerRail: (import.meta as any).env?.VITE_ADSENSE_SLOT_SCANNER_RAIL || DEFAULT_ADSENSE_SLOT,
-  detailRail: (import.meta as any).env?.VITE_ADSENSE_SLOT_DETAIL_RAIL || DEFAULT_ADSENSE_SLOT
+  detailRail: (import.meta as any).env?.VITE_ADSENSE_SLOT_DETAIL_RAIL || DEFAULT_ADSENSE_SLOT,
+  smartBuy: (import.meta as any).env?.VITE_ADSENSE_SLOT_SMARTBUY || DEFAULT_ADSENSE_SLOT,
+  sellAdvisor: (import.meta as any).env?.VITE_ADSENSE_SLOT_SELLADVISOR || DEFAULT_ADSENSE_SLOT
 }
 const RESALE_NOTIFY_KEY = 'frameanalytics.resale-v1.notifications'
 const RESALE_NOTIFIED_SCAN_KEY = 'frameanalytics.resale-v1.notified-scan'
@@ -83,6 +85,281 @@ const AdPlacement = ({ slot, className = '', format = 'auto', style }: {
     />
   </div>
 }
+
+type ToolGuideCopy = {
+  toolsTitle: string
+  toolsLead: string
+  smartBuyTitle: string
+  smartBuySummary: string
+  smartBuyPoints: [string, string, string]
+  sellAdvisorTitle: string
+  sellAdvisorSummary: string
+  sellAdvisorPoints: [string, string, string]
+  open: string
+  signIn: string
+  locked: string
+  howItWorks: string
+}
+
+const TOOL_GUIDE_COPY: Partial<Record<Locale, ToolGuideCopy>> = {
+  en: {
+    toolsTitle: 'Market tools',
+    toolsLead: 'Use focused tools for buying and selling without leaving FrameAnalytics.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Compares your active visible buy orders with current seller offers and groups useful offers by seller.',
+    smartBuyPoints: ['Uses your active visible buy orders.', 'Compares price, available quantity and current seller offers.', 'Groups matching items by seller to reduce unnecessary searches.'],
+    sellAdvisorTitle: 'Sell Advisor',
+    sellAdvisorSummary: 'Reviews your active sell orders against recent closed-sale statistics and shows a practical price reference.',
+    sellAdvisorPoints: ['Uses your active visible sell orders.', 'Compares current orders with recent closed-sale data.', 'Shows the suggested price direction and the difference from your current order.'],
+    open: 'Open',
+    signIn: 'Sign in to use',
+    locked: 'The analysis itself is available after sign-in. The explanation and methodology remain public.',
+    howItWorks: 'How it works'
+  },
+  ru: {
+    toolsTitle: 'Инструменты рынка',
+    toolsLead: 'Умная покупка и Помощник по продаже — важная часть FrameAnalytics и доступны прямо с главной.',
+    smartBuyTitle: 'Умная покупка',
+    smartBuySummary: 'Сравнивает ваши активные публичные ордера на покупку с текущими предложениями продавцов и группирует подходящие предложения по продавцам.',
+    smartBuyPoints: ['Использует ваши активные публичные ордера на покупку.', 'Сравнивает цену, доступное количество и актуальные предложения продавцов.', 'Группирует подходящие предметы по продавцам, чтобы сократить лишние поиски.'],
+    sellAdvisorTitle: 'Помощник по продаже',
+    sellAdvisorSummary: 'Сравнивает ваши активные ордера на продажу со статистикой закрытых сделок и показывает ориентир по цене.',
+    sellAdvisorPoints: ['Использует ваши активные публичные ордера на продажу.', 'Сравнивает текущую цену с недавними закрытыми сделками.', 'Показывает направление корректировки цены и разницу с текущим ордером.'],
+    open: 'Открыть',
+    signIn: 'Войти для использования',
+    locked: 'Сам анализ доступен после авторизации. Описание работы и методика остаются публичными.',
+    howItWorks: 'Как это работает'
+  },
+  de: {
+    toolsTitle: 'Marktwerkzeuge',
+    toolsLead: 'Smart Buy und der Verkaufsassistent sind zentrale FrameAnalytics-Werkzeuge und direkt von der Startseite erreichbar.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Vergleicht deine aktiven sichtbaren Kaufaufträge mit aktuellen Verkäuferangeboten und gruppiert passende Angebote nach Verkäufer.',
+    smartBuyPoints: ['Verwendet deine aktiven sichtbaren Kaufaufträge.', 'Vergleicht Preis, verfügbare Menge und aktuelle Verkäuferangebote.', 'Gruppiert passende Gegenstände nach Verkäufer.'],
+    sellAdvisorTitle: 'Verkaufsassistent',
+    sellAdvisorSummary: 'Vergleicht deine aktiven Verkaufsaufträge mit Statistiken abgeschlossener Verkäufe und zeigt eine Preisorientierung.',
+    sellAdvisorPoints: ['Verwendet deine aktiven sichtbaren Verkaufsaufträge.', 'Vergleicht aktuelle Preise mit jüngsten abgeschlossenen Verkäufen.', 'Zeigt Preisrichtung und Abweichung vom aktuellen Auftrag.'],
+    open: 'Öffnen',
+    signIn: 'Zum Verwenden anmelden',
+    locked: 'Die Analyse selbst ist nach der Anmeldung verfügbar. Beschreibung und Methodik bleiben öffentlich.',
+    howItWorks: 'So funktioniert es'
+  },
+  fr: {
+    toolsTitle: 'Outils de marché',
+    toolsLead: 'Smart Buy et l’assistant de vente sont des outils importants de FrameAnalytics accessibles depuis l’accueil.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Compare vos ordres d’achat publics actifs aux offres vendeurs actuelles et regroupe les offres utiles par vendeur.',
+    smartBuyPoints: ['Utilise vos ordres d’achat publics actifs.', 'Compare le prix, la quantité disponible et les offres vendeurs.', 'Regroupe les objets correspondants par vendeur.'],
+    sellAdvisorTitle: 'Assistant de vente',
+    sellAdvisorSummary: 'Compare vos ordres de vente actifs aux statistiques de ventes conclues récentes et fournit un repère de prix.',
+    sellAdvisorPoints: ['Utilise vos ordres de vente publics actifs.', 'Compare le prix actuel aux ventes conclues récentes.', 'Indique la direction de prix et l’écart avec votre ordre.'],
+    open: 'Ouvrir',
+    signIn: 'Se connecter pour utiliser',
+    locked: 'L’analyse elle-même est disponible après connexion. L’explication et la méthode restent publiques.',
+    howItWorks: 'Fonctionnement'
+  },
+  es: {
+    toolsTitle: 'Herramientas de mercado',
+    toolsLead: 'Smart Buy y el asistente de venta son herramientas importantes de FrameAnalytics disponibles desde la página principal.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Compara tus órdenes de compra públicas activas con ofertas actuales y agrupa las opciones útiles por vendedor.',
+    smartBuyPoints: ['Usa tus órdenes de compra públicas activas.', 'Compara precio, cantidad disponible y ofertas actuales.', 'Agrupa los artículos coincidentes por vendedor.'],
+    sellAdvisorTitle: 'Asistente de venta',
+    sellAdvisorSummary: 'Compara tus órdenes de venta activas con estadísticas recientes de ventas cerradas y ofrece una referencia de precio.',
+    sellAdvisorPoints: ['Usa tus órdenes de venta públicas activas.', 'Compara el precio actual con ventas cerradas recientes.', 'Muestra la dirección del precio y la diferencia frente a tu orden.'],
+    open: 'Abrir',
+    signIn: 'Inicia sesión para usar',
+    locked: 'El análisis está disponible después de iniciar sesión. La explicación y la metodología siguen siendo públicas.',
+    howItWorks: 'Cómo funciona'
+  },
+  pt: {
+    toolsTitle: 'Ferramentas de mercado',
+    toolsLead: 'Smart Buy e o assistente de venda são ferramentas importantes do FrameAnalytics e ficam acessíveis na página inicial.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Compara suas ordens públicas de compra ativas com ofertas atuais e agrupa opções úteis por vendedor.',
+    smartBuyPoints: ['Usa suas ordens públicas de compra ativas.', 'Compara preço, quantidade disponível e ofertas atuais.', 'Agrupa itens compatíveis por vendedor.'],
+    sellAdvisorTitle: 'Assistente de venda',
+    sellAdvisorSummary: 'Compara suas ordens de venda ativas com estatísticas recentes de vendas concluídas e mostra uma referência de preço.',
+    sellAdvisorPoints: ['Usa suas ordens públicas de venda ativas.', 'Compara o preço atual com vendas concluídas recentes.', 'Mostra a direção do preço e a diferença em relação à sua ordem.'],
+    open: 'Abrir',
+    signIn: 'Entrar para usar',
+    locked: 'A análise fica disponível após o login. A explicação e a metodologia continuam públicas.',
+    howItWorks: 'Como funciona'
+  },
+  pl: {
+    toolsTitle: 'Narzędzia rynku',
+    toolsLead: 'Smart Buy i asystent sprzedaży to ważne narzędzia FrameAnalytics dostępne bezpośrednio ze strony głównej.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Porównuje aktywne publiczne zlecenia kupna z bieżącymi ofertami i grupuje przydatne oferty według sprzedawcy.',
+    smartBuyPoints: ['Korzysta z aktywnych publicznych zleceń kupna.', 'Porównuje cenę, dostępną ilość i aktualne oferty.', 'Grupuje pasujące przedmioty według sprzedawcy.'],
+    sellAdvisorTitle: 'Asystent sprzedaży',
+    sellAdvisorSummary: 'Porównuje aktywne zlecenia sprzedaży ze statystykami ostatnich zamkniętych transakcji i pokazuje punkt odniesienia dla ceny.',
+    sellAdvisorPoints: ['Korzysta z aktywnych publicznych zleceń sprzedaży.', 'Porównuje aktualną cenę z ostatnimi zamkniętymi transakcjami.', 'Pokazuje kierunek zmiany ceny i różnicę względem obecnego zlecenia.'],
+    open: 'Otwórz',
+    signIn: 'Zaloguj się, aby użyć',
+    locked: 'Sama analiza jest dostępna po zalogowaniu. Opis i metodologia pozostają publiczne.',
+    howItWorks: 'Jak to działa'
+  },
+  uk: {
+    toolsTitle: 'Інструменти ринку',
+    toolsLead: 'Розумна покупка та Помічник з продажу — важливі інструменти FrameAnalytics, доступні прямо з головної сторінки.',
+    smartBuyTitle: 'Розумна покупка',
+    smartBuySummary: 'Порівнює ваші активні публічні ордери на купівлю з поточними пропозиціями продавців і групує корисні пропозиції за продавцями.',
+    smartBuyPoints: ['Використовує активні публічні ордери на купівлю.', 'Порівнює ціну, доступну кількість і актуальні пропозиції.', 'Групує відповідні предмети за продавцями.'],
+    sellAdvisorTitle: 'Помічник з продажу',
+    sellAdvisorSummary: 'Порівнює активні ордери на продаж зі статистикою недавніх закритих угод і показує орієнтир ціни.',
+    sellAdvisorPoints: ['Використовує активні публічні ордери на продаж.', 'Порівнює поточну ціну з недавніми закритими угодами.', 'Показує напрямок зміни ціни та різницю з поточним ордером.'],
+    open: 'Відкрити',
+    signIn: 'Увійти для використання',
+    locked: 'Сам аналіз доступний після авторизації. Опис і методика залишаються публічними.',
+    howItWorks: 'Як це працює'
+  },
+  tr: {
+    toolsTitle: 'Pazar araçları',
+    toolsLead: 'Smart Buy ve Satış Yardımcısı, FrameAnalytics’in önemli araçlarıdır ve ana sayfadan erişilebilir.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Aktif herkese açık alış emirlerinizi güncel satıcı teklifleriyle karşılaştırır ve uygun teklifleri satıcıya göre gruplar.',
+    smartBuyPoints: ['Aktif herkese açık alış emirlerinizi kullanır.', 'Fiyatı, mevcut miktarı ve güncel teklifleri karşılaştırır.', 'Eşleşen ürünleri satıcıya göre gruplar.'],
+    sellAdvisorTitle: 'Satış Yardımcısı',
+    sellAdvisorSummary: 'Aktif satış emirlerinizi yakın zamandaki tamamlanmış satışlarla karşılaştırır ve fiyat referansı sunar.',
+    sellAdvisorPoints: ['Aktif herkese açık satış emirlerinizi kullanır.', 'Mevcut fiyatı yakın zamandaki satışlarla karşılaştırır.', 'Fiyat yönünü ve mevcut emre göre farkı gösterir.'],
+    open: 'Aç',
+    signIn: 'Kullanmak için giriş yap',
+    locked: 'Analizin kendisi giriş yaptıktan sonra kullanılabilir. Açıklama ve yöntem herkese açıktır.',
+    howItWorks: 'Nasıl çalışır'
+  },
+  it: {
+    toolsTitle: 'Strumenti di mercato',
+    toolsLead: 'Smart Buy e Assistente vendite sono strumenti importanti di FrameAnalytics accessibili dalla pagina principale.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Confronta i tuoi ordini di acquisto pubblici attivi con le offerte correnti e raggruppa le opzioni utili per venditore.',
+    smartBuyPoints: ['Usa i tuoi ordini di acquisto pubblici attivi.', 'Confronta prezzo, quantità disponibile e offerte correnti.', 'Raggruppa gli oggetti corrispondenti per venditore.'],
+    sellAdvisorTitle: 'Assistente vendite',
+    sellAdvisorSummary: 'Confronta i tuoi ordini di vendita attivi con statistiche recenti delle vendite concluse e mostra un riferimento di prezzo.',
+    sellAdvisorPoints: ['Usa i tuoi ordini di vendita pubblici attivi.', 'Confronta il prezzo attuale con vendite concluse recenti.', 'Mostra la direzione del prezzo e la differenza rispetto al tuo ordine.'],
+    open: 'Apri',
+    signIn: 'Accedi per usare',
+    locked: 'L’analisi è disponibile dopo l’accesso. Spiegazione e metodologia restano pubbliche.',
+    howItWorks: 'Come funziona'
+  },
+  sv: {
+    toolsTitle: 'Marknadsverktyg',
+    toolsLead: 'Smart Buy och säljassistenten är viktiga FrameAnalytics-verktyg som nås direkt från startsidan.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Jämför dina aktiva offentliga köpordrar med aktuella säljerbjudanden och grupperar användbara erbjudanden per säljare.',
+    smartBuyPoints: ['Använder dina aktiva offentliga köpordrar.', 'Jämför pris, tillgängligt antal och aktuella erbjudanden.', 'Grupperar matchande föremål per säljare.'],
+    sellAdvisorTitle: 'Säljassistent',
+    sellAdvisorSummary: 'Jämför dina aktiva säljordrar med nyligen avslutade försäljningar och visar en prisreferens.',
+    sellAdvisorPoints: ['Använder dina aktiva offentliga säljordrar.', 'Jämför aktuellt pris med nyligen avslutade försäljningar.', 'Visar prisriktning och skillnad mot din nuvarande order.'],
+    open: 'Öppna',
+    signIn: 'Logga in för att använda',
+    locked: 'Själva analysen är tillgänglig efter inloggning. Förklaring och metodik förblir offentliga.',
+    howItWorks: 'Så fungerar det'
+  },
+  cs: {
+    toolsTitle: 'Tržní nástroje',
+    toolsLead: 'Smart Buy a pomocník pro prodej jsou důležité nástroje FrameAnalytics dostupné přímo z hlavní stránky.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: 'Porovnává vaše aktivní veřejné objednávky nákupu s aktuálními nabídkami a seskupuje vhodné nabídky podle prodejce.',
+    smartBuyPoints: ['Používá aktivní veřejné objednávky nákupu.', 'Porovnává cenu, dostupné množství a aktuální nabídky.', 'Seskupuje odpovídající předměty podle prodejce.'],
+    sellAdvisorTitle: 'Pomocník pro prodej',
+    sellAdvisorSummary: 'Porovnává aktivní objednávky prodeje s nedávnými uzavřenými obchody a ukazuje cenové vodítko.',
+    sellAdvisorPoints: ['Používá aktivní veřejné objednávky prodeje.', 'Porovnává aktuální cenu s nedávnými uzavřenými obchody.', 'Ukazuje směr ceny a rozdíl vůči aktuální objednávce.'],
+    open: 'Otevřít',
+    signIn: 'Pro použití se přihlaste',
+    locked: 'Samotná analýza je dostupná po přihlášení. Popis a metodika zůstávají veřejné.',
+    howItWorks: 'Jak to funguje'
+  },
+  ja: {
+    toolsTitle: 'マーケットツール',
+    toolsLead: 'Smart Buy と販売アシスタントは FrameAnalytics の主要ツールで、トップページから利用できます。',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: '公開中の買い注文と現在の売り手オファーを比較し、有用な候補を売り手ごとにまとめます。',
+    smartBuyPoints: ['公開中の買い注文を使用します。', '価格、在庫数、現在の売りオファーを比較します。', '一致するアイテムを売り手ごとにまとめます。'],
+    sellAdvisorTitle: '販売アシスタント',
+    sellAdvisorSummary: '公開中の売り注文を最近の成立取引統計と比較し、価格の目安を示します。',
+    sellAdvisorPoints: ['公開中の売り注文を使用します。', '現在価格を最近の成立取引と比較します。', '価格方向と現在の注文との差を表示します。'],
+    open: '開く',
+    signIn: '使用するにはログイン',
+    locked: '分析機能はログイン後に利用できます。説明と方法は公開されています。',
+    howItWorks: '仕組み'
+  },
+  ko: {
+    toolsTitle: '마켓 도구',
+    toolsLead: 'Smart Buy와 판매 도우미는 FrameAnalytics의 주요 도구이며 메인 페이지에서 바로 접근할 수 있습니다.',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: '활성 공개 구매 주문을 현재 판매 제안과 비교하고 유용한 제안을 판매자별로 묶습니다.',
+    smartBuyPoints: ['활성 공개 구매 주문을 사용합니다.', '가격, 수량, 현재 판매 제안을 비교합니다.', '일치하는 아이템을 판매자별로 그룹화합니다.'],
+    sellAdvisorTitle: '판매 도우미',
+    sellAdvisorSummary: '활성 판매 주문을 최근 체결 거래 통계와 비교하고 가격 기준을 보여 줍니다.',
+    sellAdvisorPoints: ['활성 공개 판매 주문을 사용합니다.', '현재 가격을 최근 체결 거래와 비교합니다.', '가격 방향과 현재 주문과의 차이를 표시합니다.'],
+    open: '열기',
+    signIn: '사용하려면 로그인',
+    locked: '분석 기능은 로그인 후 사용할 수 있습니다. 설명과 방법은 공개 상태로 유지됩니다.',
+    howItWorks: '작동 방식'
+  },
+  'zh-hans': {
+    toolsTitle: '市场工具',
+    toolsLead: 'Smart Buy 和出售助手是 FrameAnalytics 的重要工具，可直接从主页进入。',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: '将你的公开有效买单与当前卖家报价进行比较，并按卖家汇总合适的报价。',
+    smartBuyPoints: ['使用公开有效的买单。', '比较价格、可用数量和当前卖家报价。', '按卖家汇总匹配的物品。'],
+    sellAdvisorTitle: '出售助手',
+    sellAdvisorSummary: '将公开有效卖单与近期已成交统计进行比较，并给出价格参考。',
+    sellAdvisorPoints: ['使用公开有效的卖单。', '将当前价格与近期已成交记录比较。', '显示价格调整方向和与当前订单的差异。'],
+    open: '打开',
+    signIn: '登录后使用',
+    locked: '分析功能需要登录后使用；说明和方法保持公开。',
+    howItWorks: '工作方式'
+  },
+  'zh-hant': {
+    toolsTitle: '市場工具',
+    toolsLead: 'Smart Buy 和出售助手是 FrameAnalytics 的重要工具，可直接從首頁進入。',
+    smartBuyTitle: 'Smart Buy',
+    smartBuySummary: '將你的公開有效買單與目前賣家報價比較，並依賣家彙整合適的報價。',
+    smartBuyPoints: ['使用公開有效的買單。', '比較價格、可用數量與目前賣家報價。', '依賣家彙整符合的物品。'],
+    sellAdvisorTitle: '出售助手',
+    sellAdvisorSummary: '將公開有效賣單與近期已成交統計比較，並提供價格參考。',
+    sellAdvisorPoints: ['使用公開有效的賣單。', '將目前價格與近期已成交紀錄比較。', '顯示價格調整方向與目前訂單的差異。'],
+    open: '開啟',
+    signIn: '登入後使用',
+    locked: '分析功能需登入後使用；說明與方法維持公開。',
+    howItWorks: '運作方式'
+  }
+}
+
+const toolGuideCopy = (locale: Locale): ToolGuideCopy => TOOL_GUIDE_COPY[locale] || TOOL_GUIDE_COPY.en!
+
+const smartBuyDisplayName = (value: string) => value.replace(/\bBlueprint\b/gi, 'BP')
+
+const smartBuyDisplayCatalog = (catalog: Map<string, CatalogItem>) => new Map(
+  [...catalog.entries()].map(([id, item]) => {
+    const copy = { ...item } as CatalogItem & Record<string, unknown>
+    if (typeof copy.name === 'string') copy.name = smartBuyDisplayName(copy.name)
+    if (typeof copy.displayName === 'string') copy.displayName = smartBuyDisplayName(copy.displayName)
+    return [id, copy as CatalogItem]
+  })
+)
+
+const ToolEditorial = ({ locale, kind }: { locale: Locale; kind: 'smartbuy' | 'selladvisor' }) => {
+  const copy = toolGuideCopy(locale)
+  const smartBuy = kind === 'smartbuy'
+  const title = smartBuy ? copy.smartBuyTitle : copy.sellAdvisorTitle
+  const summary = smartBuy ? copy.smartBuySummary : copy.sellAdvisorSummary
+  const points = smartBuy ? copy.smartBuyPoints : copy.sellAdvisorPoints
+  return <section className="panel tool-editorial">
+    <div className="tool-editorial-heading">
+      <div><div className="eyebrow">{copy.toolsTitle}</div><h1>{title}</h1></div>
+      <p>{summary}</p>
+    </div>
+    <div className="tool-method-grid">
+      <article><strong>01</strong><span>{points[0]}</span></article>
+      <article><strong>02</strong><span>{points[1]}</span></article>
+      <article><strong>03</strong><span>{points[2]}</span></article>
+    </div>
+  </section>
+}
+
 const PAGE_SIZES: PageSize[] = [25, 50, 100, 200]
 const TIME_RANGES: TimeRange[] = ['1h', '4h', '12h', '24h', '7d', '30d', '90d', '180d']
 const DEFAULT_RANGES: TimeRange[] = ['24h', '7d', '30d']
@@ -404,7 +681,7 @@ const loadOptionalColumns = (): OptionalColumn[] => {
   } catch { return DEFAULT_OPTIONAL_COLUMNS }
 }
 type RouteState = { kind: 'scanner' | 'item' | 'portfolio' | 'smartbuy' | 'selladvisor' | 'adminitems' | 'developer' | 'axiscanner' | 'info'; slug: string | null; id: string | null; variant: string | null; rank: number | null }
-const ACCOUNT_REQUIRED_ROUTES = new Set<RouteState['kind']>(['portfolio', 'smartbuy', 'selladvisor', 'adminitems', 'developer', 'axiscanner'])
+const ACCOUNT_REQUIRED_ROUTES = new Set<RouteState['kind']>(['portfolio', 'adminitems', 'developer', 'axiscanner'])
 const readRoute = (): RouteState => {
   const match = location.pathname.match(/^\/items?\/([^/]+)\/?$/)
   const params = new URLSearchParams(location.search)
@@ -594,31 +871,48 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
     </>}
   </main>
 }
-const SmartBuyPage = ({ auth, locale, catalog, onBack }: {
+const SmartBuyPage = ({ auth, locale, catalog, onBack, onSignIn }: {
   auth: FrameAccountController
   locale: Locale
   catalog: Map<string, CatalogItem>
   onBack: () => void
-}) => <main className="app-shell smart-buy-page-shell">
-  <div className="detail-navigation">
-    <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
-    <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'К профилю' : 'Back to profile'}</button>
-  </div>
-  <SmartBuyPanel locale={locale} catalog={catalog} auth={auth} standalone/>
-</main>
+  onSignIn: () => void
+}) => {
+  const copy = toolGuideCopy(locale)
+  const compactCatalog = useMemo(() => smartBuyDisplayCatalog(catalog), [catalog])
+  return <main className="app-shell smart-buy-page-shell tool-content-page">
+    <div className="detail-navigation">
+      <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
+      <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'На главную' : 'Back'}</button>
+    </div>
+    <ToolEditorial locale={locale} kind="smartbuy"/>
+    <div className="tool-page-ad"><AdPlacement slot={ADSENSE_SLOTS.smartBuy} format="horizontal" style={{ minHeight: 180 }}/></div>
+    {auth.account
+      ? <SmartBuyPanel locale={locale} catalog={compactCatalog} auth={auth} standalone/>
+      : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
+  </main>
+}
 
-const SellAdvisorPage = ({ auth, locale, catalog, onBack }: {
+const SellAdvisorPage = ({ auth, locale, catalog, onBack, onSignIn }: {
   auth: FrameAccountController
   locale: Locale
   catalog: Map<string, CatalogItem>
   onBack: () => void
-}) => <main className="app-shell sell-advisor-page-shell">
-  <div className="detail-navigation">
-    <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
-    <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'К профилю' : 'Back to profile'}</button>
-  </div>
-  <SellAdvisorPanel locale={locale} catalog={catalog} auth={auth}/>
-</main>
+  onSignIn: () => void
+}) => {
+  const copy = toolGuideCopy(locale)
+  return <main className="app-shell sell-advisor-page-shell tool-content-page">
+    <div className="detail-navigation">
+      <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
+      <button type="button" className="back-button" onClick={onBack}>← {locale === 'ru' ? 'На главную' : 'Back'}</button>
+    </div>
+    <ToolEditorial locale={locale} kind="selladvisor"/>
+    <div className="tool-page-ad"><AdPlacement slot={ADSENSE_SLOTS.sellAdvisor} format="horizontal" style={{ minHeight: 180 }}/></div>
+    {auth.account
+      ? <SellAdvisorPanel locale={locale} catalog={catalog} auth={auth}/>
+      : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
+  </main>
+}
 
 type PortfolioMarketEntry = {
   purchase: PortfolioPurchase
@@ -759,6 +1053,25 @@ const PortfolioPage = ({ account, auth, entries, loading, error, platform, cross
         <label><span>{ru ? 'Текущая цена от' : 'Current price from'}</span><div className="input-suffix"><input type="number" min="0" value={minCurrentPrice} onChange={event => setMinCurrentPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
         <label><span>{ru ? 'Прибыль от' : 'Profit from'}</span><div className="input-suffix"><input type="number" min="0" value={minProfit} onChange={event => setMinProfit(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
         <div className="filter-field category-filter"><span>{u.categories}</span><PickerToggleButton label={u.categories} selected={selectedCategories.length} total={CATEGORY_IDS.length} open={categoriesOpen} onClick={() => setCategoriesOpen(current => !current)}/>{categoriesOpen ? <div className="category-panel picker-popover" role="dialog" aria-label={u.categories}><div className="category-actions"><button type="button" onClick={() => setSelectedCategories([...CATEGORY_IDS])}>{u.selectAll}</button><button type="button" onClick={() => setSelectedCategories([])}>{u.clear}</button></div><div className="category-list">{CATEGORY_IDS.map(id => <label className="category-option" key={id}><input type="checkbox" checked={selectedCategories.includes(id)} onChange={() => setSelectedCategories(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}/><span>{categoryLabel(id, locale, u, x.prime)}</span></label>)}</div></div> : null}</div>
+      </section>
+
+      <section className="home-tools-section" aria-label={toolGuideCopy(locale).toolsTitle}>
+        <div className="home-tools-heading">
+          <div><div className="eyebrow">{toolGuideCopy(locale).toolsTitle}</div><h2>{toolGuideCopy(locale).toolsTitle}</h2></div>
+          <p>{toolGuideCopy(locale).toolsLead}</p>
+        </div>
+        <div className="home-tools-grid">
+          <button type="button" className="home-tool-card smart-buy-card" onClick={() => auth.account ? openSmartBuy() : openPortfolio()}>
+            <span className="home-tool-icon" aria-hidden="true">⌁</span>
+            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span>
+            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
+          </button>
+          <button type="button" className="home-tool-card sell-advisor-card" onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}>
+            <span className="home-tool-icon" aria-hidden="true">↗</span>
+            <span className="home-tool-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span>
+            <span className="home-tool-action">{auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span>
+          </button>
+        </div>
       </section>
       <section className="results-row results-toolbar"><div className="results-count"><span>{t('found')}</span><strong>{filteredEntries.length}</strong>{loading && !blockingLoading ? <em>{ru ? 'обновляем цены…' : 'refreshing prices…'}</em> : null}</div><div className="page-size-control"><span>{p.perPage}</span><CustomPicker compact value={String(pageSize)} label={p.perPage} options={PAGE_SIZES.map(value => ({ value: String(value), label: String(value) }))} onChange={value => setPageSize(Number(value) as PageSize)}/></div><div className="page-indicator">{p.page} <strong>{page}</strong> {p.of} <strong>{pageCount}</strong></div></section>
       <section className={`panel table-panel portfolio-table-panel ${loading && !blockingLoading ? 'table-refreshing' : ''}`} aria-busy={loading}><div className="table-scroll"><table className="market-table portfolio-table"><thead><tr>
@@ -1500,7 +1813,7 @@ export default function App() {
   return <>
     <div className="background-layer"/><div className="background-shade"/>
     <Suspense fallback={<main className="app-shell"><section className="panel smart-buy-state"><div className="spinner"/></section></main>}>
-    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} accountLoading={auth.loading} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} accountLoading={auth.loading} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy} onSignIn={openPortfolio}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor} onSignIn={openPortfolio}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
       <header className="topbar"><div><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} pending={auth.loading} onClick={openPortfolio}/></div></header>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>

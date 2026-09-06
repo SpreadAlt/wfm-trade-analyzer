@@ -1978,3 +1978,159 @@ html[data-theme="light"] .admin-items-form input { color:#243943; background:#ff
 html[data-theme="light"] .chart-series-toggle { color:#274152; background:#f5fbff; border-color:#c6d6de; }
 html[data-theme="light"] .chart-series-toggle:hover { color:#122a35; border-color:#97b0bc; }
 html[data-theme="light"] .chart-series-toggle.active { background:#fff; border-color:#8cb0c1; }
+
+
+/* Important market tools on the public home page */
+.home-tools-section {
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid #26384f;
+  border-radius: 15px;
+  background: rgba(7,15,26,.78);
+}
+.home-tools-heading {
+  display: grid;
+  grid-template-columns: minmax(220px,.72fr) minmax(320px,1.28fr);
+  align-items: end;
+  gap: 22px;
+  margin-bottom: 12px;
+}
+.home-tools-heading h2 { margin: 3px 0 0; font-size: 19px; }
+.home-tools-heading p { margin: 0; color: #839ab5; font-size: 12px; line-height: 1.55; }
+.home-tools-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.home-tool-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 15px;
+  color: #eaf4ff;
+  text-align: left;
+  background: linear-gradient(135deg,rgba(12,27,45,.94),rgba(7,16,28,.96));
+  border: 1px solid #2a405a;
+  border-radius: 13px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  transition: transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease;
+}
+.home-tool-card:hover,
+.home-tool-card:focus-visible {
+  transform: translateY(-1px);
+  border-color: #4d6f94;
+  background: linear-gradient(135deg,rgba(17,36,58,.98),rgba(8,19,33,.98));
+  box-shadow: 0 10px 24px rgba(0,0,0,.12);
+  outline: none;
+}
+.home-tool-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #35516f;
+  border-radius: 12px;
+  color: #77c8ff;
+  background: rgba(61,139,205,.08);
+  font-size: 24px;
+  font-weight: 900;
+}
+.sell-advisor-card .home-tool-icon { color: #5ce2b2; border-color: #315f58; background: rgba(78,231,176,.07); }
+.home-tool-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.home-tool-copy strong { font-size: 14px; }
+.home-tool-copy small { color: #8198b2; font-size: 11px; line-height: 1.5; }
+.home-tool-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #9db5d0;
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.home-tool-action b { color: #62caff; font-size: 17px; }
+
+/* Content-rich Smart Buy and Sell Advisor shells */
+.tool-content-page { padding-bottom: 34px; }
+.tool-editorial { padding: 20px; margin-bottom: 14px; }
+.tool-editorial-heading {
+  display: grid;
+  grid-template-columns: minmax(220px,.72fr) minmax(340px,1.28fr);
+  align-items: end;
+  gap: 24px;
+  margin-bottom: 15px;
+}
+.tool-editorial-heading h1 { margin: 4px 0 0; font-size: 27px; }
+.tool-editorial-heading p { margin: 0; color: #8aa2bd; font-size: 13px; line-height: 1.65; }
+.tool-method-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
+.tool-method-grid article {
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #253a53;
+  border-radius: 12px;
+  background: rgba(8,18,31,.68);
+}
+.tool-method-grid strong { color: #58bffa; font-size: 11px; letter-spacing: .08em; }
+.tool-method-grid span { color: #a8bad0; font-size: 11px; line-height: 1.55; }
+.tool-page-ad {
+  min-height: 0;
+  margin: 18px 0;
+}
+.tool-page-ad:not(:has(.adsense-slot)) { display: none; }
+.tool-locked-panel {
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 22px;
+  text-align: center;
+}
+.tool-locked-panel p { max-width: 680px; margin: 0; color: #8fa6c0; font-size: 12px; line-height: 1.6; }
+.tool-locked-panel button {
+  min-height: 42px;
+  padding: 10px 16px;
+  color: #06120e;
+  background: #55dfa9;
+  border: 1px solid #76f1c2;
+  border-radius: 10px;
+  font-weight: 900;
+}
+
+html[data-theme="light"] .home-tools-section,
+html[data-theme="light"] .tool-editorial,
+html[data-theme="light"] .tool-method-grid article {
+  background: rgba(255,255,255,.92);
+  border-color: #c6d4d9;
+}
+html[data-theme="light"] .home-tools-heading p,
+html[data-theme="light"] .home-tool-copy small,
+html[data-theme="light"] .tool-editorial-heading p,
+html[data-theme="light"] .tool-method-grid span,
+html[data-theme="light"] .tool-locked-panel p { color: #59717e; }
+html[data-theme="light"] .home-tool-card {
+  color: #18303a;
+  background: linear-gradient(135deg,#fff,#f4f9fb);
+  border-color: #bfd0d8;
+}
+html[data-theme="light"] .home-tool-card:hover,
+html[data-theme="light"] .home-tool-card:focus-visible { border-color: #88a7b6; background: #fff; }
+html[data-theme="light"] .home-tool-action { color: #526f7e; }
+html[data-theme="light"] .tool-method-grid strong { color: #1877a8; }
+
+@media (max-width: 900px) {
+  .home-tools-heading,
+  .tool-editorial-heading { grid-template-columns: 1fr; gap: 8px; }
+  .home-tools-grid,
+  .tool-method-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .home-tool-card { grid-template-columns: 42px minmax(0,1fr); }
+  .home-tool-icon { width: 42px; height: 42px; }
+  .home-tool-action { grid-column: 2; justify-self: start; }
+}
