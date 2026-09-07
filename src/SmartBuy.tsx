@@ -143,9 +143,16 @@ const wfmProfileUrl = (locale: Locale, profile: string) =>
 const wfmItemUrl = (locale: Locale, slug: string) =>
   `https://warframe.market/${encodeURIComponent(wfmLocale(locale))}/items/${encodeURIComponent(slug)}`
 
-const normalizeProfileInput = (input: string): string | null => {
+type NormalizedWfmProfile = {
+  slug: string
+  profileUrl: string
+}
+
+const normalizeProfileInput = (input: string): NormalizedWfmProfile | null => {
   const raw = input.trim()
   if (!raw) return null
+
+  let slug: string | null = null
 
   try {
     const url = new URL(raw.includes('://') ? raw : `https://${raw}`)
@@ -154,16 +161,27 @@ const normalizeProfileInput = (input: string): string | null => {
       const parts = url.pathname.split('/').filter(Boolean)
       const profileIndex = parts.findIndex(part => part.toLowerCase() === 'profile')
       if (profileIndex >= 0 && parts[profileIndex + 1]) {
-        const slug = decodeURIComponent(parts[profileIndex + 1]).trim()
-        return /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(slug) ? slug : null
+        const candidate = decodeURIComponent(parts[profileIndex + 1]).trim()
+        if (/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(candidate)) slug = candidate
       }
     }
   } catch {
-    // A bare username is valid input too.
+    // Keep the legacy username fallback below.
   }
 
-  const slug = raw.replace(/^@/, '')
-  return /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(slug) ? slug : null
+  if (!slug) {
+    const candidate = raw.replace(/^@/, '')
+    if (/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(candidate)) slug = candidate
+  }
+
+  if (!slug) return null
+
+  // The account API expects a full Warframe Market profile URL.
+  // Always submit the canonical non-localized URL; user-facing links remain localized separately.
+  return {
+    slug,
+    profileUrl: `https://warframe.market/profile/${encodeURIComponent(slug)}`
+  }
 }
 
 type RankedSeller = {
@@ -335,8 +353,8 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
 
   const saveProfile = async () => {
     if (!auth.account) return
-    const slug = normalizeProfileInput(profileInput)
-    if (!slug) {
+    const profile = normalizeProfileInput(profileInput)
+    if (!profile) {
       setError(text.invalidProfile)
       return
     }
@@ -344,8 +362,8 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
     setProfileBusy(true)
     setError(null)
     try {
-      await auth.linkWfmProfile(slug)
-      setProfileInput(slug)
+      await auth.linkWfmProfile(profile.profileUrl)
+      setProfileInput(profile.profileUrl)
       setData(null)
       setJobStatus(null)
     } catch (value) {
