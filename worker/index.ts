@@ -113,17 +113,19 @@ const normalizeWfmProfile = (value: unknown) => {
   if (!text) return null;
 
   try {
-    const url = new URL(text.includes("://") ? text : `https://warframe.market/profile/${text}`);
+    const url = new URL(text);
+    if (url.protocol !== "https:") return null;
     const host = url.hostname.toLowerCase();
-    if (host !== "warframe.market" && !host.endsWith(".warframe.market")) return null;
+    if (host !== "warframe.market" && host !== "www.warframe.market") return null;
 
     const parts = url.pathname.split("/").filter(Boolean);
     const profileIndex = parts.findIndex((part) => part.toLowerCase() === "profile");
-    const slug = profileIndex >= 0 ? decodeURIComponent(parts[profileIndex + 1] || "").trim() : "";
+    if (profileIndex < 0 || profileIndex > 1 || parts.length !== profileIndex + 2) return null;
+
+    const slug = decodeURIComponent(parts[profileIndex + 1] || "").trim();
     return /^[A-Za-z0-9_.-]{2,64}$/.test(slug) ? slug : null;
   } catch {
-    const slug = text.replace(/^@/, "").trim();
-    return /^[A-Za-z0-9_.-]{2,64}$/.test(slug) ? slug : null;
+    return null;
   }
 };
 
@@ -1772,7 +1774,7 @@ const handleWfmProfile = async (
 
   const body = await readBody<{ profile?: unknown }>(request);
   const slug = normalizeWfmProfile(body.profile);
-  if (!slug) return json({ ok: false, error: "Invalid Warframe Market profile" }, 400);
+  if (!slug) return json({ ok: false, error: "Use a full https://warframe.market/.../profile/... URL" }, 400);
 
   const time = nowMs();
   await env.frameanalytics_auth

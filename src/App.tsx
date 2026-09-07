@@ -360,6 +360,28 @@ const localizeWarframeMarketText = (value: string, locale: Locale) => value.repl
   url => localizeWarframeMarketHref(url, locale)
 )
 
+const warframeMarketProfileSlug = (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) return null
+  try {
+    const url = new URL(text)
+    if (url.protocol !== 'https:') return null
+    const host = url.hostname.toLowerCase()
+    if (host !== 'warframe.market' && host !== 'www.warframe.market') return null
+    const parts = url.pathname.split('/').filter(Boolean)
+    const profileIndex = parts.findIndex(part => part.toLowerCase() === 'profile')
+    if (profileIndex < 0 || profileIndex > 1 || parts.length !== profileIndex + 2) return null
+    const slug = decodeURIComponent(parts[profileIndex + 1] || '').trim()
+    return /^[A-Za-z0-9_.-]{2,64}$/.test(slug) ? slug : null
+  } catch {
+    return null
+  }
+}
+
+const profileLinkError = (locale: Locale) => locale === 'ru'
+  ? 'Вставьте полную ссылку на профиль Warframe Market, например https://warframe.market/ru/profile/username'
+  : 'Paste the full Warframe Market profile URL, for example https://warframe.market/en/profile/username'
+
 const smartBuyDisplayCatalog = (catalog: Map<string, CatalogItem>) => new Map(
   [...catalog.entries()].map(([id, item]) => {
     const copy = { ...item } as CatalogItem & Record<string, unknown>
@@ -970,18 +992,53 @@ const SmartBuyPage = ({ auth, locale, catalog, onBack, onSignIn }: {
 }) => {
   const copy = toolGuideCopy(locale)
   const compactCatalog = useMemo(() => smartBuyDisplayCatalog(catalog), [catalog])
-  useEffect(() => {
-    const clipboard = navigator.clipboard
-    if (!clipboard || typeof clipboard.writeText !== 'function') return
-    const originalWriteText = clipboard.writeText.bind(clipboard)
-    const normalizedWriteText = (value: string) => originalWriteText(localizeWarframeMarketText(smartBuyDisplayName(String(value)), locale))
-    try {
-      clipboard.writeText = normalizedWriteText
-    } catch {
-      return
+  const strictProfileAuth = useMemo<FrameAccountController>(() => ({
+    ...auth,
+    linkWfmProfile: async (profile: string) => {
+      if (!warframeMarketProfileSlug(profile)) throw new Error(profileLinkError(locale))
+      await auth.linkWfmProfile(profile)
     }
+  }), [auth, locale])
+  useEffect(() => {
+    const normalizeCopiedText = (value: unknown) => localizeWarframeMarketText(smartBuyDisplayName(String(value ?? '')), locale)
+    const clipboard = navigator.clipboard
+    const clipboardPrototype = clipboard ? Object.getPrototypeOf(clipboard) as { writeText?: (value: string) => Promise<void> } | null : null
+    const originalPrototypeWriteText = clipboardPrototype && typeof clipboardPrototype.writeText === 'function' ? clipboardPrototype.writeText : null
+    let prototypePatched = false
+
+    if (clipboardPrototype && originalPrototypeWriteText) {
+      try {
+        Object.defineProperty(clipboardPrototype, 'writeText', {
+          configurable: true,
+          writable: true,
+          value: function(value: string) {
+            return originalPrototypeWriteText.call(this, normalizeCopiedText(value))
+          }
+        })
+        prototypePatched = true
+      } catch { /* browser keeps Clipboard prototype read-only */ }
+    }
+
+    const onCopy = (event: ClipboardEvent) => {
+      const selected = window.getSelection()?.toString() || ''
+      if (!selected || !/\bBlueprint\b/i.test(selected)) return
+      if (!event.clipboardData) return
+      event.preventDefault()
+      event.clipboardData.setData('text/plain', normalizeCopiedText(selected))
+    }
+    document.addEventListener('copy', onCopy, true)
+
     return () => {
-      try { clipboard.writeText = originalWriteText } catch { /* readonly clipboard implementation */ }
+      document.removeEventListener('copy', onCopy, true)
+      if (prototypePatched && clipboardPrototype && originalPrototypeWriteText) {
+        try {
+          Object.defineProperty(clipboardPrototype, 'writeText', {
+            configurable: true,
+            writable: true,
+            value: originalPrototypeWriteText
+          })
+        } catch { /* ignore restore failure */ }
+      }
     }
   }, [locale])
   useEffect(() => {
@@ -1015,7 +1072,7 @@ const SmartBuyPage = ({ auth, locale, catalog, onBack, onSignIn }: {
     {auth.loading
       ? <ToolPanelPending locale={locale}/>
       : auth.account
-        ? <SmartBuyPanel locale={locale} catalog={compactCatalog} auth={auth} standalone/>
+        ? <SmartBuyPanel locale={locale} catalog={compactCatalog} auth={strictProfileAuth} standalone/>
         : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
   </main>
 }
@@ -1028,6 +1085,13 @@ const SellAdvisorPage = ({ auth, locale, catalog, onBack, onSignIn }: {
   onSignIn: () => void
 }) => {
   const copy = toolGuideCopy(locale)
+  const strictProfileAuth = useMemo<FrameAccountController>(() => ({
+    ...auth,
+    linkWfmProfile: async (profile: string) => {
+      if (!warframeMarketProfileSlug(profile)) throw new Error(profileLinkError(locale))
+      await auth.linkWfmProfile(profile)
+    }
+  }), [auth, locale])
   return <main className="app-shell sell-advisor-page-shell tool-content-page">
     <div className="detail-navigation">
       <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
@@ -1038,7 +1102,7 @@ const SellAdvisorPage = ({ auth, locale, catalog, onBack, onSignIn }: {
     {auth.loading
       ? <ToolPanelPending locale={locale}/>
       : auth.account
-        ? <SellAdvisorPanel locale={locale} catalog={catalog} auth={auth}/>
+        ? <SellAdvisorPanel locale={locale} catalog={catalog} auth={strictProfileAuth}/>
         : <section className="panel tool-locked-panel"><p>{copy.locked}</p><button type="button" onClick={onSignIn}>{copy.signIn}</button></section>}
   </main>
 }
