@@ -133,6 +133,16 @@ const compactPlat = (value: number) =>
 const limitNumber = (value: LimitValue): number | null => value === 'any' ? null : Number(value)
 const statusClass = (status: string) => ONLINE.has(status) ? 'online' : 'offline'
 
+const compactBlueprintName = (value: string) => value.replace(/\bBlueprint\b/gi, 'BP')
+
+const wfmLocale = (locale: Locale) => locale
+
+const wfmProfileUrl = (locale: Locale, profile: string) =>
+  `https://warframe.market/${encodeURIComponent(wfmLocale(locale))}/profile/${encodeURIComponent(profile)}`
+
+const wfmItemUrl = (locale: Locale, slug: string) =>
+  `https://warframe.market/${encodeURIComponent(wfmLocale(locale))}/items/${encodeURIComponent(slug)}`
+
 const normalizeProfileInput = (input: string): string | null => {
   const raw = input.trim()
   if (!raw) return null
@@ -220,16 +230,49 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
   const itemFor = (itemId: string) => catalog.get(itemId)
   const itemName = (itemId: string) => itemFor(itemId)?.name || itemFor(itemId)?.englishName || itemId
   const englishItemName = (itemId: string) => itemFor(itemId)?.englishName || itemFor(itemId)?.name || itemId
+  const copiedItemName = (itemId: string) => compactBlueprintName(englishItemName(itemId))
 
   const wishlistByDemand = useMemo(
     () => new Map((data?.wishlist || []).map(row => [row.demandKey, row])),
     [data]
   )
 
+  const sellMinimumByDemand = useMemo(() => {
+    const minima = new Map<string, number>()
+    for (const seller of data?.sellers || []) {
+      for (const offer of seller.offers || []) {
+        const unitPrice = Number(offer.unitPrice)
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+        const current = minima.get(offer.demandKey)
+        if (current == null || unitPrice < current) minima.set(offer.demandKey, unitPrice)
+      }
+    }
+    return minima
+  }, [data])
+
+  const sellMinimumFor = (row: SmartBuyWishlistRow) => {
+    const recalculated = sellMinimumByDemand.get(row.demandKey)
+    if (recalculated != null && Number.isFinite(recalculated) && recalculated > 0) return recalculated
+
+    const extended = row as SmartBuyWishlistRow & {
+      currentSellMinimumUnitPrice?: number | null
+      marketMinimumOrderType?: string | null
+    }
+    if (
+      extended.marketMinimumOrderType?.toLowerCase() === 'sell' &&
+      extended.currentSellMinimumUnitPrice != null &&
+      Number.isFinite(extended.currentSellMinimumUnitPrice) &&
+      extended.currentSellMinimumUnitPrice > 0
+    ) return extended.currentSellMinimumUnitPrice
+
+    // Backward-compatible fallback for an older backend response.
+    return row.marketMinUnitPrice
+  }
+
   const offerDeviation = (offer: SmartBuySellerOffer) => {
     const wishlist = wishlistByDemand.get(offer.demandKey)
     const baseline = priceBasis === 'market-min'
-      ? wishlist?.marketMinUnitPrice
+      ? (wishlist ? sellMinimumFor(wishlist) : null)
       : wishlist?.average24hUnitPrice
 
     if (baseline == null || !Number.isFinite(baseline) || baseline <= 0) return null
@@ -361,7 +404,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
   }
 
   const comparison = (offer: SmartBuySellerOffer, row: SmartBuyWishlistRow, basis: PriceBasis) => {
-    const baseline = basis === 'market-min' ? row.marketMinUnitPrice : row.average24hUnitPrice
+    const baseline = basis === 'market-min' ? sellMinimumFor(row) : row.average24hUnitPrice
     if (baseline == null || !Number.isFinite(baseline) || baseline <= 0) {
       return { baseline: null, percent: null, platinum: null, total: null }
     }
@@ -414,7 +457,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
     for (const offer of offers) {
       let remaining = Math.max(0, Math.floor(offer.fillableQuantity || 0))
       const tradeSize = Math.max(1, Math.floor(offer.perTrade || 1))
-      const name = englishItemName(offer.itemId)
+      const name = copiedItemName(offer.itemId)
 
       while (remaining > 0) {
         let availableSlots = TRADE_SLOT_LIMIT - slots
@@ -477,7 +520,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
         <p>{text.description}</p>
       </div>
 
-      {linkedProfile ? <a className="smart-buy-profile-chip" href={`https://warframe.market/profile/${encodeURIComponent(linkedProfile)}`} target="_blank" rel="noreferrer">
+      {linkedProfile ? <a className="smart-buy-profile-chip" href={wfmProfileUrl(locale, linkedProfile)} target="_blank" rel="noreferrer">
         <span><strong>{linkedProfile}</strong><small>{text.profileLinked} · warframe.market</small></span>
       </a> : null}
     </div>
@@ -570,7 +613,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
 
             return <article className={`smart-buy-seller ${positionsCovered > 1 ? 'multi' : ''}`} key={sellerKey}>
               <header>
-                <a href={seller.user.profileUrl} target="_blank" rel="noreferrer" className="smart-buy-seller-identity">
+                <a href={wfmProfileUrl(locale, seller.user.slug || seller.user.ingameName)} target="_blank" rel="noreferrer" className="smart-buy-seller-identity">
                   <i className={statusClass(seller.user.status)}/>
                   <span><strong>{seller.user.ingameName}</strong><small>{statusLabel(seller.user.status)} · rep {seller.user.reputation}</small></span>
                 </a>
@@ -600,7 +643,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
                   const market = comparison(offer, wanted, 'market-min')
                   const avg = comparison(offer, wanted, 'average-24h')
                   const item = itemFor(offer.itemId)
-                  const itemHref = item?.slug ? `https://warframe.market/items/${encodeURIComponent(item.slug)}` : null
+                  const itemHref = item?.slug ? wfmItemUrl(locale, item.slug) : null
 
                   return <div className="smart-buy-offer" key={`${sellerKey}:${offer.demandKey}`}>
                     <div className="smart-buy-offer-main">
@@ -641,7 +684,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
                 })}
               </div>
 
-              <a className="smart-buy-open" href={seller.user.profileUrl} target="_blank" rel="noreferrer">{text.sellerProfile} ↗</a>
+              <a className="smart-buy-open" href={wfmProfileUrl(locale, seller.user.slug || seller.user.ingameName)} target="_blank" rel="noreferrer">{text.sellerProfile} ↗</a>
             </article>
           })}
         </div>}
