@@ -118,7 +118,7 @@ const TOOL_GUIDE_COPY: Partial<Record<Locale, ToolGuideCopy>> = {
     sellAdvisorPoints: ['Uses your active visible sell orders.', 'Compares current orders with recent closed-sale data.', 'Shows the suggested price direction and the difference from your current order.'],
     open: 'Open',
     signIn: 'Sign in to use',
-    locked: 'The analysis itself is available after sign-in. The explanation and methodology remain public.',
+    locked: 'Sign in is required to use this tool. The explanation and methodology remain public.',
     howItWorks: 'How it works'
   },
   ru: {
@@ -132,7 +132,7 @@ const TOOL_GUIDE_COPY: Partial<Record<Locale, ToolGuideCopy>> = {
     sellAdvisorPoints: ['Использует ваши активные публичные ордера на продажу.', 'Сравнивает текущую цену с недавними закрытыми сделками.', 'Показывает направление корректировки цены и разницу с текущим ордером.'],
     open: 'Открыть',
     signIn: 'Войти для использования',
-    locked: 'Сам анализ доступен после авторизации. Описание работы и методика остаются публичными.',
+    locked: 'Для использования этого инструмента необходима авторизация. Описание работы и методика остаются публичными.',
     howItWorks: 'Как это работает'
   },
   de: {
@@ -334,6 +334,26 @@ const TOOL_GUIDE_COPY: Partial<Record<Locale, ToolGuideCopy>> = {
 }
 
 const toolGuideCopy = (locale: Locale): ToolGuideCopy => TOOL_GUIDE_COPY[locale] || TOOL_GUIDE_COPY.en!
+
+const PURCHASE_AUTH_NOTICE: Record<Locale, { message: string; action: string }> = {
+  en: { message: 'Sign in is required to add a purchase.', action: 'Sign in' },
+  ru: { message: 'Для добавления покупки необходима авторизация.', action: 'Войти' },
+  de: { message: 'Zum Hinzufügen eines Kaufs ist eine Anmeldung erforderlich.', action: 'Anmelden' },
+  fr: { message: 'Vous devez vous connecter pour ajouter un achat.', action: 'Se connecter' },
+  es: { message: 'Debes iniciar sesión para añadir una compra.', action: 'Iniciar sesión' },
+  pt: { message: 'É necessário entrar para adicionar uma compra.', action: 'Entrar' },
+  pl: { message: 'Aby dodać zakup, musisz się zalogować.', action: 'Zaloguj się' },
+  uk: { message: 'Щоб додати покупку, необхідно авторизуватися.', action: 'Увійти' },
+  tr: { message: 'Satın alma eklemek için giriş yapmalısınız.', action: 'Giriş yap' },
+  it: { message: 'Devi accedere per aggiungere un acquisto.', action: 'Accedi' },
+  sv: { message: 'Du måste logga in för att lägga till ett köp.', action: 'Logga in' },
+  cs: { message: 'Pro přidání nákupu se musíte přihlásit.', action: 'Přihlásit se' },
+  ja: { message: '購入を追加するにはログインが必要です。', action: 'ログイン' },
+  ko: { message: '구매를 추가하려면 로그인이 필요합니다.', action: '로그인' },
+  'zh-hans': { message: '添加购买记录需要登录。', action: '登录' },
+  'zh-hant': { message: '新增購買紀錄需要登入。', action: '登入' }
+}
+
 
 const smartBuyDisplayName = (value: string) => value.replace(/\bBlueprint\b/gi, 'BP')
 
@@ -816,6 +836,15 @@ const RouteLoadingShell = ({ locale, kind }: { locale: Locale; kind: RouteState[
 </main>
 const ToolPanelPending = ({ locale }: { locale: Locale }) => <section className="panel tool-panel-pending" aria-busy="true"><div className="spinner"/><strong>{locale === 'ru' ? 'Проверяем сессию…' : 'Checking session…'}</strong><LoadingBars count={3}/></section>
 
+const PurchaseAuthNotice = ({ locale, onSignIn }: { locale: Locale; onSignIn: () => void }) => {
+  const copy = PURCHASE_AUTH_NOTICE[locale]
+  return <aside className="purchase-auth-notice" role="status" aria-live="polite">
+    <span className="purchase-auth-notice-icon" aria-hidden="true">!</span>
+    <div className="purchase-auth-notice-copy"><strong>{copy.message}</strong></div>
+    <button type="button" onClick={onSignIn}>{copy.action}</button>
+  </aside>
+}
+
 const AccountGate = ({ locale, setLocale, auth }: { locale: Locale; setLocale: (value: Locale) => void; auth: FrameAccountController }) => {
   return <main className="app-shell closed-beta-shell">
     <header className="closed-beta-topbar"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><div className="account-language-control"><span>{translations[locale].language}</span><CustomPicker compact value={locale} label={translations[locale].language} options={Object.entries(localeNames).map(([value, label]) => ({ value, label }))} onChange={value => setLocale(value as Locale)}/></div></header>
@@ -854,7 +883,7 @@ const MarketSelector = ({ platform, crossplay, locale, onPlatform, onCrossplay }
     {open ? <div className="platform-menu" role="menu">{(Object.keys(PLATFORM_NAMES) as Platform[]).map(value => <button type="button" role="menuitemradio" aria-checked={platform === value} className={platform === value ? 'selected' : ''} key={value} onClick={() => { onPlatform(value); setOpen(false) }}><PlatformGlyph platform={value}/><span>{PLATFORM_NAMES[value]}</span>{platform === value ? <b aria-hidden="true">✓</b> : null}</button>)}</div> : null}
   </div>
 }
-const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variantKey, selectedRank, platform, crossplay, period, visibleRanges, mode, locale, loading, hourlyLoading, error, hasAccount, accountLoading, onBack, onRetry, onVariant, onRank, onPlatform, onCrossplay, onOpenAccount, onAddPurchase, t }: {
+const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variantKey, selectedRank, platform, crossplay, period, visibleRanges, mode, locale, loading, hourlyLoading, error, hasAccount, accountLoading, onBack, onRetry, onVariant, onRank, onPlatform, onCrossplay, onOpenAccount, onRequireAuth, onAddPurchase, t }: {
   detail: ItemDetail | null
   metrics: MetricsItem | null
   hourly: HourlyResponse | null
@@ -881,6 +910,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
   onPlatform: (platform: Platform) => void
   onCrossplay: () => void
   onOpenAccount: () => void
+  onRequireAuth: () => void
   onAddPurchase: (purchase: Omit<PortfolioPurchase, 'id' | 'createdAt'>) => void
   t: T
 }) => {
@@ -945,7 +975,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
     {loading ? <div className="detail-loading-layout" aria-busy="true"><section className="panel route-loading-panel detail-loading-hero"><div className="route-loading-title"/><LoadingBars count={2}/></section><section className="panel route-loading-panel detail-loading-metrics"><LoadingBars count={3}/></section><section className="panel route-loading-panel detail-loading-chart"><LoadingBars count={5}/></section></div> : error || !detail ? <section className="panel state-panel error-state detail-error-panel"><strong>{u.loadError}</strong><button className="retry-button" onClick={onRetry}>{u.retry}</button></section> : <>
       <section className="detail-hero panel">
         <div className="detail-identity"><ItemIcon item={catalogItem} name={name} large/><div><div className="eyebrow">{categoryLabel(detail.category, locale, u, x.prime)}</div><h1>{name}{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale}/> : null}</h1><div className="identity-tags">{variantLabel ? <span>{x.variant}: {variantLabel}</span> : null}{selectedRank != null || canonicalRank != null ? <span>{x.rank}: {selectedRank ?? canonicalRank}</span> : null}{!series?.hasHistory && !hourlySeries ? <span className="no-history-tag">{x.noHistory}</span> : null}</div><div className="price-big">{fmtPlat(currentPrice)}</div></div></div>
-        <div className="detail-actions"><div className="detail-action-row"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={hasAccount} pending={accountLoading} onClick={onOpenAccount}/></div>{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><CustomPicker value={variantKey || ''} label={x.variant} options={[{ value: '', label: x.chooseVariant }, ...Object.entries(detail.variants).map(([key, value]) => ({ value: key, label: formatDimensions(value.dimensions, locale) || key }))]} onChange={value => onVariant(value || null)}/></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><CustomPicker value={String(selectedRank ?? canonicalRank ?? '')} label={x.rank} options={rankOptions.map(rank => ({ value: String(rank), label: `${x.rank} ${rank}` }))} onChange={value => onRank(value === '' ? null : Number(value))}/></label> : null}<div className="detail-meta-row"><span>{t('updated')}: <strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong></span><button type="button" className="portfolio-add" onClick={() => hasAccount ? setPurchaseOpen(true) : onOpenAccount()}>{locale === 'ru' ? 'Добавить покупку' : 'Add purchase'}</button></div></div>
+        <div className="detail-actions"><div className="detail-action-row"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={onPlatform} onCrossplay={onCrossplay}/><AccountButton locale={locale} active={hasAccount} pending={accountLoading} onClick={onOpenAccount}/></div>{Object.keys(detail.variants || {}).length ? <label className="variant-select"><span>{x.variant}</span><CustomPicker value={variantKey || ''} label={x.variant} options={[{ value: '', label: x.chooseVariant }, ...Object.entries(detail.variants).map(([key, value]) => ({ value: key, label: formatDimensions(value.dimensions, locale) || key }))]} onChange={value => onVariant(value || null)}/></label> : null}{rankOptions.length ? <label className="variant-select"><span>{x.rank}</span><CustomPicker value={String(selectedRank ?? canonicalRank ?? '')} label={x.rank} options={rankOptions.map(rank => ({ value: String(rank), label: `${x.rank} ${rank}` }))} onChange={value => onRank(value === '' ? null : Number(value))}/></label> : null}<div className="detail-meta-row"><span>{t('updated')}: <strong>{formatDate(hourly?.fetchedAt || series?.updatedDate, locale)}</strong></span><button type="button" className="portfolio-add" onClick={() => hasAccount ? setPurchaseOpen(true) : onRequireAuth()}>{locale === 'ru' ? 'Добавить покупку' : 'Add purchase'}</button></div></div>
       </section>
       <section className="detail-dashboard panel">
         <div className="range-strip">{visibleRanges.map(range => <div className={`${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</div>
@@ -1265,6 +1295,8 @@ export default function App() {
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailReload, setDetailReload] = useState(0)
   const [purchaseTarget, setPurchaseTarget] = useState<PurchaseTarget | null>(null)
+  const [purchaseAuthNotice, setPurchaseAuthNotice] = useState(0)
+  const purchaseAuthNoticeTimer = useRef<number | null>(null)
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = localStorage.getItem('frameanalytics-locale')
     if (saved && saved in localeNames) return saved as Locale
@@ -1280,6 +1312,9 @@ export default function App() {
   })
   const [temporaryAccount, setTemporaryAccount] = useState<TemporaryAccount | null>(loadTemporaryAccount)
   const auth = useFrameAccount()
+  useEffect(() => () => {
+    if (purchaseAuthNoticeTimer.current != null) window.clearTimeout(purchaseAuthNoticeTimer.current)
+  }, [])
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadSmartBuyModule()
@@ -1826,7 +1861,7 @@ export default function App() {
   }
   const closeSmartBuy = () => {
     if (history.state?.frameanalyticsSmartBuyFrom) history.back()
-    else { history.replaceState(null, '', '/profile'); setRoute(readRoute()) }
+    else { history.replaceState(null, '', '/'); setRoute(readRoute()) }
     scrollTo({ top: 0 })
   }
   const openSellAdvisor = () => {
@@ -1836,7 +1871,7 @@ export default function App() {
   }
   const closeSellAdvisor = () => {
     if (history.state?.frameanalyticsSellAdvisorFrom) history.back()
-    else { history.replaceState(null, '', '/profile'); setRoute(readRoute()) }
+    else { history.replaceState(null, '', '/'); setRoute(readRoute()) }
     scrollTo({ top: 0 })
   }
   const openDeveloper = () => {
@@ -1882,9 +1917,18 @@ export default function App() {
     history.replaceState(history.state, '', `/items/${encodeURIComponent(route.slug)}?${params}`)
     setRoute(readRoute())
   }
+  const showPurchaseAuthNotice = () => {
+    if (auth.loading || auth.account) return
+    if (purchaseAuthNoticeTimer.current != null) window.clearTimeout(purchaseAuthNoticeTimer.current)
+    setPurchaseAuthNotice(value => value + 1)
+    purchaseAuthNoticeTimer.current = window.setTimeout(() => {
+      setPurchaseAuthNotice(0)
+      purchaseAuthNoticeTimer.current = null
+    }, 5200)
+  }
   const addPurchase = (purchase: Omit<PortfolioPurchase, 'id' | 'createdAt'>) => {
     if (!auth.account) {
-      openPortfolio()
+      showPurchaseAuthNotice()
       return
     }
     const savedPurchase: PortfolioPurchase = { ...purchase, id: crypto.randomUUID(), createdAt: new Date().toISOString() }
@@ -1953,8 +1997,8 @@ export default function App() {
   return <>
     <div className="background-layer"/><div className="background-shade"/>
     <Suspense fallback={<RouteLoadingShell locale={locale} kind={route.kind}/>}>
-    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} accountLoading={auth.loading} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy} onSignIn={openPortfolio}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor} onSignIn={openPortfolio}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
-      <header className="topbar topbar-home"><div className="topbar-brand"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-side"><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} pending={auth.loading} onClick={openPortfolio}/></div><div className="home-tools-inline" aria-label={toolGuideCopy(locale).toolsTitle}><button type="button" className="home-tool-chip smart-buy-card" disabled={auth.loading} onClick={() => auth.account ? openSmartBuy() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">⌁</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span><span className="home-tool-chip-action">{auth.loading ? '···' : auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button><button type="button" className="home-tool-chip sell-advisor-card" disabled={auth.loading} onClick={() => auth.account ? openSellAdvisor() : openPortfolio()}><span className="home-tool-chip-icon" aria-hidden="true">↗</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span><span className="home-tool-chip-action">{auth.loading ? '···' : auth.account ? toolGuideCopy(locale).open : toolGuideCopy(locale).signIn}<b>→</b></span></button></div></div></header>
+    {route.kind === 'item' ? <Detail detail={detail} metrics={detailMetrics} hourly={detailHourly} summary={selectedSummary} catalogItem={route.id ? catalogItem(route.id) : undefined} events={route.id ? marketEvents.filter(event => event.itemId === route.id) : []} variantKey={route.variant} selectedRank={route.rank} platform={platform} crossplay={crossplay} period={period} visibleRanges={visibleRanges} mode={mode} locale={locale} loading={detailLoading} hourlyLoading={hourlyLoading} error={detailError} hasAccount={Boolean(auth.account)} accountLoading={auth.loading} onBack={closeItem} onRetry={() => setDetailReload(value => value + 1)} onVariant={changeVariant} onRank={changeRank} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} onOpenAccount={openPortfolio} onRequireAuth={showPurchaseAuthNotice} onAddPurchase={addPurchase} t={t}/> : route.kind === 'smartbuy' ? <SmartBuyPage auth={auth} locale={locale} catalog={catalog} onBack={closeSmartBuy} onSignIn={openPortfolio}/> : route.kind === 'selladvisor' ? <SellAdvisorPage auth={auth} locale={locale} catalog={catalog} onBack={closeSellAdvisor} onSignIn={openPortfolio}/> : route.kind === 'adminitems' ? <AdminItemsPage locale={locale} onBack={closeAdminItems} onAdded={() => { setCatalogRefresh(value => value + 1); setHourlyRefresh(value => value + 1) }}/> : route.kind === 'developer' ? <DeveloperDashboard locale={locale} onBack={closeDeveloper}/> : route.kind === 'axiscanner' ? <AxiScannerPage locale={locale} catalog={catalog} onBack={closeAxiScanner}/> : route.kind === 'portfolio' ? <PortfolioPage account={temporaryAccount} auth={auth} entries={portfolioEntries} loading={portfolioLoading} error={portfolioError} platform={platform} crossplay={crossplay} visibleRanges={visibleRanges} locale={locale} catalog={catalog} events={marketEvents} onBack={closePortfolio} onRetry={() => setPortfolioReload(value => value + 1)} onOpenSmartBuy={openSmartBuy} onOpenSellAdvisor={openSellAdvisor} onOpenDeveloper={openDeveloper} onOpenAxiScanner={openAxiScanner} onRemove={id => { setTemporaryAccount(current => current ? { ...current, purchases: current.purchases.filter(item => item.id !== id) } : null); if (auth.account) void auth.deletePurchase(id).catch(error => console.error('Purchase delete sync failed', error)) }} onOpenItem={openPortfolioItem} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)} currentPriceFor={rowCurrentPrice} rangeValueFor={rowRangeValue} rangePlatinumFor={rowRangePlatinum} t={t}/> : <main className="app-shell">
+      <header className="topbar topbar-home"><div className="topbar-brand"><a className="brand-plate" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a><p className="subtitle">{t('subtitle')}</p></div><div className="topbar-side"><div className="topbar-actions"><MarketSelector platform={platform} crossplay={crossplay} locale={locale} onPlatform={next => { setPlatform(next); if (next === 'switch') setCrossplay(false) }} onCrossplay={() => platform !== 'switch' && setCrossplay(value => !value)}/><AccountButton locale={locale} active={Boolean(auth.account)} pending={auth.loading} onClick={openPortfolio}/></div><div className="home-tools-inline" aria-label={toolGuideCopy(locale).toolsTitle}><button type="button" className="home-tool-chip smart-buy-card" disabled={auth.loading} onClick={openSmartBuy}><span className="home-tool-chip-icon" aria-hidden="true">⌁</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).smartBuyTitle}</strong><small>{toolGuideCopy(locale).smartBuySummary}</small></span><span className="home-tool-chip-action">{auth.loading ? '···' : toolGuideCopy(locale).open}<b>→</b></span></button><button type="button" className="home-tool-chip sell-advisor-card" disabled={auth.loading} onClick={openSellAdvisor}><span className="home-tool-chip-icon" aria-hidden="true">↗</span><span className="home-tool-chip-copy"><strong>{toolGuideCopy(locale).sellAdvisorTitle}</strong><small>{toolGuideCopy(locale).sellAdvisorSummary}</small></span><span className="home-tool-chip-action">{auth.loading ? '···' : toolGuideCopy(locale).open}<b>→</b></span></button></div></div></header>
       <section className="panel filters filters-v3" ref={popoverRef}>
         <label className="search-field"><span>{t('name')}</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder={t('searchPlaceholder')}/></label>
         <label><span>{t('minPrice')}</span><div className="input-suffix"><input type="number" min="0" value={minPrice} onChange={event => setMinPrice(Math.max(0, Number(event.target.value)))}/><b>p</b></div></label>
@@ -1991,13 +2035,14 @@ export default function App() {
             {showScoreColumn ? <td><span className={`score-badge ${signal.score != null && signal.score >= 80 ? 'high' : signal.score != null && signal.score >= 60 ? 'mid' : 'low'}`}>{signal.score == null ? '—' : fmtNumber(signal.score)}</span></td> : null}
             {showForecastColumn ? <td><ForecastIndicator signal={signal} fallbackChange={row.canonical ? item.change7d : null} direction={currentEventFor(item.id) ? 'down' : rowTrendDirection(row)} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/></td> : null}
             <td className="updated-cell">{formatDate(row.hourlyFetchedAt || (row.canonical ? item.updatedDate : null), locale)}</td>
-            <td className="row-action-cell"><button type="button" className="row-cart-button" title={locale === 'ru' ? `Добавить покупку: ${itemName(item)}` : `Add purchase: ${itemName(item)}`} aria-label={locale === 'ru' ? `Добавить покупку: ${itemName(item)}` : `Add purchase: ${itemName(item)}`} onClick={() => auth.account ? setPurchaseTarget({ itemId: item.id, slug: item.slug, name: itemName(item), marketKey: row.marketKey, selectedModRank: row.selectedModRank, currentPrice: rowCurrentPrice(row) }) : openPortfolio()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h2l1.7 9.1a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4l1.2-5.8H6.2M9.5 20h.01M17.5 20h.01"/></svg></button></td>
+            <td className="row-action-cell"><button type="button" className="row-cart-button" title={locale === 'ru' ? `Добавить покупку: ${itemName(item)}` : `Add purchase: ${itemName(item)}`} aria-label={locale === 'ru' ? `Добавить покупку: ${itemName(item)}` : `Add purchase: ${itemName(item)}`} onClick={() => auth.account ? setPurchaseTarget({ itemId: item.id, slug: item.slug, name: itemName(item), marketKey: row.marketKey, selectedModRank: row.selectedModRank, currentPrice: rowCurrentPrice(row) }) : showPurchaseAuthNotice()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h2l1.7 9.1a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 1.9-1.4l1.2-5.8H6.2M9.5 20h.01M17.5 20h.01"/></svg></button></td>
           </tr>
         })}
       </tbody></table></div></section>
       {!activeLoading && !activeError && activeTotal > 0 ? <PaginationBar locale={locale} page={page} pageCount={pageCount} total={activeTotal} showingStart={showingStart} showingEnd={showingEnd} onPage={setPage}/> : null}
     </main>}
     </Suspense>
+    {purchaseAuthNotice > 0 ? <PurchaseAuthNotice key={purchaseAuthNotice} locale={locale} onSignIn={() => { setPurchaseAuthNotice(0); if (purchaseAuthNoticeTimer.current != null) window.clearTimeout(purchaseAuthNoticeTimer.current); purchaseAuthNoticeTimer.current = null; openPortfolio() }}/> : null}
     <PurchaseDialog locale={locale} name={purchaseTarget?.name || ''} currentPrice={purchaseTarget?.currentPrice ?? null} open={Boolean(purchaseTarget)} onClose={() => setPurchaseTarget(null)} onSave={value => { if (purchaseTarget) addPurchase({ itemId: purchaseTarget.itemId, slug: purchaseTarget.slug, name: purchaseTarget.name, marketKey: purchaseTarget.marketKey, selectedModRank: purchaseTarget.selectedModRank, ...value }); setPurchaseTarget(null) }}/>
     <FooterBar locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onInfoNavigate={openInfo} t={t}/>
   </>

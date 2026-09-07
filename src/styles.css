@@ -2162,3 +2162,103 @@ html[data-theme="light"] .tool-panel-pending::after {
   .detail-loading-layout { min-height: 640px; }
   .market-table .state-cell { height: 340px; }
 }
+
+
+/* Guest purchase authorization notice */
+.purchase-auth-notice {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1700;
+  width: min(430px, calc(100vw - 32px));
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 14px 12px;
+  color: #dfeaf7;
+  background: rgba(8,17,29,.97);
+  border: 1px solid rgba(92,224,174,.34);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.38);
+  backdrop-filter: blur(14px);
+  animation: purchase-auth-notice-life 5.2s cubic-bezier(.22,.76,.23,1) both;
+}
+.purchase-auth-notice-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #07120e;
+  background: #58e1ad;
+  font-weight: 950;
+  font-size: 18px;
+}
+.purchase-auth-notice-copy { min-width: 0; }
+.purchase-auth-notice-copy strong {
+  display: block;
+  color: #dfeaf7;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.purchase-auth-notice button {
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid #76f1c2;
+  border-radius: 10px;
+  color: #06120e;
+  background: #55dfa9;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.purchase-auth-notice button:hover,
+.purchase-auth-notice button:focus-visible {
+  background: #73edbd;
+  outline: none;
+}
+@keyframes purchase-auth-notice-life {
+  0% { opacity: 0; transform: translate3d(calc(100% + 28px),0,0); }
+  8% { opacity: 1; transform: translate3d(0,0,0); }
+  88% { opacity: 1; transform: translate3d(0,0,0); }
+  100% { opacity: 0; transform: translate3d(calc(100% + 28px),0,0); }
+}
+html[data-theme="light"] .purchase-auth-notice {
+  color: #16313d;
+  background: rgba(255,255,255,.97);
+  border-color: rgba(0,127,103,.28);
+  box-shadow: 0 18px 46px rgba(35,61,74,.18);
+}
+html[data-theme="light"] .purchase-auth-notice-copy strong { color: #16313d; }
+html[data-theme="light"] .purchase-auth-notice-icon {
+  color: #fff;
+  background: #007f67;
+}
+html[data-theme="light"] .purchase-auth-notice button {
+  color: #fff;
+  background: #007f67;
+  border-color: #007f67;
+}
+html[data-theme="light"] .purchase-auth-notice button:hover,
+html[data-theme="light"] .purchase-auth-notice button:focus-visible { background: #009578; }
+
+@media (max-width: 640px) {
+  .purchase-auth-notice {
+    top: 12px;
+    right: 12px;
+    width: calc(100vw - 24px);
+    grid-template-columns: 34px minmax(0,1fr);
+  }
+  .purchase-auth-notice button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .purchase-auth-notice { animation: purchase-auth-notice-fade 5.2s linear both; }
+  @keyframes purchase-auth-notice-fade {
+    0%,100% { opacity: 0; }
+    4%,92% { opacity: 1; }
+  }
+}
