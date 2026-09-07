@@ -337,14 +337,89 @@ const toolGuideCopy = (locale: Locale): ToolGuideCopy => TOOL_GUIDE_COPY[locale]
 
 const smartBuyDisplayName = (value: string) => value.replace(/\bBlueprint\b/gi, 'BP')
 
+const WFM_LOCALES = new Set(['en', 'ru', 'ko', 'de', 'fr', 'pt', 'zh-hans', 'zh-hant', 'es', 'it', 'pl', 'uk', 'tr', 'ja'])
+const warframeMarketLocale = (locale: Locale) => WFM_LOCALES.has(locale) ? locale : 'en'
+const warframeMarketUrl = (path: string, locale: Locale) => {
+  const normalizedPath = `/${String(path || '').replace(/^\/+/, '')}`
+  return `https://warframe.market/${warframeMarketLocale(locale)}${normalizedPath === '/' ? '' : normalizedPath}`
+}
+const localizeWarframeMarketHref = (href: string, locale: Locale) => {
+  try {
+    const url = new URL(href, location.origin)
+    if (url.hostname !== 'warframe.market' && url.hostname !== 'www.warframe.market') return href
+    const parts = url.pathname.split('/').filter(Boolean)
+    if (parts[0] && WFM_LOCALES.has(parts[0])) parts.shift()
+    url.pathname = `/${warframeMarketLocale(locale)}${parts.length ? `/${parts.join('/')}` : ''}`
+    return url.toString()
+  } catch {
+    return href
+  }
+}
+const localizeWarframeMarketText = (value: string, locale: Locale) => value.replace(
+  /https:\/\/(?:www\.)?warframe\.market\/[^\s<>'"]*/gi,
+  url => localizeWarframeMarketHref(url, locale)
+)
+
 const smartBuyDisplayCatalog = (catalog: Map<string, CatalogItem>) => new Map(
   [...catalog.entries()].map(([id, item]) => {
     const copy = { ...item } as CatalogItem & Record<string, unknown>
     if (typeof copy.name === 'string') copy.name = smartBuyDisplayName(copy.name)
     if (typeof copy.displayName === 'string') copy.displayName = smartBuyDisplayName(copy.displayName)
+    if (copy.i18n && typeof copy.i18n === 'object') {
+      copy.i18n = Object.fromEntries(Object.entries(copy.i18n as Record<string, unknown>).map(([language, value]) => {
+        if (!value || typeof value !== 'object') return [language, value]
+        const localized = { ...(value as Record<string, unknown>) }
+        if (typeof localized.name === 'string') localized.name = smartBuyDisplayName(localized.name)
+        return [language, localized]
+      }))
+    }
     return [id, copy as CatalogItem]
   })
 )
+
+const normalizeSmartBuyMarketMinimums = (payload: unknown) => {
+  const normalizeNode = (node: any) => {
+    if (!node || typeof node !== 'object') return false
+    let changed = false
+    if (Array.isArray(node.wishlist) && Array.isArray(node.sellers)) {
+      const sellByDemand = new Map<string, { all: number[]; online: number[] }>()
+      for (const seller of node.sellers) {
+        const online = ['online', 'ingame'].includes(String(seller?.user?.status || '').toLowerCase())
+        for (const offer of Array.isArray(seller?.offers) ? seller.offers : []) {
+          const demandKey = String(offer?.demandKey || '')
+          const unitPrice = Number(offer?.unitPrice)
+          if (!demandKey || !Number.isFinite(unitPrice) || unitPrice <= 0) continue
+          const bucket = sellByDemand.get(demandKey) || { all: [], online: [] }
+          bucket.all.push(unitPrice)
+          if (online) bucket.online.push(unitPrice)
+          sellByDemand.set(demandKey, bucket)
+        }
+      }
+      node.wishlist = node.wishlist.map((item: any) => {
+        const demandKey = String(item?.demandKey || '')
+        const bucket = sellByDemand.get(demandKey)
+        if (!bucket?.all.length) return { ...item, marketMinimumOrderType: 'sell' }
+        const marketMinUnitPrice = Math.min(...bucket.all)
+        const onlineMinUnitPrice = bucket.online.length ? Math.min(...bucket.online) : null
+        changed = true
+        return {
+          ...item,
+          marketMinUnitPrice,
+          onlineMinUnitPrice,
+          currentSellMinimumUnitPrice: marketMinUnitPrice,
+          onlineSellMinimumUnitPrice: onlineMinUnitPrice,
+          marketMinimumOrderType: 'sell'
+        }
+      })
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object' && normalizeNode(value)) changed = true
+    }
+    return changed
+  }
+  normalizeNode(payload as any)
+  return payload
+}
 
 const ToolInlineIntro = ({ locale, kind }: { locale: Locale; kind: 'smartbuy' | 'selladvisor' }) => {
   const copy = toolGuideCopy(locale)
@@ -721,7 +796,7 @@ const FooterBar = ({ locale, setLocale, theme, setTheme, onInfoNavigate, t }: { 
   <a className="footer-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
   <div className="footer-control"><span>{t('language')}</span><CustomPicker compact value={locale} label={t('language')} options={Object.entries(localeNames).map(([value, label]) => ({ value, label }))} onChange={value => setLocale(value as Locale)}/></div>
   <div className="footer-control"><span>{t('theme')}</span><CustomPicker compact value={theme} label={t('theme')} options={[{ value: 'system', label: t('themeSystem') }, { value: 'light', label: t('themeLight') }, { value: 'dark', label: t('themeDark') }]} onChange={value => setTheme(value as Theme)}/></div>
-  <a className="footer-market-link" href="https://warframe.market/" target="_blank" rel="noreferrer">{t('sourceMarket')} ↗</a>
+  <a className="footer-market-link" href={warframeMarketUrl('', locale)} target="_blank" rel="noreferrer">{t('sourceMarket')} ↗</a>
   <div className="footer-version">{t('version')} 0.9.1</div>
   <nav className="footer-info-links" aria-label={infoCopy[locale].navigationLabel}>{(Object.keys(INFO_PAGE_PATHS) as InfoPageKind[]).map(kind => <a key={kind} href={INFO_PAGE_PATHS[kind]} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onInfoNavigate(kind) }}>{infoCopy[locale].nav[kind]}</a>)}</nav>
   <div className="footer-disclaimer">{t('disclaimer')}</div>
@@ -874,7 +949,7 @@ const Detail = ({ detail, metrics, hourly, summary, catalogItem, events, variant
       </section>
       <section className="detail-dashboard panel">
         <div className="range-strip">{visibleRanges.map(range => <div className={`${HOURLY_RANGES.has(range) ? hourlySeries ? 'range-live' : 'range-unavailable' : ''}`} key={range} title={HOURLY_RANGES.has(range) && !hourlySeries ? x.hourlyUnavailable : undefined}><span>{rangeLabel(range, x)}</span><strong className={valueClass(rangeValue(range))}>{fmtPercent(rangeValue(range))}</strong><small className={valueClass(rangePlatinum(range))}>{fmtPlatDelta(rangePlatinum(range))}</small>{HOURLY_RANGES.has(range) ? <i>{hourlyLoading ? '···' : hourlySeries ? '●' : '○'}</i> : null}</div>)}</div>
-        <div className="insight-row"><div><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div><div className="insight-forecast"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={currentEvent ? 'down' : consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</div><a className="insight-market-link" href={`https://warframe.market/items/${encodeURIComponent(detail.slug)}`} target="_blank" rel="noopener noreferrer" title={x.wfmItemHint}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"/></svg><span>{x.openOnWfm}</span></a></div>
+        <div className="insight-row"><div><span>{t('score')}</span><strong>{signal.score == null ? '—' : fmtNumber(signal.score)}<small>{signal.score == null ? '' : '/100'}</small></strong></div><div className="insight-forecast"><span>{x.forecast}</span><ForecastIndicator signal={signal} fallbackChange={series?.change7d ?? null} direction={currentEvent ? 'down' : consensusDirection(visibleRanges.map(rangeValue))} title={t(decisionKey(signal.decision))} trendUp={x.trendUp} trendDown={x.trendDown} trendFlat={x.trendFlat}/>{currentEvent ? <MarketEventBadge event={currentEvent} locale={locale} compact/> : null}</div><a className="insight-market-link" href={warframeMarketUrl(`items/${encodeURIComponent(detail.slug)}`, locale)} target="_blank" rel="noopener noreferrer" title={x.wfmItemHint}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"/></svg><span>{x.openOnWfm}</span></a></div>
         {analytics ? <div className="analysis-strip"><span className="analysis-item"><small>{x.typicalPrice}</small><strong>{fmtPlat(analytics.baseline)}</strong></span><span className="analysis-item"><small>{x.lowerPrice}</small><strong>{fmtPlat(analytics.q25)}</strong></span><span className="analysis-item"><small>{x.upperPrice}</small><strong>{fmtPlat(analytics.q75)}</strong></span><span className="analysis-item"><small>{x.priceFluctuation}</small><strong>{fmtPlainPercent(analytics.volatility)}</strong></span></div> : null}
       </section>
       <div className="page-ad-slot detail-ad-rail"><AdPlacement slot={ADSENSE_SLOTS.detailRail} format="vertical" style={{ minHeight: 600 }}/></div>
@@ -895,6 +970,41 @@ const SmartBuyPage = ({ auth, locale, catalog, onBack, onSignIn }: {
 }) => {
   const copy = toolGuideCopy(locale)
   const compactCatalog = useMemo(() => smartBuyDisplayCatalog(catalog), [catalog])
+  useEffect(() => {
+    const clipboard = navigator.clipboard
+    if (!clipboard || typeof clipboard.writeText !== 'function') return
+    const originalWriteText = clipboard.writeText.bind(clipboard)
+    const normalizedWriteText = (value: string) => originalWriteText(localizeWarframeMarketText(smartBuyDisplayName(String(value)), locale))
+    try {
+      clipboard.writeText = normalizedWriteText
+    } catch {
+      return
+    }
+    return () => {
+      try { clipboard.writeText = originalWriteText } catch { /* readonly clipboard implementation */ }
+    }
+  }, [locale])
+  useEffect(() => {
+    const originalFetch = window.fetch.bind(window)
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args)
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) return response
+      try {
+        const payload = await response.clone().json()
+        const before = JSON.stringify(payload)
+        normalizeSmartBuyMarketMinimums(payload)
+        const after = JSON.stringify(payload)
+        if (before === after) return response
+        const headers = new Headers(response.headers)
+        headers.delete('content-length')
+        return new Response(after, { status: response.status, statusText: response.statusText, headers })
+      } catch {
+        return response
+      }
+    }
+    return () => { window.fetch = originalFetch }
+  }, [])
   return <main className="app-shell smart-buy-page-shell tool-content-page">
     <div className="detail-navigation">
       <a className="brand-plate detail-brand" href="/" aria-label="FrameAnalytics — home"><img src="/assets/frameanalytics-logo.webp" alt="FrameAnalytics"/></a>
@@ -1309,6 +1419,18 @@ export default function App() {
     void run()
     return () => { cancelled = true }
   }, [auth.account?.user.id])
+  useEffect(() => {
+    const localizeMarketLink = (event: MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const anchor = target.closest('a[href]') as HTMLAnchorElement | null
+      if (!anchor) return
+      const nextHref = localizeWarframeMarketHref(anchor.href, locale)
+      if (nextHref !== anchor.href) anchor.href = nextHref
+    }
+    document.addEventListener('click', localizeMarketLink, true)
+    return () => document.removeEventListener('click', localizeMarketLink, true)
+  }, [locale])
   useEffect(() => {
     if (route.kind === 'info') return
     const controller = new AbortController()
