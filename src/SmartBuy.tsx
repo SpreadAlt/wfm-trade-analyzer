@@ -19,7 +19,7 @@ const textFor = (locale: Locale) => locale === 'ru' ? {
   title: 'Умная покупка',
   description: 'Найдите одного продавца сразу для нескольких ваших активных заявок на покупку.',
   profileLabel: 'Профиль Warframe Market',
-  profilePlaceholder: 'Ссылка на профиль или имя пользователя',
+  profilePlaceholder: 'Ссылка на профиль Warframe market',
   link: 'Привязать профиль',
   unlink: 'Отвязать',
   run: 'Запустить Smart Buy',
