@@ -118,7 +118,7 @@ const TOOL_GUIDE_COPY: Partial<Record<Locale, ToolGuideCopy>> = {
     sellAdvisorPoints: ['Uses your active visible sell orders.', 'Compares current orders with recent closed-sale data.', 'Shows the suggested price direction and the difference from your current order.'],
     open: 'Open',
     signIn: 'Sign in to use',
-    locked: 'Sign in is required to use this tool. The explanation and methodology remain public.',
+    locked: 'Sign in is required to use this tool.',
     howItWorks: 'How it works'
   },
   ru: {
@@ -132,7 +132,7 @@ const TOOL_GUIDE_COPY: Partial<Record<Locale, ToolGuideCopy>> = {
     sellAdvisorPoints: ['Использует ваши активные публичные ордера на продажу.', 'Сравнивает текущую цену с недавними закрытыми сделками.', 'Показывает направление корректировки цены и разницу с текущим ордером.'],
     open: 'Открыть',
     signIn: 'Войти для использования',
-    locked: 'Для использования этого инструмента необходима авторизация. Описание работы и методика остаются публичными.',
+    locked: 'Для использования этого инструмента необходима авторизация.',
     howItWorks: 'Как это работает'
   },
   de: {
