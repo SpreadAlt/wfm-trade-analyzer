@@ -402,6 +402,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
     setLoading(true)
     setError(null)
     setJobStatus(null)
+    setBrowserProgress(null)
     setData(null)
     setClock(Date.now())
 
@@ -447,7 +448,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
       const prepared = await prepareBrowserSmartBuy(slug, controller.signal)
       if (controller.signal.aborted) return
       const permit = await accountRequestJson<{ ok: true; profileSlug: string }>(
-        '/api/smart-buy/browser-start', { method: 'POST', body: '{}' }
+        '/api/smart-buy/browser-start', { method: 'POST', body: JSON.stringify({ profileSlug: slug }) }
       )
       if (permit.profileSlug.toLowerCase() !== slug.toLowerCase()) {
         throw new Error('Привязанный профиль изменился. Обновите страницу и повторите запуск.')
