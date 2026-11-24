@@ -118,6 +118,8 @@ const BRIDGE_CHANNEL = 'frameanalytics-wfm-bridge-v1'
 let bridgeAvailability: Promise<boolean> | null = null
 
 const browserBridgeReady = (): Promise<boolean> => {
+  if (typeof window.postMessage !== 'function' ||
+    typeof window.addEventListener !== 'function') return Promise.resolve(false)
   if (bridgeAvailability) return bridgeAvailability
   bridgeAvailability = new Promise<boolean>(resolve => {
     const timeout = window.setTimeout(() => {
