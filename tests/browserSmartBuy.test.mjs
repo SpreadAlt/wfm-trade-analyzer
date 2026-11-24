@@ -36,8 +36,8 @@ test('browser Smart Buy keeps SELL baseline, rank, quantity and multi-item selle
   globalThis.fetch = async (input, init) => {
     const url = String(input)
     headers.push(init?.headers || null)
-    if (url.endsWith('/user/buyer')) return marketJson(profile)
     if (url.endsWith('/orders/user/buyer')) return marketJson(publicOrders)
+    if (url.endsWith('/user/buyer')) return marketJson(profile)
     const id = url.split('/').pop()
     return marketJson(books[id] || [])
   }
@@ -62,10 +62,10 @@ test('browser preflight fails closed if crossplay order-book headers are blocked
   const fetchOriginal = globalThis.fetch
   globalThis.fetch = async (input, init) => {
     const url = String(input)
-    if (url.endsWith('/user/buyer')) return marketJson(user('buyer-id', 'buyer'))
     if (url.endsWith('/orders/user/buyer')) return marketJson([
       { id: 'b1', type: 'buy', itemId: 'item-one', quantity: 1, perTrade: 1, platinum: 100 }
     ])
+    if (url.endsWith('/user/buyer')) return marketJson(user('buyer-id', 'buyer'))
     if (init?.headers?.Crossplay === 'true') throw new TypeError('Failed to fetch')
     throw new Error('Incorrect market fallback')
   }
