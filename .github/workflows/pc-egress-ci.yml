@@ -1,0 +1,52 @@
+name: Windows PC Egress checks
+on:
+  push:
+    branches: [feature/windows-pc-egress]
+  pull_request:
+    paths:
+      - 'pc-egress/**'
+      - '.github/workflows/pc-egress-ci.yml'
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: node --check pc-egress/server.mjs
+      - name: Local health and access tests
+        env:
+          WFM_EGRESS_TOKEN: test-only-not-a-live-secret-12345678901234567890
+        run: |
+          node pc-egress/server.mjs > /tmp/egress.log 2>&1 &
+          egress_pid=$!
+          trap 'kill "$egress_pid" || true' EXIT
+          for i in 1 2 3 4 5; do
+            if curl -fsS http://127.0.0.1:8787/health > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          node -e "const x=require('/tmp/health.json');if(!x.ok||x.revision!=='windows-pc-egress-v1.1')process.exit(1)"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/proxy -H 'Content-Type: application/json' --data '{}')
+          test "$code" = 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/proxy -H 'X-FrameAnalytics-Egress-Token: test-only-not-a-live-secret-12345678901234567890' -H 'Content-Type: application/json' --data '{"url":"http://localhost:8787/health","method":"GET"}')
+          test "$code" = 403
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/proxy -H 'X-FrameAnalytics-Egress-Token: test-only-not-a-live-secret-12345678901234567890' -H 'Content-Type: application/json' --data '{"url":"https://example.com/","method":"GET"}')
+          test "$code" = 403
+
+      - name: Traffic counter authentication
+        env:
+          WFM_EGRESS_TOKEN: test-only-not-a-live-secret-12345678901234567890
+        run: |
+          node pc-egress/server.mjs > /tmp/egress.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          for i in 1 2 3 4 5; do
+            if curl -fsS http://127.0.0.1:8787/health > /dev/null; then break; fi
+            sleep 1
+          done
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/metrics)
+          test "$status" = 401
+          curl -fsS http://127.0.0.1:8787/metrics -H 'X-FrameAnalytics-Egress-Token: test-only-not-a-live-secret-12345678901234567890' > /tmp/metrics.json
+          node -e "let m=require('/tmp/metrics.json');if(!m.ok||!m.total||!m.today||!m.notes)process.exit(1)"
