@@ -401,6 +401,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
 
     setLoading(true)
     setError(null)
+    setPriceBasis('market-min')
     setJobStatus(null)
     setBrowserProgress(null)
     setData(null)
@@ -613,9 +614,9 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
           <button type="button" className="primary-action smart-buy-run" disabled={!canRun} onClick={() => void runSmartBuy()}>
             {loading ? text.loading : data ? text.rerun : text.run}
           </button>
-          <button type="button" className="smart-buy-secondary" disabled={!canRun} onClick={() => void runSmartBuyServer()}>
-            {locale === 'ru' ? 'Через сервер (старый режим)' : 'Server mode (legacy)'}
-          </button>
+          {auth.account?.access.developer ? <button type="button" className="smart-buy-secondary" disabled={!canRun} onClick={() => void runSmartBuyServer()}>
+            {locale === 'ru' ? 'Серверный режим (диагностика)' : 'Server mode (diagnostic)'}
+          </button> : null}
           <div className="smart-buy-quota">
             <strong>{auth.account.smartBuy.remaining}/{auth.account.smartBuy.limit}</strong>
             <span>{text.remaining}</span>
@@ -649,7 +650,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
           <span>{text.priceBasis}</span>
           <div className="smart-buy-segmented">
             <button type="button" className={priceBasis === 'market-min' ? 'active' : ''} onClick={() => setPriceBasis('market-min')}>{text.marketMin}</button>
-            <button type="button" className={priceBasis === 'average-24h' ? 'active' : ''} onClick={() => setPriceBasis('average-24h')}>{text.average24h}</button>
+            <button type="button" className={priceBasis === 'average-24h' ? 'active' : ''} disabled={data.smartBuyRuntimeRevision === 'browser-v1'} title={data.smartBuyRuntimeRevision === 'browser-v1' ? text.avgUnavailable : undefined} onClick={() => setPriceBasis('average-24h')}>{text.average24h}</button>
           </div>
         </div>
 
