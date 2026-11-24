@@ -298,7 +298,7 @@ export async function scanBrowserSmartBuy(
         vs24hAveragePct: null, vs24hAveragePlatinum: null, updatedAt: order.updatedAt || null
       }
       const key = user.id || user.slug.toLowerCase()
-      const entry = sellers.get(key) || {
+      const entry: SmartBuySeller = sellers.get(key) || {
         user, offers: [], marketSeriesCovered: 0,
         unitsCovered: 0, fullSeriesCovered: 0, estimatedCost: 0
       }
