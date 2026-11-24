@@ -114,6 +114,68 @@ const userSummary = (user?: MarketUser): SmartBuyUser | null => {
   }
 }
 
+const BRIDGE_CHANNEL = 'frameanalytics-wfm-bridge-v1'
+let bridgeAvailability: Promise<boolean> | null = null
+
+const browserBridgeReady = (): Promise<boolean> => {
+  if (bridgeAvailability) return bridgeAvailability
+  bridgeAvailability = new Promise<boolean>(resolve => {
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener('message', onMessage)
+      resolve(false)
+    }, 350)
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== location.origin || event.source !== window ||
+        event.data?.channel !== BRIDGE_CHANNEL || event.data?.kind !== 'ready') return
+      window.clearTimeout(timeout)
+      window.removeEventListener('message', onMessage)
+      resolve(true)
+    }
+    window.addEventListener('message', onMessage)
+    window.postMessage({ channel: BRIDGE_CHANNEL, kind: 'ping' }, location.origin)
+  })
+  return bridgeAvailability
+}
+
+const browserBridgeGet = (
+  path: string, headers: Record<string, string> | undefined, signal?: AbortSignal
+): Promise<{ status: number; contentType: string; body: string }> =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'))
+      return
+    }
+    const id = crypto.randomUUID()
+    const timeout = window.setTimeout(() => {
+      cleanup()
+      reject(new Error('WFM bridge response timeout'))
+    }, 25000)
+    function cleanup() {
+      window.clearTimeout(timeout)
+      window.removeEventListener('message', onMessage)
+      signal?.removeEventListener('abort', onAbort)
+    }
+    function onAbort() {
+      cleanup()
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== location.origin || event.source !== window ||
+        event.data?.channel !== BRIDGE_CHANNEL || event.data?.kind !== 'response' ||
+        event.data?.id !== id) return
+      cleanup()
+      if (event.data.error) reject(new Error(String(event.data.error)))
+      else resolve({
+        status: Number(event.data.status),
+        contentType: String(event.data.contentType || ''),
+        body: String(event.data.body || '')
+      })
+    }
+    window.addEventListener('message', onMessage)
+    signal?.addEventListener('abort', onAbort, { once: true })
+    window.postMessage({ channel: BRIDGE_CHANNEL, kind: 'request', id, path, headers }, location.origin)
+  })
+
 async function marketGet<T>(
   path: string,
   signal?: AbortSignal,
@@ -124,31 +186,47 @@ async function marketGet<T>(
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
   nextRequestAt = Date.now() + MIN_REQUEST_INTERVAL_MS
 
-  let response: Response
-  try {
-    response = await fetch('https://api.warframe.market/v2' + path, {
-      method: 'GET', mode: 'cors', credentials: 'omit', signal,
-      ...(headers ? { headers } : {})
-    })
-  } catch (error) {
-    if (signal?.aborted) throw error
-    throw new Error(
-      'Браузер не может прочитать ответ Warframe Market (CORS или блокировка). ' +
-      'Разрешите запросы только для api.warframe.market из frameanalytics.trade; ' +
-      'для Crossplay нужны также заголовки Platform и Crossplay. ' +
-      'Не отключайте защиту CORS глобально.'
-    )
+  let status: number
+  let contentType: string
+  let envelope: Envelope<T>
+  if (await browserBridgeReady()) {
+    const result = await browserBridgeGet('/v2' + path, headers, signal)
+    status = result.status
+    contentType = result.contentType
+    try {
+      envelope = JSON.parse(result.body) as Envelope<T>
+    } catch {
+      throw new Error('Warframe Market вернул не JSON через браузерный мост.')
+    }
+  } else {
+    let response: Response
+    try {
+      response = await fetch('https://api.warframe.market/v2' + path, {
+        method: 'GET', mode: 'cors', credentials: 'omit', signal,
+        ...(headers ? { headers } : {})
+      })
+    } catch (error) {
+      if (signal?.aborted) throw error
+      throw new Error(
+        'Браузер не может прочитать ответ Warframe Market (CORS). ' +
+        'Для Crossplay установите FrameAnalytics WFM Bridge через Tampermonkey. ' +
+        'Не отключайте защиту CORS глобально.'
+      )
+    }
+    status = response.status
+    contentType = response.headers.get('content-type') || ''
+    if (!contentType.toLowerCase().includes('json')) {
+      throw new Error('Warframe Market вернул не JSON; поиск остановлен.')
+    }
+    envelope = await response.json() as Envelope<T>
   }
-
-  if (!response.ok) {
-    throw new Error('Warframe Market HTTP ' + response.status +
-      (response.status === 429 ? ' (лимит запросов; остановлено)' : ''))
+  if (status < 200 || status >= 300) {
+    throw new Error('Warframe Market HTTP ' + status +
+      (status === 429 ? ' (лимит запросов; остановлено)' : ''))
   }
-  const contentType = response.headers.get('content-type') || ''
   if (!contentType.toLowerCase().includes('json')) {
     throw new Error('Warframe Market вернул не JSON; поиск остановлен.')
   }
-  const envelope = await response.json() as Envelope<T>
   if (envelope.error || envelope.data === undefined || envelope.data === null) {
     throw new Error('Warframe Market вернул ошибку API или пустой ответ.')
   }
