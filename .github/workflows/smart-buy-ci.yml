@@ -24,3 +24,5 @@ jobs:
         run: npm ci
       - name: Type check and production build
         run: npm run build
+      - name: Browser Smart Buy logic tests
+        run: node --experimental-strip-types --test tests/browserSmartBuy.test.mjs
