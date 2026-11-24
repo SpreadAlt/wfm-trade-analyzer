@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { waitForSmartBuy } from './api'
+import { accountRequestJson } from './Account'
+import { prepareBrowserSmartBuy, scanBrowserSmartBuy } from './browserSmartBuy'
 import type { SmartBuyJobStatus, SmartBuyResponse, SmartBuySeller, SmartBuySellerOffer, SmartBuyWishlistRow } from './api'
 import type { FrameAccountController } from './Account'
 import type { CatalogItem } from './types'
@@ -212,6 +214,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
   const [profileInput, setProfileInput] = useState(linkedProfile)
   const [data, setData] = useState<SmartBuyResponse | null>(null)
   const [jobStatus, setJobStatus] = useState<SmartBuyJobStatus | null>(null)
+  const [browserProgress, setBrowserProgress] = useState<{ done: number; total: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [profileBusy, setProfileBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -389,7 +392,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
     }
   }
 
-  const runSmartBuy = async () => {
+  const runSmartBuyServer = async () => {
     if (!canRun || !linkedProfile) return
 
     runController.current?.abort()
@@ -409,6 +412,51 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
       const result = await waitForSmartBuy(
         started.jobId,
         status => setJobStatus(status),
+        controller.signal
+      )
+      setData(result)
+    } catch (value) {
+      if (value instanceof DOMException && value.name === 'AbortError') return
+      setError(value instanceof Error ? value.message : String(value))
+    } finally {
+      if (runController.current === controller) runController.current = null
+      setLoading(false)
+    }
+  }
+
+  // Browser mode only reserves a quota slot after the browser has successfully
+  // fetched the linked profile and validated the order-book scope.
+  const runSmartBuy = async () => {
+    if (!canRun || !linkedProfile) return
+    const slug = normalizeProfileInput(linkedProfile)?.slug
+    if (!slug) {
+      setError(text.invalidProfile)
+      return
+    }
+    runController.current?.abort()
+    const controller = new AbortController()
+    runController.current = controller
+    setLoading(true)
+    setError(null)
+    setJobStatus(null)
+    setBrowserProgress(null)
+    setData(null)
+    setClock(Date.now())
+
+    try {
+      const prepared = await prepareBrowserSmartBuy(slug, controller.signal)
+      if (controller.signal.aborted) return
+      const permit = await accountRequestJson<{ ok: true; profileSlug: string }>(
+        '/api/smart-buy/browser-start', { method: 'POST', body: '{}' }
+      )
+      if (permit.profileSlug.toLowerCase() !== slug.toLowerCase()) {
+        throw new Error('Привязанный профиль изменился. Обновите страницу и повторите запуск.')
+      }
+      setClock(Date.now())
+      await auth.refresh()
+      const result = await scanBrowserSmartBuy(
+        prepared,
+        (done, total) => setBrowserProgress({ done, total }),
         controller.signal
       )
       setData(result)
@@ -564,6 +612,9 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
           <button type="button" className="primary-action smart-buy-run" disabled={!canRun} onClick={() => void runSmartBuy()}>
             {loading ? text.loading : data ? text.rerun : text.run}
           </button>
+          <button type="button" className="smart-buy-secondary" disabled={!canRun} onClick={() => void runSmartBuyServer()}>
+            {locale === 'ru' ? 'Через сервер (старый режим)' : 'Server mode (legacy)'}
+          </button>
           <div className="smart-buy-quota">
             <strong>{auth.account.smartBuy.remaining}/{auth.account.smartBuy.limit}</strong>
             <span>{text.remaining}</span>
@@ -579,6 +630,7 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
       <div className="spinner"/>
       <div>
         <strong>{text.loading}</strong>
+        {browserProgress ? <small>{browserProgress.done}/{browserProgress.total || '—'} · {browserProgress.total ? Math.round(browserProgress.done / browserProgress.total * 100) : 0}%</small> : null}
         {jobStatus ? <small>{jobStatus.progress.stage} · {jobStatus.progress.percent}%{jobStatus.queue?.position ? ` · ${text.queue}: ${jobStatus.queue.position}` : ''}</small> : null}
       </div>
     </div> : null}
@@ -586,6 +638,11 @@ export const SmartBuyPanel = ({ locale, catalog, auth, standalone = false }: {
     {error ? <div className="smart-buy-state error-state"><strong>{text.loadError}</strong><small>{error}</small></div> : null}
 
     {data ? <>
+      {data.smartBuyRuntimeRevision === 'browser-v1' ? <div className="smart-buy-state compact">
+        <small>{locale === 'ru'
+          ? 'Браузерный режим: цены продавцов актуальны на момент сканирования. Средняя за 24 ч недоступна без Hourly. Для Crossplay нужны разрешённые Platform/Crossplay-заголовки.'
+          : 'Browser mode: seller prices reflect scan time. The 24h average is unavailable without Hourly. Crossplay requires Platform/Crossplay request headers.'}</small>
+      </div> : null}
       <div className="smart-buy-toolbar">
         <div className="smart-buy-basis">
           <span>{text.priceBasis}</span>
