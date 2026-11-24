@@ -1,0 +1,26 @@
+name: Smart Buy browser fallback CI
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'worker/**'
+      - 'package*.json'
+      - 'tsconfig*.json'
+      - '.github/workflows/smart-buy-ci.yml'
+  push:
+    branches: [fix/smart-buy-browser-fallback]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check and production build
+        run: npm run build
