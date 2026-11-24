@@ -724,6 +724,43 @@ const handlePurchases = async (
   return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "GET, POST, DELETE" });
 };
 
+// Browser Smart Buy keeps the existing per-account quota without creating a
+// server-side scan: the browser has already checked API/CORS access.
+const handleBrowserSmartBuyStart = async (
+  request: Request,
+  env: Env,
+  auth: ReturnType<typeof createAuth>,
+) => {
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+  }
+  const user = await requireSession(auth, request);
+  if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
+  const linked = await env.frameanalytics_auth.prepare(
+    "SELECT wfm_profile FROM frameanalytics_profile WHERE user_id = ?",
+  ).bind(user.id).first<{ wfm_profile: string | null }>();
+  const profileSlug = normalizeWfmProfile(linked?.wfm_profile);
+  if (!profileSlug) {
+    return json({ ok: false, error: "Link a Warframe Market profile first" }, 409);
+  }
+  const permitId = await reserveSmartBuyRun(env, user.id);
+  if (!permitId) {
+    const usage = await readSmartBuyUsage(env, user.id);
+    return json({
+      ok: false,
+      error: usage.remaining <= 0 ? "Daily Smart Buy limit reached" : "Smart Buy cooldown is active",
+      smartBuy: usage,
+    }, 429);
+  }
+  return json({
+    ok: true,
+    mode: "browser",
+    permitId,
+    profileSlug,
+    smartBuy: await readSmartBuyUsage(env, user.id),
+  }, 202);
+};
+
 const handleSmartBuyStart = async (
   request: Request,
   env: Env,
@@ -904,6 +941,10 @@ export default {
 
       if (url.pathname === "/api/account/purchases") {
         return handlePurchases(request, env, auth);
+      }
+
+      if (url.pathname === "/api/smart-buy/browser-start") {
+        return handleBrowserSmartBuyStart(request, env, auth);
       }
 
       if (url.pathname === "/api/smart-buy/start") {
