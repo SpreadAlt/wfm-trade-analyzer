@@ -24,7 +24,12 @@
   window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== location.origin) return;
     const req = event.data;
-    if (!req || req.channel !== CHANNEL || req.kind !== 'request') return;
+    if (!req || req.channel !== CHANNEL) return;
+    if (req.kind === 'ping') {
+      send({ kind: 'ready', version: '0.1.0' });
+      return;
+    }
+    if (req.kind !== 'request') return;
     if (typeof req.id !== 'string' || !/^[a-z0-9-]{8,64}$/i.test(req.id)) return;
     if (active.has(req.id)) return;
     if (typeof req.path !== 'string' || !allowed.some(pattern => pattern.test(req.path))) {
