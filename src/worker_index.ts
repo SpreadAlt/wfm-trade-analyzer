@@ -743,6 +743,10 @@ const handleBrowserSmartBuyStart = async (
   if (!profileSlug) {
     return json({ ok: false, error: "Link a Warframe Market profile first" }, 409);
   }
+  const requested = await readBody<{ profileSlug?: string }>(request);
+  if (normalizeWfmProfile(requested?.profileSlug) !== profileSlug) {
+    return json({ ok: false, error: "Linked profile changed; reload and retry" }, 409);
+  }
   const permitId = await reserveSmartBuyRun(env, user.id);
   if (!permitId) {
     const usage = await readSmartBuyUsage(env, user.id);
