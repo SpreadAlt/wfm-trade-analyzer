@@ -288,11 +288,18 @@ const smartBuyDelay = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener('abort', abort, { once: true })
   })
 
+const SMART_BUY_MAX_WAIT_MS = 20 * 60 * 1000
+const SMART_BUY_STALLED_MS = 8 * 60 * 1000
+
 export const waitForSmartBuy = async (
   jobId: string,
   onStatus: (status: SmartBuyJobStatus) => void,
   signal?: AbortSignal
 ): Promise<SmartBuyResponse> => {
+  const startedAt = Date.now()
+  let lastJobUpdatedAt = ''
+  let lastStatusChangeAt = startedAt
+
   while (!signal?.aborted) {
     const status = await fetchSmartBuyStatus(jobId, signal)
     onStatus(status)
@@ -300,8 +307,30 @@ export const waitForSmartBuy = async (
     if (status.state === 'completed') {
       return fetchSmartBuyResult(jobId, signal)
     }
-    if (status.state === 'failed') {
+    if (status.state === 'failed' || status.state === 'cancelled') {
       throw new Error(status.error || 'Smart Buy job failed')
+    }
+
+    const now = Date.now()
+    const signature = [
+      status.state, status.attempts,
+      status.progress.stage, status.progress.processed,
+      status.updatedAt
+    ].join('|')
+    if (signature !== lastJobUpdatedAt) {
+      lastJobUpdatedAt = signature
+      lastStatusChangeAt = now
+    }
+
+    const stale = now - lastStatusChangeAt > SMART_BUY_STALLED_MS
+    const timeout = now - startedAt > SMART_BUY_MAX_WAIT_MS
+    if (timeout || (stale && (status.state === 'running' || status.state === 'retrying'))) {
+      const details = status.error ? ` Последняя ошибка: ${status.error}` : ''
+      throw new Error(
+        `Smart Buy не завершился в допустимое время (состояние: ${status.state}, ` +
+        `попыток: ${status.attempts}).${details} ` +
+        'Ожидание в браузере остановлено; серверное задание может ещё находиться в очереди.'
+      )
     }
 
     await smartBuyDelay(1500, signal)
